@@ -10,6 +10,8 @@ whatever app you were already in. Nothing leaves the device.
 - **Model strategy (open weights, router, fine-tune)** — `docs/MODELS.md`
 - **Prove-it-first experiments** — `docs/SPIKES.md`
 - **Agent + editor setup** — `docs/TOOLING.md`
+- **What's free and what isn't** — `docs/MONETISATION.md`
+- **How we work here** — `docs/WORKING-AGREEMENT.md`
 - **Order of work** — `docs/ROADMAP.md`
 
 ## Status
