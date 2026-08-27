@@ -1,0 +1,579 @@
+<title>Piko</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap">
+
+<style>
+:root{
+  --hue:#8FBF6E; --piko:#FFCF5C; --piko-d:#F0AE33; --blush:#FF8D6B; --spark:#7CCBE2; --onpiko:#2A1F00;
+}
+[data-skin="cool"]{ --hue:#4C7CF0; --piko:#6B8CFF; --piko-d:#3D5FE0; --blush:#22D3EE; --spark:#22D3EE; --onpiko:#08122E }
+[data-skin="hero"]{ --hue:#C4922A; --piko:#F5C542; --piko-d:#C9922A; --blush:#E4523E; --spark:#5B4BD6; --onpiko:#2A1C00 }
+[data-skin="sparkle"]{ --hue:#EE85B5; --piko:#FFB4D4; --piko-d:#F177AC; --blush:#FF6FA8; --spark:#C6A6FF; --onpiko:#3A0A22 }
+
+:root{
+  --bg:color-mix(in srgb, var(--hue) 13%, #FCFCFA);
+  --card:color-mix(in srgb, var(--hue) 4%, #FFFFFF);
+  --card-2:color-mix(in srgb, var(--hue) 9%, #FFFFFF);
+  --line:color-mix(in srgb, var(--hue) 24%, #E4E4DF);
+  --ink:color-mix(in srgb, var(--hue) 10%, #1A1B18);
+  --ink-2:color-mix(in srgb, var(--hue) 12%, #5A5C56);
+  --ink-3:color-mix(in srgb, var(--hue) 14%, #8E9089);
+  --shadow:0 2px 0 rgba(26,27,24,.05), 0 18px 40px -26px rgba(26,27,24,.45);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:color-mix(in srgb, var(--hue) 10%, #101215);
+    --card:color-mix(in srgb, var(--hue) 9%, #191C1F);
+    --card-2:color-mix(in srgb, var(--hue) 13%, #1E2126);
+    --line:color-mix(in srgb, var(--hue) 16%, #2E3237);
+    --ink:color-mix(in srgb, var(--hue) 8%, #EFF1EC);
+    --ink-2:color-mix(in srgb, var(--hue) 14%, #A6A9A3);
+    --ink-3:color-mix(in srgb, var(--hue) 16%, #757973);
+    --shadow:0 2px 0 rgba(0,0,0,.3), 0 20px 44px -28px #000;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:color-mix(in srgb, var(--hue) 10%, #101215);
+  --card:color-mix(in srgb, var(--hue) 9%, #191C1F);
+  --card-2:color-mix(in srgb, var(--hue) 13%, #1E2126);
+  --line:color-mix(in srgb, var(--hue) 16%, #2E3237);
+  --ink:color-mix(in srgb, var(--hue) 8%, #EFF1EC);
+  --ink-2:color-mix(in srgb, var(--hue) 14%, #A6A9A3);
+  --ink-3:color-mix(in srgb, var(--hue) 16%, #757973);
+  --shadow:0 2px 0 rgba(0,0,0,.3), 0 20px 44px -28px #000;
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0; background:var(--bg); color:var(--ink);
+  font-family:Nunito,"Helvetica Neue",Arial,sans-serif; font-size:17.5px; line-height:1.62;
+  -webkit-font-smoothing:antialiased; transition:background .5s ease, color .5s ease}
+.wrap{max-width:1080px; margin:0 auto; padding:0 22px}
+h1,h2,h3{font-family:Fredoka,"Trebuchet MS",sans-serif; font-weight:600; letter-spacing:-.015em}
+h1{font-size:clamp(2.4rem,7.2vw,4.5rem); line-height:1.03; margin:0; text-wrap:balance}
+h2{font-size:clamp(1.75rem,4.3vw,2.8rem); line-height:1.1; margin:0; text-wrap:balance}
+h3{font-size:1.12rem; margin:0}
+p{margin:0}
+a{color:inherit}
+.lab{font-family:"DM Mono",monospace; font-size:.7rem; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-3)}
+.lead{color:var(--ink-2); max-width:56ch; margin-top:18px; font-size:1.05rem}
+a:focus-visible,button:focus-visible{outline:3px solid var(--piko-d); outline-offset:3px; border-radius:16px}
+
+.btn{font-family:Fredoka,sans-serif; font-weight:600; font-size:1rem; background:var(--ink); color:var(--bg);
+  border:none; border-radius:999px; padding:13px 26px; cursor:pointer; text-decoration:none; display:inline-block;
+  box-shadow:var(--shadow); transition:transform .16s cubic-bezier(.3,1.4,.5,1)}
+.btn:hover{transform:translateY(-2px) rotate(-1deg)}
+.btn.sun{background:var(--piko); color:var(--onpiko)}
+.btn.ghost{background:transparent; color:var(--ink); border:2px solid var(--line); box-shadow:none}
+.btn.ghost:hover{border-color:var(--ink)}
+
+nav{position:sticky; top:0; z-index:50; background:color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter:blur(12px); border-bottom:1px solid var(--line)}
+.nav-in{max-width:1080px; margin:0 auto; padding:11px 22px; display:flex; align-items:center; gap:14px}
+.mark{font-family:Fredoka,sans-serif; font-weight:700; font-size:1.35rem; display:flex; align-items:center; gap:8px}
+.mark .chip{width:27px; height:24px; border-radius:11px; background:var(--piko); display:grid; place-items:center}
+.mark .chip i{display:block; width:3.4px; height:3.4px; border-radius:50%; background:var(--onpiko); box-shadow:6px 0 0 var(--onpiko)}
+.nav-in .lab{margin-left:auto; display:none}
+@media(min-width:860px){.nav-in .lab{display:block}}
+
+/* hero */
+.hero{padding:48px 0 18px; display:grid; grid-template-columns:1fr; gap:32px; align-items:center}
+@media(min-width:900px){.hero{grid-template-columns:1fr 1fr; padding:66px 0 28px; gap:32px}}
+.hero h1 span{color:var(--piko-d)}
+.hero .sub{font-size:clamp(1.05rem,2.2vw,1.24rem); color:var(--ink-2); max-width:33ch; margin-top:20px}
+.hero .sub b{color:var(--ink); font-weight:700}
+.cta{display:flex; flex-wrap:wrap; gap:12px; margin-top:26px; align-items:center}
+.tinynote{font-family:"DM Mono",monospace; font-size:.76rem; color:var(--ink-3); margin-top:15px}
+
+/* skin picker */
+.skins{display:flex; gap:9px; flex-wrap:wrap; margin-top:26px; align-items:center}
+.skinbtn{background:var(--card); border:2px solid var(--line); border-radius:999px; padding:6px 15px 6px 6px;
+  display:flex; align-items:center; gap:9px; cursor:pointer; font-family:Fredoka,sans-serif; font-weight:600;
+  font-size:.9rem; color:var(--ink-2); transition:transform .16s cubic-bezier(.3,1.5,.5,1), border-color .2s ease}
+.skinbtn:hover{transform:translateY(-2px)}
+.skinbtn[aria-pressed="true"]{border-color:var(--ink); color:var(--ink)}
+.skinbtn svg{width:30px; height:30px; display:block; flex:none}
+
+/* creature */
+.pk{display:block; overflow:visible}
+.pk-body{fill:var(--piko); stroke:var(--piko-d); stroke-width:2.5}
+.pk-eye{fill:var(--onpiko); transform-origin:center}
+.pk-blush{fill:var(--blush); opacity:.5}
+.pk-line{stroke:var(--piko-d); stroke-width:3; stroke-linecap:round; fill:none}
+.pk-dark{stroke:var(--onpiko); stroke-width:3.4; stroke-linecap:round; fill:none}
+.pk-tip{fill:var(--spark)}
+.pk-cape{fill:var(--spark)}
+.pk-mask{fill:var(--spark)}
+.pk-bow{fill:var(--blush)}
+.pk-shade{fill:var(--onpiko)}
+.eyes-open,.eyes-happy,.eyes-wide,.m-idle,.m-open,.m-think,
+.only-cute,.only-cool,.only-hero,.only-sparkle{display:none}
+.pk.is-idle .eyes-open,.pk.is-idle .m-idle{display:block}
+.pk.is-listen .eyes-wide,.pk.is-listen .m-open{display:block}
+.pk.is-think .eyes-open,.pk.is-think .m-think{display:block}
+.pk.is-done .eyes-happy,.pk.is-done .m-idle{display:block}
+[data-skin="cute"] .only-cute,
+[data-skin="cool"] .only-cool,
+[data-skin="hero"] .only-hero,
+[data-skin="sparkle"] .only-sparkle{display:block}
+[data-skin="cool"] .eyes-open,[data-skin="cool"] .eyes-wide,[data-skin="cool"] .eyes-happy,
+[data-skin="cool"] .pk-blush{display:none!important}
+.pk.is-idle .eyes-open{animation:blink 4.6s infinite}
+@keyframes blink{0%,95%,100%{transform:scaleY(1)}97.5%{transform:scaleY(.08)}}
+.pk.bobs{animation:bob 3.4s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+.pk.bobs.is-listen{animation:squish .5s ease-in-out infinite alternate}
+@keyframes squish{from{transform:scale(1,1)}to{transform:scale(1.06,.94)}}
+.pk.bobs.is-done{animation:hop .55s cubic-bezier(.3,1.6,.5,1)}
+@keyframes hop{0%{transform:translateY(0)}40%{transform:translateY(-18px)}100%{transform:translateY(0)}}
+.pk .pk-tip{opacity:.4}
+.pk.is-listen .pk-tip{opacity:1}
+
+/* stage */
+.stage{background:var(--card); border:1px solid var(--line); border-radius:34px; padding:24px 22px 22px;
+  box-shadow:var(--shadow); display:flex; flex-direction:column; align-items:center; gap:15px}
+.stage .pk{width:148px; height:148px}
+.pill{background:var(--ink); border-radius:999px; padding:9px 18px; display:flex; align-items:center; gap:12px;
+  min-width:180px; justify-content:center; transition:min-width .4s cubic-bezier(.3,1.4,.4,1)}
+.pill.big{min-width:252px}
+.pill .st{font-family:"DM Mono",monospace; font-size:.72rem; letter-spacing:.12em; color:var(--piko); text-transform:uppercase}
+.wav{display:flex; align-items:flex-end; gap:3px; height:16px}
+.wav i{width:3px; height:4px; border-radius:2px; background:var(--piko); display:block}
+.pill.big .wav i{animation:vu .6s ease-in-out infinite alternate}
+.wav i:nth-child(2){animation-delay:.08s}.wav i:nth-child(3){animation-delay:.17s}
+.wav i:nth-child(4){animation-delay:.05s}.wav i:nth-child(5){animation-delay:.13s}
+@keyframes vu{from{height:4px}to{height:15px}}
+.bubbles{width:100%; display:flex; flex-direction:column; gap:9px; min-height:100px; justify-content:flex-end}
+.bub{max-width:88%; padding:11px 15px; border-radius:20px; font-size:.94rem; line-height:1.45}
+.bub.them{background:var(--card-2); border:1px solid var(--line); color:var(--ink-2); border-bottom-left-radius:7px; align-self:flex-start}
+.bub.me{background:var(--piko); color:var(--onpiko); border-bottom-right-radius:7px; align-self:flex-end; font-weight:600;
+  opacity:0; transform:translateY(8px) scale(.96); transition:all .34s cubic-bezier(.3,1.5,.5,1)}
+.bub.me.show{opacity:1; transform:none}
+.inbox{width:100%; display:flex; align-items:center; gap:10px; background:var(--card-2); border:1px solid var(--line);
+  border-radius:22px; padding:11px 16px; min-height:48px}
+.inbox .t{flex:1; font-size:.94rem; min-height:1.3em; color:var(--ink)}
+.inbox .t.ghosty{color:var(--ink-3)}
+.inbox .t.raw{color:var(--ink-3); font-style:italic}
+.cur{display:inline-block; width:2px; height:1em; background:var(--piko-d); vertical-align:-2px; animation:bl 1s steps(1) infinite}
+@keyframes bl{50%{opacity:0}}
+.hold{font-family:Fredoka,sans-serif; font-weight:600; font-size:.95rem; background:var(--ink); color:var(--bg);
+  border:none; border-radius:999px; padding:12px 26px; cursor:pointer; user-select:none; touch-action:none;
+  box-shadow:var(--shadow); transition:transform .12s ease}
+.hold.down{transform:scale(.94)}
+
+/* sections */
+section{padding:80px 0}
+.rule{border-top:1px solid var(--line)}
+.eyebrow{display:flex; gap:12px; align-items:center; margin-bottom:16px}
+.eyebrow::after{content:""; flex:1; height:1px; background:var(--line)}
+
+.moods{display:grid; grid-template-columns:repeat(2,1fr); gap:14px; margin-top:36px}
+@media(min-width:840px){.moods{grid-template-columns:repeat(4,1fr)}}
+.mood{background:var(--card); border:1px solid var(--line); border-radius:26px; padding:22px 18px 20px; text-align:center;
+  box-shadow:var(--shadow)}
+.mood .pk{width:78px; height:78px; margin:0 auto 10px}
+.mood h3{font-size:1rem}
+.mood p{font-size:.89rem; color:var(--ink-2); margin-top:6px; line-height:1.45}
+
+.tabs{display:flex; gap:8px; flex-wrap:wrap; margin-top:30px}
+.tab{font-family:Fredoka,sans-serif; font-weight:500; font-size:.92rem; background:var(--card); color:var(--ink-2);
+  border:1px solid var(--line); border-radius:999px; padding:9px 18px; cursor:pointer; transition:all .16s ease}
+.tab[aria-selected="true"]{background:var(--piko); color:var(--onpiko); border-color:var(--piko-d)}
+.chatpair{margin-top:20px; display:flex; flex-direction:column; gap:12px; background:var(--card); border:1px solid var(--line);
+  border-radius:28px; padding:22px 20px 24px; box-shadow:var(--shadow)}
+.said,.typed{padding:14px 18px; border-radius:22px; max-width:92%; white-space:pre-line}
+.said{background:var(--card-2); border:1px solid var(--line); color:var(--ink-3); align-self:flex-start;
+  border-bottom-left-radius:8px; font-style:italic; font-size:.97rem}
+.typed{background:var(--piko); color:var(--onpiko); align-self:flex-end; border-bottom-right-radius:8px; font-weight:600; font-size:1rem}
+
+.jobs{display:grid; grid-template-columns:1fr; gap:16px; margin-top:36px}
+@media(min-width:840px){.jobs{grid-template-columns:repeat(3,1fr)}}
+.job{background:var(--card); border:1px solid var(--line); border-radius:26px; padding:24px 22px 26px; box-shadow:var(--shadow)}
+.job .say{display:inline-block; background:var(--card-2); border:1px solid var(--line); border-radius:16px;
+  padding:7px 13px; font-size:.86rem; color:var(--ink-2); margin-bottom:13px; font-style:italic}
+.job p{color:var(--ink-2); font-size:.95rem; margin-top:8px; line-height:1.5}
+
+.hug{background:var(--card); border:1px solid var(--line); border-radius:34px; padding:34px 26px 36px; margin-top:36px;
+  box-shadow:var(--shadow); display:grid; grid-template-columns:1fr; gap:24px; align-items:center}
+@media(min-width:880px){.hug{grid-template-columns:210px 1fr; gap:42px; padding:42px 42px 44px}}
+.hug .pk{width:170px; height:170px; margin:0 auto}
+.facts{border-top:1px solid var(--line); margin-top:20px}
+.facts div{display:grid; grid-template-columns:1fr; gap:3px; padding:14px 0; border-bottom:1px solid var(--line)}
+@media(min-width:640px){.facts div{grid-template-columns:140px 1fr; gap:18px}}
+.facts dt{font-family:"DM Mono",monospace; font-size:.67rem; letter-spacing:.13em; text-transform:uppercase; color:var(--ink-3); padding-top:4px}
+.facts dd{margin:0; color:var(--ink-2); font-size:.96rem}
+.facts dd b{color:var(--ink); font-weight:700}
+
+.pebble{display:grid; grid-template-columns:1fr; gap:26px; align-items:center; margin-top:36px}
+@media(min-width:860px){.pebble{grid-template-columns:.8fr 1.2fr; gap:48px}}
+.peb-art{aspect-ratio:1/1; max-width:240px; width:100%; margin:0 auto; border-radius:50%;
+  background:radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--piko) 55%, #fff), var(--piko) 55%, var(--piko-d));
+  display:grid; place-items:center; box-shadow:0 20px 44px -22px color-mix(in srgb, var(--piko-d) 80%, transparent)}
+.peb-art .pk{width:60%; height:60%}
+.pebble ul{list-style:none; padding:0; margin:18px 0 0; border-top:1px solid var(--line)}
+.pebble li{padding:13px 0; border-bottom:1px solid var(--line); display:grid; grid-template-columns:86px 1fr; gap:14px;
+  font-size:.96rem; color:var(--ink-2)}
+.pebble li b{font-family:Fredoka,sans-serif; font-size:.92rem; color:var(--ink); font-weight:600}
+
+.limits{display:grid; grid-template-columns:1fr; gap:16px; margin-top:34px}
+@media(min-width:780px){.limits{grid-template-columns:1fr 1fr}}
+.limits > div{background:var(--card); border:1px solid var(--line); border-radius:26px; padding:24px 22px 26px; box-shadow:var(--shadow)}
+.limits ul{list-style:none; padding:0; margin:15px 0 0}
+.limits li{padding:9px 0 9px 26px; position:relative; font-size:.94rem; color:var(--ink-2); line-height:1.45}
+.limits li::before{position:absolute; left:0; top:8px; font-size:.95rem}
+.can li::before{content:"◕"; color:var(--piko-d)}
+.cant li::before{content:"◔"; color:var(--ink-3)}
+
+.final{text-align:center; padding:88px 0 56px}
+.final .pk{width:120px; height:120px; margin:0 auto 18px}
+.final .cta{justify-content:center}
+.swap{border:2px dashed var(--line); border-radius:24px; padding:22px 24px; margin-top:32px}
+.swap p{font-family:"DM Mono",monospace; font-size:.78rem; color:var(--ink-3); line-height:1.85}
+footer{border-top:1px solid var(--line); margin-top:24px; padding:24px 0 54px; display:flex; flex-wrap:wrap; gap:14px; align-items:center}
+
+@media (prefers-reduced-motion: reduce){*{animation:none!important; transition:none!important}}
+</style>
+
+<nav>
+  <div class="nav-in">
+    <div class="mark"><span class="chip"><i></i></span>piko</div>
+    <div class="lab" id="navLab">a little voice friend for your iPhone</div>
+    <a class="btn sun" href="#join">Get piko</a>
+  </div>
+</nav>
+
+<div class="wrap">
+  <div class="hero">
+    <div>
+      <div class="lab" id="eyebrow" style="margin-bottom:16px">hello! I live in your notch</div>
+      <h1>Say it once.<br>Piko types<br>it <span>for you.</span></h1>
+      <p class="sub">Hold a button, talk like a person, and finished text lands in whatever app you were already in. <b>Piko never leaves your phone.</b> No account, no cloud, no listening when you didn't ask.</p>
+
+      <div class="skins" role="group" aria-label="Choose how Piko looks">
+        <button class="skinbtn" data-set="cute" aria-pressed="true"><span data-mini="cute"></span>Cute</button>
+        <button class="skinbtn" data-set="cool" aria-pressed="false"><span data-mini="cool"></span>Cool</button>
+        <button class="skinbtn" data-set="hero" aria-pressed="false"><span data-mini="hero"></span>Hero</button>
+        <button class="skinbtn" data-set="sparkle" aria-pressed="false"><span data-mini="sparkle"></span>Sparkle</button>
+      </div>
+      <p class="tinynote" id="note">pick a look — the whole app changes with it</p>
+
+      <div class="cta">
+        <a class="btn sun" href="#join" id="ctaMain">Get piko</a>
+        <a class="btn ghost" href="#moods">Say hi first</a>
+      </div>
+    </div>
+
+    <div class="stage">
+      <span data-piko="idle" data-bob="1" id="pkMain"></span>
+      <div class="pill" id="pill">
+        <div class="wav"><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="st" id="st">ready</div>
+      </div>
+      <div class="bubbles">
+        <div class="bub them">can we still make the friday deadline?</div>
+        <div class="bub me" id="sent"></div>
+      </div>
+      <div class="inbox"><div class="t ghosty" id="fieldTxt">Message</div></div>
+      <button class="hold" id="hold">Hold to talk</button>
+    </div>
+  </div>
+</div>
+
+<section id="moods" class="rule">
+  <div class="wrap">
+    <div class="eyebrow"><span class="lab">meet piko</span></div>
+    <h2>Four faces. That's the whole interface.</h2>
+    <p class="lead">You never open an app or pick a mode. Piko's face tells you what's happening from the corner of your eye — in whichever look you picked.</p>
+    <div class="moods">
+      <div class="mood"><span data-piko="idle"></span><h3>Napping</h3><p>Mic off, nothing running. Piko sleeps until you poke it.</p></div>
+      <div class="mood"><span data-piko="listen"></span><h3>All ears</h3><p>Eyes wide, antenna lit. Ramble away — it's already catching up.</p></div>
+      <div class="mood"><span data-piko="think"></span><h3>Tidying</h3><p>Ums out, punctuation in, shaped like you'd actually write it.</p></div>
+      <div class="mood"><span data-piko="done"></span><h3>Done!</h3><p>Text is in the field, cursor never moved. Hit send.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="rule">
+  <div class="wrap">
+    <div class="eyebrow"><span class="lab">the good bit</span></div>
+    <h2>Dictation types what you said.<br>Piko types what you meant.</h2>
+    <p class="lead">Your phone can already turn sound into words. It still can't write the way you write. Piko keeps a private little model of your phrasing, and every time you fix something, it learns — right there on the device.</p>
+    <div class="tabs" role="tablist" aria-label="Examples">
+      <button class="tab" role="tab" aria-selected="true" data-i="0">Message</button>
+      <button class="tab" role="tab" aria-selected="false" data-i="1">Email</button>
+      <button class="tab" role="tab" aria-selected="false" data-i="2">Commit</button>
+      <button class="tab" role="tab" aria-selected="false" data-i="3">Note</button>
+    </div>
+    <div class="chatpair">
+      <div class="said" id="baIn"></div>
+      <div class="typed" id="baOut"></div>
+    </div>
+  </div>
+</section>
+
+<section class="rule">
+  <div class="wrap">
+    <div class="eyebrow"><span class="lab">three tricks</span></div>
+    <h2>One button. Piko figures out the rest.</h2>
+    <p class="lead">A small language model on the phone reads what you meant and picks the job for you. Nothing to switch, nothing to remember.</p>
+    <div class="jobs">
+      <div class="job"><div class="say">"tell them Thursday works"</div><h3>Write it</h3><p>Lands as text in whatever field you're standing in. Messages, mail, code comments, a search box, some random form. Anywhere the keyboard goes.</p></div>
+      <div class="job"><div class="say">"remind me to pay the invoice"</div><h3>Do it</h3><p>Reminders, calendar, notes, timers, your own connected tools. Piko reads the intent and runs it — no confirmation screen for the obvious stuff.</p></div>
+      <div class="job"><div class="say">"what did I say about pricing?"</div><h3>Remember it</h3><p>Every session stays searchable on your phone. Months of talking, findable in a second, stored nowhere else.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="rule">
+  <div class="wrap">
+    <div class="eyebrow"><span class="lab">the promise</span></div>
+    <h2>Piko has no way to phone home.</h2>
+    <div class="hug">
+      <span data-piko="done"></span>
+      <div>
+        <p class="lead" style="margin-top:0">Not "encrypted in transit." Not "deleted after 30 days." There is no server, no account and nowhere to send anything. Your voice becomes text on your own phone's chip and goes to exactly one place: the field you were already typing in.</p>
+        <p class="lead">Flip on airplane mode and nothing changes. Easiest thing in the world to check, and you should.</p>
+        <dl class="facts">
+          <div><dt>Hearing</dt><dd>Apple's on-device speech stack — clocked at <b>2.2× faster than the quickest local Whisper build</b> on a 34-minute file.</dd></div>
+          <div><dt>Tidying</dt><dd>A small language model living on the phone. Apple's built-in one, or your own 3–4B model at 4-bit if you're that kind of person.</dd></div>
+          <div><dt>Memory</dt><dd>A local index with retrieval, so months of sessions fit through an <b>8,192-token</b> window.</dd></div>
+          <div><dt>Looks</dt><dd>Skins are local too. Piko's face, colours and voice live on the device with everything else.</dd></div>
+          <div><dt>Cost</dt><dd>No inference bill means <b>no subscription for the core loop</b>. Talk as much as you like.</dd></div>
+        </dl>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="rule">
+  <div class="wrap">
+    <div class="eyebrow"><span class="lab">optional friend</span></div>
+    <h2>Piko Pebble.</h2>
+    <p class="lead">A little clicker for your desk or pocket that wakes Piko without touching the phone. It talks to Piko directly instead of pretending to be a Bluetooth keyboard, so nothing else on your phone ever sees the click.</p>
+    <div class="pebble">
+      <div class="peb-art"><span data-piko="idle"></span></div>
+      <div>
+        <ul>
+          <li><b>Click</b><span>Start talking. Click again to stop.</span></li>
+          <li><b>Hold</b><span>Change voice — work, personal, code.</span></li>
+          <li><b>Double</b><span>Scratch that. Undo the last drop.</span></li>
+          <li><b>Buzz</b><span>A little haptic back, so you never look down.</span></li>
+        </ul>
+        <p class="lead">Only gets made if the app earns it. A button for an app nobody opens is a keyring.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="rule">
+  <div class="wrap">
+    <div class="eyebrow"><span class="lab">being honest</span></div>
+    <h2>What Piko can't do.</h2>
+    <p class="lead">iOS puts real walls around every app. Better you read them here than find out on day two.</p>
+    <div class="limits">
+      <div><span class="lab" style="color:var(--piko-d)">can do</span>
+        <ul class="can">
+          <li>Types into any app with a normal text field</li>
+          <li>Works with the network switched off entirely</li>
+          <li>Learns your words, names and phrasing from your fixes</li>
+          <li>Keeps every session searchable on the phone</li>
+          <li>Wakes from Back Tap, Action Button, Control Center, Siri or the Pebble</li>
+        </ul>
+      </div>
+      <div><span class="lab">can't do</span>
+        <ul class="cant">
+          <li>Password and phone-number fields — iOS swaps out every third-party keyboard there</li>
+          <li>Press buttons inside other apps. No iOS app is allowed to</li>
+          <li>Listen in the background. The mic opens when you open it, never before</li>
+          <li>Run on iPhones too old to hold the model in memory</li>
+          <li>Ask for an account before it's done anything useful</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="wrap">
+  <div class="final" id="join">
+    <span data-piko="done"></span>
+    <h2>Piko's nearly ready<br>to move in.</h2>
+    <p class="lead" style="margin:18px auto 0; text-align:center">First TestFlight goes to the early list. Built in the open — the walls, the workarounds, and the bits that didn't survive contact with iOS.</p>
+    <div class="cta"><a class="btn sun" href="#" data-swap="waitlist">Get piko early</a><a class="btn ghost" href="#" data-swap="build">Watch it get built</a></div>
+  </div>
+
+  <div class="swap">
+    <p>before you post this —<br>
+    · point data-swap="waitlist" at the real form, data-swap="build" at the X profile<br>
+    · re-measure the numbers on your own device before quoting them<br>
+    · screen-record the hero while switching skins mid-sentence — that's the clip<br>
+    · check the App Store for "Piko" before you announce it</p>
+  </div>
+
+  <footer>
+    <div class="mark"><span class="chip"><i></i></span>piko</div>
+    <span class="lab">on-device · iOS 26+ · nothing uploaded</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+  var reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var root = document.documentElement;
+
+  /* ---------- creature ---------- */
+  var SVG =
+  '<svg class="pk" viewBox="0 0 140 148" role="img" aria-label="Piko">'+
+    '<g class="only-hero"><path class="pk-cape" d="M34 52 C10 74 12 116 26 132 C34 112 40 96 44 84 Z"/>'+
+      '<path class="pk-cape" d="M106 52 C130 74 128 116 114 132 C106 112 100 96 96 84 Z"/></g>'+
+    '<path class="pk-line only-cute" d="M70 30 q0 -12 6 -18"/>'+
+    '<circle class="pk-tip only-cute" cx="77" cy="10" r="5"/>'+
+    '<g class="only-sparkle"><path class="pk-bow" d="M70 30 L52 18 L54 36 Z"/><path class="pk-bow" d="M70 30 L88 18 L86 36 Z"/>'+
+      '<circle class="pk-bow" cx="70" cy="29" r="6"/></g>'+
+    '<g class="only-cool"><path class="pk-line" d="M70 30 q0 -12 6 -18"/><circle class="pk-tip" cx="77" cy="10" r="5"/></g>'+
+    '<path class="pk-body" d="M70 30 C104 30 118 52 118 78 C118 106 98 122 70 122 C42 122 22 106 22 78 C22 52 36 30 70 30 Z"/>'+
+    '<ellipse class="pk-blush" cx="41" cy="88" rx="9" ry="6"/>'+
+    '<ellipse class="pk-blush" cx="99" cy="88" rx="9" ry="6"/>'+
+    '<g class="only-hero"><path class="pk-mask" d="M36 62 L104 62 L100 78 L82 80 L70 72 L58 80 L40 78 Z"/></g>'+
+    '<g class="eyes-open"><ellipse class="pk-eye" cx="55" cy="74" rx="6" ry="7.5"/><ellipse class="pk-eye" cx="85" cy="74" rx="6" ry="7.5"/></g>'+
+    '<g class="eyes-wide"><ellipse class="pk-eye" cx="55" cy="73" rx="7.5" ry="9.5"/><ellipse class="pk-eye" cx="85" cy="73" rx="7.5" ry="9.5"/></g>'+
+    '<g class="eyes-happy"><path class="pk-dark" d="M48 77 q7 -10 14 0"/><path class="pk-dark" d="M78 77 q7 -10 14 0"/></g>'+
+    '<g class="only-cool"><rect class="pk-shade" x="36" y="64" width="68" height="17" rx="7"/>'+
+      '<rect class="pk-shade" x="66" y="68" width="8" height="5"/>'+
+      '<path class="pk-tip" d="M42 68 L54 68 L44 78 Z" opacity=".55"/></g>'+
+    '<path class="m-idle pk-eye" d="M62 95 q8 8 16 0 q-8 4 -16 0 Z"/>'+
+    '<ellipse class="m-open pk-eye" cx="70" cy="97" rx="8" ry="10"/>'+
+    '<g class="m-think"><circle class="pk-eye" cx="61" cy="97" r="2.4"/><circle class="pk-eye" cx="70" cy="97" r="2.4"/><circle class="pk-eye" cx="79" cy="97" r="2.4"/></g>'+
+    '<g class="only-sparkle"><path class="pk-tip" d="M113 46 l2.6 6.4 6.4 2.6 -6.4 2.6 -2.6 6.4 -2.6 -6.4 -6.4 -2.6 6.4 -2.6 Z"/>'+
+      '<path class="pk-tip" d="M25 100 l1.8 4.4 4.4 1.8 -4.4 1.8 -1.8 4.4 -1.8 -4.4 -4.4 -1.8 4.4 -1.8 Z"/></g>'+
+  '</svg>';
+
+  [].forEach.call(document.querySelectorAll('[data-piko]'), function(host){
+    host.innerHTML = SVG;
+    var svg = host.firstChild;
+    svg.classList.add('is-' + host.dataset.piko);
+    if(host.dataset.bob) svg.classList.add('bobs');
+  });
+  [].forEach.call(document.querySelectorAll('[data-mini]'), function(host){
+    host.innerHTML = SVG;
+    host.firstChild.classList.add('is-done');
+  });
+
+  /* ---------- skins ---------- */
+  var COPY = {
+    cute:    {eyebrow:"hello! I live in your notch", nav:"a little voice friend for your iPhone",
+              note:"pick a look — the whole app changes with it", cta:"Get piko"},
+    cool:    {eyebrow:"lives rent-free in your notch", nav:"the voice thing that just works",
+              note:"same brain underneath. better shades.", cta:"Get piko"},
+    hero:    {eyebrow:"on standby in your notch", nav:"your typing, rescued",
+              note:"no cape required. it came with one.", cta:"Recruit piko"},
+    sparkle: {eyebrow:"living in your notch ✿", nav:"the cutest way to stop typing",
+              note:"same brain underneath. way more sparkle.", cta:"Get piko"}
+  };
+  var eyebrow=document.getElementById('eyebrow'), navLab=document.getElementById('navLab'),
+      note=document.getElementById('note'), ctaMain=document.getElementById('ctaMain');
+  var btns=[].slice.call(document.querySelectorAll('.skinbtn'));
+
+  function setSkin(name){
+    root.setAttribute('data-skin', name);
+    btns.forEach(function(b){ b.setAttribute('aria-pressed', b.dataset.set===name ? 'true':'false'); });
+    var c = COPY[name] || COPY.cute;
+    eyebrow.textContent=c.eyebrow; navLab.textContent=c.nav; note.textContent=c.note; ctaMain.textContent=c.cta;
+    try{ localStorage.setItem('piko-skin', name); }catch(e){}
+  }
+  btns.forEach(function(b){ b.addEventListener('click', function(){ setSkin(b.dataset.set); }); });
+  var saved='cute';
+  try{ saved = localStorage.getItem('piko-skin') || 'cute'; }catch(e){}
+  setSkin(saved);
+
+  /* ---------- examples ---------- */
+  var DATA=[
+    ["um so hey can we push the thing to like thursday i think uh friday's gonna be too tight with the review and everything",
+     "Hey — can we push it to Thursday? Friday's too tight with the review."],
+    ["hi sarah thanks for sending that over uh i had a look and i think the second option works better for us can we do a call next week maybe tuesday",
+     "Hi Sarah — thanks for sending that over. I've had a look and the second option works better for us. Could we do a call next week, Tuesday if you're free?"],
+    ["fixed the thing where the token check was using less than instead of less than or equal so sessions were expiring one tick early",
+     "fix(auth): use <= in token expiry check\n\nSessions expired one tick early."],
+    ["idea for later the pebble should buzz differently for start and stop otherwise you can't tell what state you're in without looking",
+     "Pebble: different buzz for start vs stop — you can't read state without looking otherwise."]
+  ];
+  var baIn=document.getElementById('baIn'), baOut=document.getElementById('baOut');
+  var tabs=[].slice.call(document.querySelectorAll('.tab'));
+  function pick(i){
+    tabs.forEach(function(t,j){ t.setAttribute('aria-selected', j===i?'true':'false'); });
+    baIn.textContent='"'+DATA[i][0]+'"';
+    baOut.textContent=DATA[i][1];
+  }
+  tabs.forEach(function(t){ t.addEventListener('click',function(){ pick(+t.dataset.i); }); });
+  pick(0);
+
+  /* ---------- demo ---------- */
+  var pk=document.querySelector('#pkMain .pk'), pill=document.getElementById('pill'), st=document.getElementById('st'),
+      field=document.getElementById('fieldTxt'), sent=document.getElementById('sent'), hold=document.getElementById('hold');
+  var RAW="um so hey can we push the thing to like thursday i think friday's too tight";
+  var CLEAN="Hey — can we push it to Thursday? Friday's too tight.";
+  var timers=[], typing=null, busy=false;
+  function at(ms,fn){ timers.push(setTimeout(fn,ms)); }
+  function stopAll(){ timers.forEach(clearTimeout); timers=[]; clearTimeout(typing); }
+  function face(s){ pk.setAttribute('class','pk bobs is-'+s); }
+
+  function reset(){
+    stopAll(); busy=false;
+    face('idle'); pill.classList.remove('big'); st.textContent='ready';
+    field.className='t ghosty'; field.textContent='Message';
+    sent.classList.remove('show'); sent.textContent='';
+    hold.textContent='Hold to talk'; hold.classList.remove('down');
+  }
+  function listen(){
+    if(busy) return; busy=true; stopAll();
+    sent.classList.remove('show'); sent.textContent='';
+    face('listen'); pill.classList.add('big'); st.textContent='listening';
+    hold.classList.add('down'); hold.textContent='Listening…';
+    field.className='t raw'; field.innerHTML='<span class="cur"></span>';
+    var i=0;
+    (function step(){
+      i++;
+      field.innerHTML=RAW.slice(0,i).replace(/&/g,'&amp;').replace(/</g,'&lt;')+'<span class="cur"></span>';
+      if(i<RAW.length) typing=setTimeout(step,44);
+    })();
+  }
+  function release(){
+    if(!busy) return;
+    clearTimeout(typing);
+    hold.classList.remove('down'); hold.textContent='Tidying…';
+    face('think'); pill.classList.remove('big'); st.textContent='tidying';
+    at(750,function(){
+      face('done'); st.textContent='done!';
+      field.className='t'; field.textContent=CLEAN; hold.textContent='Nice.';
+    });
+    at(1500,function(){
+      sent.textContent=CLEAN; sent.classList.add('show');
+      field.className='t ghosty'; field.textContent='Message';
+    });
+    at(3300,reset);
+  }
+
+  reset();
+  if(reduce){
+    face('done'); field.className='t'; field.textContent=CLEAN;
+    sent.textContent=CLEAN; sent.classList.add('show'); st.textContent='done!';
+  } else {
+    var down=false;
+    var press=function(e){ if(e && e.preventDefault) e.preventDefault(); if(down) return; down=true; listen(); };
+    var lift =function(){ if(!down) return; down=false; release(); };
+    hold.addEventListener('pointerdown',press);
+    window.addEventListener('pointerup',lift);
+    hold.addEventListener('keydown',function(e){ if(e.key===' '||e.key==='Enter'){ e.preventDefault(); press(); }});
+    hold.addEventListener('keyup',function(e){ if(e.key===' '||e.key==='Enter'){ lift(); }});
+    var played=false;
+    new IntersectionObserver(function(es){
+      es.forEach(function(e){
+        if(e.isIntersecting && !played){
+          played=true;
+          at(700,function(){ listen(); at(RAW.length*44+600, release); });
+        }
+      });
+    },{threshold:.3}).observe(pk);
+  }
+})();
+</script>

@@ -1,0 +1,10 @@
+.DS_Store
+.build/
+DerivedData/
+App/Piko.xcodeproj/
+*.xcuserstate
+xcuserdata/
+.swiftpm/
+Packages/
+*.mlaimodel
+models/

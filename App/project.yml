@@ -1,0 +1,81 @@
+name: Piko
+options:
+  bundleIdPrefix: dev.piko
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+
+packages:
+  Piko:
+    path: ..
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    DEVELOPMENT_TEAM: ""   # fill in before device builds
+
+targets:
+  Piko:
+    type: application
+    platform: iOS
+    sources: [Piko]
+    dependencies:
+      - package: Piko
+        products: [PikoKit, PikoBridge, PikoAudio, PikoTranscribe, PikoBrain, PikoMemory, PikoUI]
+      - target: PikoKeyboard
+        embed: true
+      - target: PikoWidgets
+        embed: true
+    info:
+      path: Piko/Info.plist
+      properties:
+        UIBackgroundModes: [audio]           # CONSTRAINTS C3 — keeps the armed session alive
+        NSMicrophoneUsageDescription: "Piko turns what you say into text. Audio never leaves this phone."
+        NSSpeechRecognitionUsageDescription: "Piko transcribes on this device only."
+        NSSupportsLiveActivities: true
+    entitlements:
+      path: Piko/Piko.entitlements
+      properties:
+        com.apple.security.application-groups: [group.dev.piko.shared]
+
+  PikoKeyboard:
+    type: app-extension
+    platform: iOS
+    sources: [PikoKeyboard]
+    # Deliberately short. CONSTRAINTS C4 — this list is the ~60 MB ceiling in build form.
+    dependencies:
+      - package: Piko
+        products: [PikoKit, PikoBridge, PikoUI]
+    info:
+      path: PikoKeyboard/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.keyboard-service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardViewController
+          NSExtensionAttributes:
+            IsASCIICapable: false
+            PrefersRightToLeft: false
+            PrimaryLanguage: en-US
+            RequestsOpenAccess: true         # required for the App Group to be writable
+    entitlements:
+      path: PikoKeyboard/PikoKeyboard.entitlements
+      properties:
+        com.apple.security.application-groups: [group.dev.piko.shared]
+
+  PikoWidgets:
+    type: app-extension
+    platform: iOS
+    sources: [PikoWidgets]
+    dependencies:
+      - package: Piko
+        products: [PikoKit, PikoUI]
+    info:
+      path: PikoWidgets/Info.plist
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: PikoWidgets/PikoWidgets.entitlements
+      properties:
+        com.apple.security.application-groups: [group.dev.piko.shared]
