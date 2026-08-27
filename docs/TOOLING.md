@@ -44,7 +44,7 @@ Keeps the agent from inventing API signatures — the single biggest failure mod
 Swift against fast-moving frameworks.
 
 ```bash
-claude mcp add --transport stdio apple-docs -- npx -y apple-docs-mcp@latest
+claude mcp add --transport stdio apple-docs -- npx -y @kimsungwhee/apple-docs-mcp@latest
 ```
 
 Searches iOS/macOS/SwiftUI/UIKit docs, WWDC sessions, and code samples. There are several

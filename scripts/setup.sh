@@ -24,7 +24,7 @@ say "Registering MCP servers with Claude Code…"
 if command -v claude >/dev/null; then
   claude mcp add --transport stdio xcode -- xcrun mcpbridge || true
   claude mcp add --transport stdio xcodebuild -- npx -y xcodebuildmcp@latest mcp || true
-  claude mcp add --transport stdio apple-docs -- npx -y apple-docs-mcp@latest || true
+  claude mcp add --transport stdio apple-docs -- npx -y @kimsungwhee/apple-docs-mcp@latest || true
   claude mcp list || true
 else
   warn "  claude CLI not found — .mcp.json at the repo root declares the same three servers."

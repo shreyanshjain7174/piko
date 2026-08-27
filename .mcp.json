@@ -12,7 +12,7 @@
     },
     "apple-docs": {
       "command": "npx",
-      "args": ["-y", "apple-docs-mcp@latest"],
+      "args": ["-y", "@kimsungwhee/apple-docs-mcp@latest"],
       "description": "Apple Developer documentation, WWDC sessions, code samples."
     }
   }
