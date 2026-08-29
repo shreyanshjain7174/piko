@@ -118,14 +118,13 @@ Implementations:
 Routing must not cost the fast path. Order: regex and keyword prefilter → tiny routing model
 only when the prefilter is unsure → never the rewrite model.
 
-**Planned profile addition (Phase 6, not yet in `Contracts.swift`):** an `.agent` profile —
-rewrites for a coding agent or LLM to parse unambiguously, not for a human reader. Draft
-instruction, matching the style of the four shipped profiles: "Imperative, unambiguous, no
-filler words or hedging. State the concrete file/symbol/action if the speaker named one. No
-greeting, no pleasantries, no restating the obvious." This is a new `Profile` enum case, which
-is Phase 1 (`PikoKit`) contract surface — do not add it ad hoc; land it as part of Phase 6
-planning so the picker UI (`App/Piko/PikoApp.swift`) and `SystemBrain` prompt table update
-together, not piecemeal.
+**Shipped profile (Phase 6):** `.agent` rewrites for a coding agent or LLM to parse
+unambiguously, not for a human reader. `.code` still shapes text a human will read in a
+commit or a file. `styleHint`: "Imperative, unambiguous, no filler words or hedging. State
+the concrete file/symbol/action if the speaker named one. No greeting, no pleasantries, no
+restating the obvious." `SystemBrain.instructions()` interpolates `profile.styleHint`
+unchanged. The keyboard accessory row (`App/PikoKeyboard`) is the picker surface
+(CONSTRAINTS C7); the container app does not duplicate it.
 
 Acceptance: cleanup of a 60-word transcript completes in under 600 ms on the oldest supported
 device, or the cleanup step becomes optional on that device.

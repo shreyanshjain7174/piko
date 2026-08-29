@@ -18,6 +18,7 @@ final class KeyboardViewController: UIInputViewController {
 
     @Published private var sessionPhase: SessionPhase? = nil
     @Published private var showArmPrompt: Bool = true
+    @Published private var selectedProfile: Profile = .message
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -60,13 +61,27 @@ final class KeyboardViewController: UIInputViewController {
                 set: { [weak self] in self?.sessionPhase = $0 }),
             showArmPrompt: Binding(
                 get: { [weak self] in self?.showArmPrompt ?? true },
-                set: { [weak self] in self?.showArmPrompt = $0 })
+                set: { [weak self] in self?.showArmPrompt = $0 }),
+            selectedProfile: Binding(
+                get: { [weak self] in self?.selectedProfile ?? .message },
+                set: { [weak self] in self?.selectProfile($0) })
         )
+    }
+
+    private func selectProfile(_ profile: Profile) {
+        selectedProfile = profile
+        if let channel {
+            ProfileSelectionController(channel: channel).select(profile)
+        }
+        hostingController?.rootView = makeKeyboardView()
     }
 
     private func apply(_ state: SessionState?) {
         sessionState = state
         sessionPhase = state?.phase
+        if let profile = state?.profile {
+            selectedProfile = profile
+        }
         showArmPrompt = !(state?.isLive() ?? false)
         hostingController?.rootView = makeKeyboardView()
     }
