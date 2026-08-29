@@ -142,6 +142,9 @@ public struct EditPair: Codable, Sendable, Equatable, Hashable {
 /// A tone. The keyboard cannot see the host app (CONSTRAINTS C7), so the user picks this.
 public enum Profile: String, Codable, Sendable, CaseIterable {
     case message, email, note, code
+    /// Shapes text a machine will parse for instructions. `.code` shapes text a human
+    /// will read in a commit or a file.
+    case agent
 
     public var styleHint: String {
         switch self {
@@ -149,6 +152,7 @@ public enum Profile: String, Codable, Sendable, CaseIterable {
         case .email:   "Polite and complete. Greeting and sign-off if the speaker implied one."
         case .note:    "Terse. Fragments fine. No pleasantries."
         case .code:    "Imperative mood, present tense, conventional-commit shape when it reads like a commit."
+        case .agent:   "Imperative, unambiguous, no filler words or hedging. State the concrete file/symbol/action if the speaker named one. No greeting, no pleasantries, no restating the obvious."
         }
     }
 }
