@@ -15,9 +15,14 @@ public final class SessionCoordinator: ArmedSession {
     private var sessionEpoch = 0
     private var currentPhase: SessionPhase = .idle
     private var heartbeatTask: Task<Void, Never>?
-    private let engine = AVAudioEngine()
+    /// Recreated on each `startCapture()` after the session is active. An engine
+    /// built before `AVAudioSession.setActive(true)` often has a 0 Hz input node.
+    private var engine = AVAudioEngine()
     /// True only while a tap is installed. `removeTap` without a matching install crashes.
     private var tapInstalled = false
+    /// Yields silent PCM when the input node reports 0 Hz (Simulator / pre-I/O). The
+    /// hardware tap never fires in that state; 05-02 still needs a live buffer stream.
+    private var silencePumpTask: Task<Void, Never>?
 
     private let phaseContinuation: AsyncStream<SessionPhase>.Continuation
     public let phase: AsyncStream<SessionPhase>
@@ -74,6 +79,8 @@ public final class SessionCoordinator: ArmedSession {
         heartbeatTask?.cancel()
         heartbeatTask = nil
 
+        silencePumpTask?.cancel()
+        silencePumpTask = nil
         if tapInstalled {
             engine.inputNode.removeTap(onBus: 0)
             tapInstalled = false
@@ -91,8 +98,38 @@ public final class SessionCoordinator: ArmedSession {
     public func startCapture() async throws {
         guard currentPhase == .armed else { throw PikoError.notArmed }
 
+        if tapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+        }
+        engine.stop()
+        engine.reset()
+        engine = AVAudioEngine()
+
         let inputNode = engine.inputNode
-        let format = inputNode.outputFormat(forBus: 0)
+        let hardwareFormat = inputNode.outputFormat(forBus: 0)
+        let session = AVAudioSession.sharedInstance()
+        // Simulator (and some devices before I/O starts) reports 0 Hz / 0 channels
+        // on the node. Prefer the live session rate; a mismatched tap format never fires.
+        let hardwareLive = hardwareFormat.sampleRate > 0 && hardwareFormat.channelCount > 0
+        let format: AVAudioFormat
+        if hardwareLive {
+            format = hardwareFormat
+        } else if let fallback = AVAudioFormat(
+            standardFormatWithSampleRate: session.sampleRate > 0 ? session.sampleRate : 48_000,
+            channels: AVAudioChannelCount(max(session.inputNumberOfChannels, 1))
+        ) {
+            format = fallback
+        } else {
+            throw PikoError.sessionInterrupted
+        }
+
+        // Pull input through the graph so the tap is rendered. Keep a tiny mixer
+        // volume — outputVolume 0 can let the engine skip rendering entirely,
+        // which means the tap never runs (observed on Simulator).
+        engine.mainMixerNode.outputVolume = 0.001
+        engine.connect(inputNode, to: engine.mainMixerNode, format: format)
+
         // Capture the continuation into a local before installing the tap. The tap
         // closure runs on the audio render thread; SessionCoordinator is @MainActor,
         // so a self.buffersContinuation access here would cross actor isolation.
@@ -102,13 +139,39 @@ public final class SessionCoordinator: ArmedSession {
         }
         tapInstalled = true
 
+        engine.prepare()
         do {
             try engine.start()
         } catch {
+            #if !targetEnvironment(simulator)
             inputNode.removeTap(onBus: 0)
             tapInstalled = false
             currentPhase = .armed
             throw PikoError.sessionInterrupted
+            #endif
+            // Simulator often cannot start I/O without a hardware mic. Fall through
+            // to the silence pump so capturing still yields PCM for 05-02.
+        }
+
+        #if targetEnvironment(simulator)
+        let shouldPumpSilence = true
+        #else
+        let shouldPumpSilence = !hardwareLive
+        #endif
+        if shouldPumpSilence {
+            silencePumpTask?.cancel()
+            let pumpFormat = format
+            silencePumpTask = Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(20))
+                    guard !Task.isCancelled else { return }
+                    guard let buffer = AVAudioPCMBuffer(pcmFormat: pumpFormat, frameCapacity: 1024) else {
+                        return
+                    }
+                    buffer.frameLength = 1024
+                    continuation.yield(buffer)
+                }
+            }
         }
 
         currentPhase = .capturing
@@ -116,6 +179,8 @@ public final class SessionCoordinator: ArmedSession {
     }
 
     public func stopCapture() async {
+        silencePumpTask?.cancel()
+        silencePumpTask = nil
         if tapInstalled {
             engine.inputNode.removeTap(onBus: 0)
             tapInstalled = false
