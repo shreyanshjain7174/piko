@@ -10,26 +10,22 @@ protocol TextProxy: AnyObject {
 }
 
 #if canImport(UIKit)
-extension UITextDocumentProxy {
-    // UITextDocumentProxy already declares insertText/deleteBackward (UIKeyInput).
-}
-
-/// Class box so the controller can hold a weak reference. `UITextDocumentProxy` is a protocol.
+/// Weak box so the controller does not retain the keyboard's `textDocumentProxy`.
 final class UITextDocumentProxyBox: TextProxy {
-    private let proxy: any UITextDocumentProxy
+    private weak var proxy: (any UITextDocumentProxy)?
 
     init(_ proxy: any UITextDocumentProxy) {
         self.proxy = proxy
     }
 
-    func insertText(_ text: String) { proxy.insertText(text) }
-    func deleteBackward() { proxy.deleteBackward() }
+    func insertText(_ text: String) { proxy?.insertText(text) }
+    func deleteBackward() { proxy?.deleteBackward() }
 }
 #endif
 
 /// StablePrefix-aware streaming insertion. Only the unstable tail is rewritten.
 final class TextInsertionController {
-    private weak var proxy: (any TextProxy)?
+    private let proxy: any TextProxy
     private(set) var insertedChars: Int = 0
     private(set) var lastApplied: CaptureDraft?
 
@@ -44,13 +40,35 @@ final class TextInsertionController {
 #endif
 
     func apply(_ draft: CaptureDraft) {
-        // Stub: TDD RED. Real diffing lands in the GREEN commit.
-        _ = draft
+        guard draft.isNewer(than: lastApplied) else { return }
+
+        // New epoch: leftover insertion from the previous session is not this draft.
+        let alreadyStable: Int
+        if lastApplied.map({ $0.sessionEpoch != draft.sessionEpoch }) == true {
+            alreadyStable = 0
+        } else {
+            alreadyStable = lastApplied.map { min($0.stablePrefix, insertedChars) } ?? 0
+        }
+
+        let toDelete = insertedChars - alreadyStable
+        for _ in 0..<toDelete { proxy.deleteBackward() }
+
+        let newText = String(draft.text.dropFirst(alreadyStable))
+        proxy.insertText(newText)
+
+        insertedChars = draft.text.count
+        lastApplied = draft
     }
 
     func commit(_ result: CaptureResult) {
-        _ = result
+        for _ in 0..<insertedChars { proxy.deleteBackward() }
+        proxy.insertText(result.shipped)
+        insertedChars = 0
+        lastApplied = nil
     }
 
-    func reset() {}
+    func reset() {
+        insertedChars = 0
+        lastApplied = nil
+    }
 }
