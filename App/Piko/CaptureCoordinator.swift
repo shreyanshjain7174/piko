@@ -18,16 +18,19 @@ public final class CaptureCoordinator {
     private let session: SessionCoordinator
     private let channel: any SessionChannel
     private let transcriber: any Transcriber
+    private let brain: any Brain
 
     private var transcriptionTask: Task<Void, Never>?
     private var sessionEpoch = 0
 
     public init(session: SessionCoordinator,
                 channel: any SessionChannel,
-                transcriber: any Transcriber) {
+                transcriber: any Transcriber,
+                brain: any Brain) {
         self.session = session
         self.channel = channel
         self.transcriber = transcriber
+        self.brain = brain
     }
 
     /// Start capture: begin audio recording and transcription pipeline.
@@ -58,11 +61,22 @@ public final class CaptureCoordinator {
         transcriptionTask = nil
 
         let finalText = await transcriber.finish()
+        let profile = channel.readState()?.profile ?? .message
+        let route = await brain.route(finalText)
+
+        let clock = ContinuousClock()
+        let start = clock.now
+        let shipped = (try? await brain.rewrite(finalText, profile: profile, lexicon: [], examples: [])) ?? finalText
+        let elapsed = clock.now - start
+        let brainMS = Int(elapsed.components.seconds * 1000
+                          + elapsed.components.attoseconds / 1_000_000_000_000_000)
 
         let result = CaptureResult(
             raw: finalText,
-            shipped: finalText,  // TODO(phase 6): Brain rewrites this
-            route: .write
+            shipped: shipped,
+            route: route,
+            profile: profile,
+            timings: .init(brainMS: brainMS)
         )
         channel.writeResult(result)
         channel.post(.resultReady)

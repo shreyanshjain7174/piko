@@ -1,5 +1,6 @@
 import Foundation
 import PikoAudio
+import PikoBrain
 import PikoBridge
 import PikoKit
 import PikoTranscribe
@@ -30,7 +31,8 @@ final class AppComposition {
         self.captureCoordinator = CaptureCoordinator(
             session: session,
             channel: channel,
-            transcriber: transcriber
+            transcriber: transcriber,
+            brain: SystemBrain()
         )
 
         Task { [weak self] in
