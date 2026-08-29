@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: milestone
 status: verifying
-stopped_at: `.planning/` bootstrap complete — PROJECT.md, REQUIREMENTS.md, ROADMAP.md, STATE.md
-last_updated: "2026-08-27T20:03:09.015Z"
-last_activity: 2026-08-27
+stopped_at: Phase 3 (Armed Session) code complete on branch piko-03-armed-session-plan01; VERIFICATION.md verdict PARTIALLY DONE pending physical-device pass (Back Tap/Action Button, 45-min soak) and a Simulator test-action fix for PikoAudioTests
+last_updated: "2026-08-29T13:30:00.000Z"
+last_activity: 2026-08-29
 progress:
   total_phases: 8
   completed_phases: 2
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 5
+  completed_plans: 5
   percent: 25
 ---
 
@@ -22,18 +22,17 @@ See: .planning/PROJECT.md (updated 2026-08-27)
 
 **Core value:** Dictation that starts instantly from wherever you are and inserts clean text into
 whatever field you're already in, entirely on-device.
-**Current focus:** Phase 1 — Shared Contracts
+**Current focus:** Phase 3 — Armed Session (verification pending, not merged to master)
 
 ## Current Position
 
-Phase: 1 of 8 (Shared Contracts)
-Plan: 1 of 1 in current phase
-Status: Phase complete — ready for verification
-Last activity: 2026-08-27
-STATE.md) from existing `docs/SPEC.md`, `docs/ROADMAP.md`, `docs/CONSTRAINTS.md` via GSD
-conventions. No code written yet.
+Phase: 3 of 8 (Armed Session)
+Plan: 3 of 3 in current phase (03-01, 03-02, 03-03 all executed)
+Status: Code complete, PARTIALLY DONE per VERIFICATION.md — awaiting physical-device verification
+Branch: piko-03-armed-session-plan01 (not merged to master; no git remote configured for this repo)
+Last activity: 2026-08-29
 
-Progress: [██████████] 100%
+Progress: [██████████] 100% (Phases 1-2), Phase 3 code-complete pending device verification
 
 ## Performance Metrics
 
