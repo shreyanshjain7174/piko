@@ -58,5 +58,6 @@ let package = Package(
             ]
         ),
         .testTarget(name: "PikoKeyboardTests", dependencies: ["PikoKit", "PikoKeyboardCore"]),
+        .testTarget(name: "PikoBrainTests", dependencies: ["PikoBrain", "PikoKit"]),
     ]
 )
