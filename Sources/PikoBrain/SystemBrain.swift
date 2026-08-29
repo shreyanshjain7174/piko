@@ -38,13 +38,19 @@ public struct SystemBrain: Brain {
         "what did i", "when did i", "find where", "search for", "show me my", "remind me what"
     ]
 
+    /// Pure prefix match. Callers must already lowercase and trim.
+    ///
+    /// v0.1 ships write-only. v0.2 may escalate the ambiguous middle to a tiny
+    /// routing model here — never `inference` / the rewrite model. See docs/MODELS.md.
+    static func prefilterRoute(_ lowered: String) -> Route {
+        if recallStarters.contains(where: lowered.hasPrefix) { return .recall }
+        if commandStarters.contains(where: lowered.hasPrefix) { return .command }
+        return .write
+    }
+
     public func route(_ text: String) async -> Route {
         let lowered = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        if Self.recallStarters.contains(where: lowered.hasPrefix) { return .recall }
-        if Self.commandStarters.contains(where: lowered.hasPrefix) { return .command }
-        // v0.1 ships write-only. v0.2 escalates the ambiguous middle to a tiny routing model
-        // here — never to the rewrite model. See docs/MODELS.md.
-        return .write
+        return Self.prefilterRoute(lowered)
     }
 
     // MARK: rewriting
