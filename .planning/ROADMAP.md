@@ -82,7 +82,7 @@ transcript streams into the host field without visible thrash.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Keyboard extension UI with mic button wired to SessionChannel
+- [x] 04-01-PLAN.md — Keyboard extension UI with mic button wired to SessionChannel
 - [ ] 04-02-PLAN.md — stablePrefix-based streaming text replacement
 
 ### Phase 5: On-Device Transcription

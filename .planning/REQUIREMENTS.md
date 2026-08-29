@@ -103,7 +103,8 @@ Deferred to the next milestone. Tracked but not in the current roadmap.
 |-------------|-------|--------|
 | FOUND-01 | Phase 1 | Complete |
 | SESS-01, SESS-02, SESS-03, SESS-04, SESS-05 | Phase 3 | Pending |
-| BRDG-01, BRDG-02, BRDG-03, BRDG-04 | Phase 2 | Pending |
+| BRDG-01 | Phase 2, Phase 4 Plan 01 | Complete (unit-tested remote-control path; device UI unverified) |
+| BRDG-02, BRDG-03, BRDG-04 | Phase 2 | Pending (macOS SPM App Group gap; Simulator PikoBridgeTests 6/6) |
 | CAPT-01, CAPT-02, CAPT-03, CAPT-04 | Phase 4, Phase 5 | Pending |
 | CLNP-01, CLNP-02, CLNP-03 | Phase 6 | Pending |
 | LACT-01, LACT-02 | Phase 7 | Pending |
