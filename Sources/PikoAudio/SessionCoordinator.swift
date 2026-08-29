@@ -140,42 +140,46 @@ public final class SessionCoordinator: ArmedSession {
         tapInstalled = true
 
         engine.prepare()
+
+        #if targetEnvironment(simulator)
+        // Simulator HAL often hangs ~2.5s in engine.start() and never fires the tap.
+        // Pump silent PCM first so capturing still yields for 05-02 / tests.
+        startSilencePump(format: format, continuation: continuation)
+        #else
         do {
             try engine.start()
         } catch {
-            #if !targetEnvironment(simulator)
             inputNode.removeTap(onBus: 0)
             tapInstalled = false
             currentPhase = .armed
             throw PikoError.sessionInterrupted
-            #endif
-            // Simulator often cannot start I/O without a hardware mic. Fall through
-            // to the silence pump so capturing still yields PCM for 05-02.
         }
-
-        #if targetEnvironment(simulator)
-        let shouldPumpSilence = true
-        #else
-        let shouldPumpSilence = !hardwareLive
+        if !hardwareLive {
+            startSilencePump(format: format, continuation: continuation)
+        }
         #endif
-        if shouldPumpSilence {
-            silencePumpTask?.cancel()
-            let pumpFormat = format
-            silencePumpTask = Task {
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .milliseconds(20))
-                    guard !Task.isCancelled else { return }
-                    guard let buffer = AVAudioPCMBuffer(pcmFormat: pumpFormat, frameCapacity: 1024) else {
-                        return
-                    }
-                    buffer.frameLength = 1024
-                    continuation.yield(buffer)
-                }
-            }
-        }
 
         currentPhase = .capturing
         phaseContinuation.yield(currentPhase)
+    }
+
+    private func startSilencePump(
+        format: AVAudioFormat,
+        continuation: AsyncStream<AVAudioPCMBuffer>.Continuation
+    ) {
+        silencePumpTask?.cancel()
+        // Detached: SessionCoordinator is @MainActor; an inherited Task would
+        // starve while other suites occupy the main actor and miss the 2s probe.
+        silencePumpTask = Task.detached {
+            while !Task.isCancelled {
+                guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1024) else {
+                    return
+                }
+                buffer.frameLength = 1024
+                continuation.yield(buffer)
+                try? await Task.sleep(for: .milliseconds(20))
+            }
+        }
     }
 
     public func stopCapture() async {
