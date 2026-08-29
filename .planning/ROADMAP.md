@@ -70,6 +70,7 @@ Plans:
 - [x] 03-01: Implement ArmedSession protocol with arm/disarm/startCapture/stopCapture
 - [x] 03-02: Implement interruption handling (call, route change, session loss, low power, kill) with re-arm prompts
 - [x] 03-03: Implement ArmSessionIntent + PikoShortcuts for Back Tap/Action Button arming (SESS-02/03)
+### Phase 4: Keyboard Extension & Streaming Insertion
 **Goal**: The keyboard extension has a mic button that drives the armed session, and partial
 transcript streams into the host field without visible thrash.
 **Depends on**: Phase 3
@@ -78,11 +79,11 @@ transcript streams into the host field without visible thrash.
   1. Tapping the mic button in the keyboard arms/drives the session via `SessionChannel`
   2. Partial transcript appears in the host text field as speech is recognized
   3. Only characters after `stablePrefix` are rewritten on each update — the stable prefix never flickers
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: Build keyboard extension UI with mic button wired to SessionChannel
-- [ ] 04-02: Implement stablePrefix-based streaming text replacement in the host field
+- [ ] 04-01-PLAN.md — Keyboard extension UI with mic button wired to SessionChannel
+- [ ] 04-02-PLAN.md — stablePrefix-based streaming text replacement
 
 ### Phase 5: On-Device Transcription
 **Goal**: `PikoTranscribe` turns audio buffers into a hypothesis stream fast enough that the loop
@@ -150,7 +151,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Shared Contracts | 1/1 | Complete   | 2026-08-27 |
 | 2. Cross-Process Bridge | 1/1 | Complete   | 2026-08-27 |
-| 3. Armed Session | 0/2 | Not started | - |
+| 3. Armed Session | 3/3 | Complete | 2026-08-29 |
 | 4. Keyboard Extension & Streaming Insertion | 0/2 | Not started | - |
 | 5. On-Device Transcription | 0/2 | Not started | - |
 | 6. On-Device Cleanup & Routing | 0/2 | Not started | - |
