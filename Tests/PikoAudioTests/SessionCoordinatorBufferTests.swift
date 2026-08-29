@@ -8,7 +8,7 @@ import Testing
 /// Buffer-stream lifecycle for `SessionCoordinator`: idle until `startCapture()`, yields
 /// while capturing, silent after `stopCapture()`, and safe to `disarm()` mid-capture.
 /// Simulator may yield silent PCM; this suite only proves the tap is installed and torn down.
-@Suite("SessionCoordinator buffer lifecycle")
+@Suite("SessionCoordinator buffer lifecycle", .serialized)
 struct SessionCoordinatorBufferTests {
 
     private enum ProbeResult {
@@ -47,82 +47,93 @@ struct SessionCoordinatorBufferTests {
 
     @Test @MainActor
     func buffersIdleUntilCapture() async throws {
-        let coordinator = SessionCoordinator(
-            channel: MockSessionChannel(),
-            interruptions: MockInterruptionSource(),
-            isForeground: { true })
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let coordinator = SessionCoordinator(
+                channel: MockSessionChannel(),
+                interruptions: MockInterruptionSource(),
+                isForeground: { true })
 
-        try await coordinator.arm()
+            try await coordinator.arm()
 
-        let box = BufferIteratorBox(coordinator.buffers.makeAsyncIterator())
-        let probe = try await raceNextBuffer(box, timeout: .milliseconds(200))
-        #expect(probe == .timedOut)
+            let box = BufferIteratorBox(coordinator.buffers.makeAsyncIterator())
+            let probe = try await raceNextBuffer(box, timeout: .milliseconds(200))
+            #expect(probe == .timedOut)
+            await coordinator.disarm()
+        }
     }
 
     @Test @MainActor
     func captureProducesBuffers() async throws {
-        let coordinator = SessionCoordinator(
-            channel: MockSessionChannel(),
-            interruptions: MockInterruptionSource(),
-            isForeground: { true })
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let coordinator = SessionCoordinator(
+                channel: MockSessionChannel(),
+                interruptions: MockInterruptionSource(),
+                isForeground: { true })
 
-        try await coordinator.arm()
-        try await coordinator.startCapture()
+            try await coordinator.arm()
+            let box = BufferIteratorBox(coordinator.buffers.makeAsyncIterator())
+            try await coordinator.startCapture()
 
-        let box = BufferIteratorBox(coordinator.buffers.makeAsyncIterator())
-        let probe = try await raceNextBuffer(box, timeout: .seconds(2))
-        #expect(probe == .observed)
+            let probe = try await raceNextBuffer(box, timeout: .seconds(2))
+            #expect(probe == .observed)
 
-        await coordinator.stopCapture()
+            await coordinator.stopCapture()
+            await coordinator.disarm()
+        }
     }
 
     @Test @MainActor
     func stopCaptureStopsBuffers() async throws {
-        let coordinator = SessionCoordinator(
-            channel: MockSessionChannel(),
-            interruptions: MockInterruptionSource(),
-            isForeground: { true })
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let coordinator = SessionCoordinator(
+                channel: MockSessionChannel(),
+                interruptions: MockInterruptionSource(),
+                isForeground: { true })
 
-        try await coordinator.arm()
-        try await coordinator.startCapture()
+            try await coordinator.arm()
+            let box = BufferIteratorBox(coordinator.buffers.makeAsyncIterator())
+            try await coordinator.startCapture()
 
-        let box = BufferIteratorBox(coordinator.buffers.makeAsyncIterator())
-        let first = try await raceNextBuffer(box, timeout: .seconds(2))
-        #expect(first == .observed)
+            let first = try await raceNextBuffer(box, timeout: .seconds(2))
+            #expect(first == .observed)
 
-        await coordinator.stopCapture()
+            await coordinator.stopCapture()
 
-        // makeStream() defaults to unbounded buffering, so buffers already
-        // yielded before removeTap can still be queued. Drain those, then
-        // require a 200ms timeout — proving the tap itself has stopped.
-        var tapStopped = false
-        for _ in 0..<20 {
-            let probe = try await raceNextBuffer(box, timeout: .milliseconds(200))
-            if probe == .timedOut {
-                tapStopped = true
-                break
+            // makeStream() defaults to unbounded buffering, so buffers already
+            // yielded before removeTap can still be queued. Drain those, then
+            // require a 200ms timeout — proving the tap itself has stopped.
+            var tapStopped = false
+            for _ in 0..<20 {
+                let probe = try await raceNextBuffer(box, timeout: .milliseconds(200))
+                if probe == .timedOut {
+                    tapStopped = true
+                    break
+                }
             }
+            #expect(tapStopped)
+            await coordinator.disarm()
         }
-        #expect(tapStopped)
     }
 
     @Test @MainActor
     func disarmWhileCapturingRemovesTap() async throws {
-        let coordinator = SessionCoordinator(
-            channel: MockSessionChannel(),
-            interruptions: MockInterruptionSource(),
-            isForeground: { true })
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let coordinator = SessionCoordinator(
+                channel: MockSessionChannel(),
+                interruptions: MockInterruptionSource(),
+                isForeground: { true })
 
-        var phaseIterator = coordinator.phase.makeAsyncIterator()
+            var phaseIterator = coordinator.phase.makeAsyncIterator()
 
-        try await coordinator.arm()
-        #expect(await phaseIterator.next() == .armed)
+            try await coordinator.arm()
+            #expect(await phaseIterator.next() == .armed)
 
-        try await coordinator.startCapture()
-        #expect(await phaseIterator.next() == .capturing)
+            try await coordinator.startCapture()
+            #expect(await phaseIterator.next() == .capturing)
 
-        await coordinator.disarm()
-        #expect(await phaseIterator.next() == .idle)
+            await coordinator.disarm()
+            #expect(await phaseIterator.next() == .idle)
+        }
     }
 }
 #endif

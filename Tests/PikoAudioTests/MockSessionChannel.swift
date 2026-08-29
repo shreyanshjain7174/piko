@@ -1,6 +1,16 @@
 import Foundation
 import PikoKit
 
+/// Serializes tests that touch the process-wide `AVAudioSession` / `AVAudioEngine`.
+/// Swift Testing runs suites in parallel; two coordinators starting I/O at once
+/// starves the tap and times out buffer reads.
+actor AudioSessionTestGate {
+    static let shared = AudioSessionTestGate()
+    func run<T: Sendable>(_ body: @Sendable () async throws -> T) async rethrows -> T {
+        try await body()
+    }
+}
+
 /// In-memory `SessionChannel` double. No App Group container, no device — mirrors
 /// `DarwinChannel`'s lock pattern without touching the real cross-process channel.
 final class MockSessionChannel: SessionChannel, @unchecked Sendable {
