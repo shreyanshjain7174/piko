@@ -26,5 +26,6 @@ let package = Package(
         .target(name: "PikoUI", dependencies: ["PikoKit"]),
         .testTarget(name: "PikoKitTests", dependencies: ["PikoKit", "PikoBrain", "PikoMemory"]),
         .testTarget(name: "PikoBridgeTests", dependencies: ["PikoBridge", "PikoKit"]),
+        .testTarget(name: "PikoAudioTests", dependencies: ["PikoAudio", "PikoKit"]),
     ]
 )
