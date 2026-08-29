@@ -25,6 +25,11 @@ struct ArmView: View {
         VStack(spacing: 16) {
             Text("Piko")
             Text("Session: \(phaseText)")
+            if phaseText == SessionPhase.capturing.rawValue {
+                Text("Recording...")
+            } else if phaseText == SessionPhase.tidying.rawValue {
+                Text("Processing...")
+            }
             if showReArmBanner {
                 Text("Session ended — tap Arm to re-arm")
             }
