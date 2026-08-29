@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 import PikoKit
 import PikoBridge
@@ -12,21 +13,89 @@ final class KeyboardViewController: UIInputViewController {
 
     private var channel: DarwinChannel?
     private var lastAppliedDraft: CaptureDraft?
+    private var hostingController: UIHostingController<KeyboardView>?
+    private var sessionState: SessionState?
+
+    @Published private var sessionPhase: SessionPhase? = nil
+    @Published private var showArmPrompt: Bool = true
 
     override func viewDidLoad() {
         super.viewDidLoad()
         channel = DarwinChannel()
+        apply(channel?.readState())
+
+        if !UIInputViewController.self.responds(to: #selector(getter: hasFullAccess)) || !hasFullAccess {
+            showArmPrompt = true
+        }
+
+        let hosting = UIHostingController(rootView: makeKeyboardView())
+        hosting.view.translatesAutoresizingMaskIntoConstraints = false
+        addChild(hosting)
+        let canvas: UIView = inputView ?? view
+        canvas.addSubview(hosting.view)
+        hosting.didMove(toParent: self)
+        NSLayoutConstraint.activate([
+            hosting.view.leadingAnchor.constraint(equalTo: canvas.leadingAnchor),
+            hosting.view.trailingAnchor.constraint(equalTo: canvas.trailingAnchor),
+            hosting.view.topAnchor.constraint(equalTo: canvas.topAnchor),
+            hosting.view.bottomAnchor.constraint(equalTo: canvas.bottomAnchor)
+        ])
+        hostingController = hosting
+
         Task { await observe() }
+    }
+
+    private func makeKeyboardView() -> KeyboardView {
+        KeyboardView(
+            onMicTap: { [weak self] in self?.micButtonTapped() },
+            onGlobeTap: { [weak self] in self?.advanceToNextInputMode() },
+            sessionPhase: Binding(
+                get: { [weak self] in self?.sessionPhase },
+                set: { [weak self] in self?.sessionPhase = $0 }),
+            showArmPrompt: Binding(
+                get: { [weak self] in self?.showArmPrompt ?? true },
+                set: { [weak self] in self?.showArmPrompt = $0 })
+        )
+    }
+
+    private func apply(_ state: SessionState?) {
+        sessionState = state
+        sessionPhase = state?.phase
+        showArmPrompt = !(state?.isLive() ?? false)
+        hostingController?.rootView = makeKeyboardView()
     }
 
     private func observe() async {
         guard let channel else { return }
         for await signal in channel.signals {
             switch signal {
-            case .draftUpdated: applyDraft()
-            case .resultReady:  applyResult()
-            default: break
+            case .stateChanged:
+                let state = channel.readState()
+                await MainActor.run { apply(state) }
+            case .draftUpdated:
+                await MainActor.run { applyDraft() }
+            case .resultReady:
+                await MainActor.run { applyResult() }
+            default:
+                break
             }
+        }
+    }
+
+    func micButtonTapped() {
+        guard let state = channel?.readState(), state.isLive() else {
+            showArmPrompt = true
+            hostingController?.rootView = makeKeyboardView()
+            return
+        }
+        showArmPrompt = false
+        sessionPhase = state.phase
+        sessionState = state
+        hostingController?.rootView = makeKeyboardView()
+        switch state.phase {
+        case .armed: channel?.post(.captureStart)
+        case .capturing: channel?.post(.captureStop)
+        default: break
         }
     }
 
@@ -44,7 +113,4 @@ final class KeyboardViewController: UIInputViewController {
         // TODO: replace the streamed draft with result.shipped, then reset lastSequence.
         _ = result
     }
-
-    private func startCapture() { channel?.post(.captureStart) }
-    private func stopCapture()  { channel?.post(.captureStop) }
 }
