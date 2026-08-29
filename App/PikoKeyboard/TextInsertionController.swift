@@ -4,6 +4,8 @@ import UIKit
 #endif
 
 /// Host-field mutation surface. Production wraps `UITextDocumentProxy`; tests use `MockTextDocumentProxy`.
+/// Isolated to the main actor because `UITextDocumentProxy` is UIKit and not Sendable.
+@MainActor
 protocol TextProxy: AnyObject {
     func insertText(_ text: String)
     func deleteBackward()
@@ -11,6 +13,7 @@ protocol TextProxy: AnyObject {
 
 #if canImport(UIKit)
 /// Weak box so the controller does not retain the keyboard's `textDocumentProxy`.
+@MainActor
 final class UITextDocumentProxyBox: TextProxy {
     private weak var proxy: (any UITextDocumentProxy)?
 
@@ -24,6 +27,7 @@ final class UITextDocumentProxyBox: TextProxy {
 #endif
 
 /// StablePrefix-aware streaming insertion. Only the unstable tail is rewritten.
+@MainActor
 final class TextInsertionController {
     private let proxy: any TextProxy
     private(set) var insertedChars: Int = 0

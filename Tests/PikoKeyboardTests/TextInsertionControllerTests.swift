@@ -4,6 +4,7 @@ import PikoKit
 import Testing
 
 /// Records insert/delete operations. Production talks to `UITextDocumentProxy` via `TextProxy`.
+@MainActor
 final class MockTextDocumentProxy: NSObject, TextProxy {
     var insertedText: [String] = []
     var deleteCount: Int = 0
@@ -12,6 +13,7 @@ final class MockTextDocumentProxy: NSObject, TextProxy {
     func deleteBackward() { deleteCount += 1 }
 }
 
+@MainActor
 @Suite("TextInsertionController stablePrefix diffing")
 struct TextInsertionControllerTests {
 

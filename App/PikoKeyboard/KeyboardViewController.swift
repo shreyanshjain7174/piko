@@ -12,7 +12,7 @@ import PikoBridge
 final class KeyboardViewController: UIInputViewController {
 
     private var channel: DarwinChannel?
-    private var lastAppliedDraft: CaptureDraft?
+    private var insertionController: TextInsertionController?
     private var hostingController: UIHostingController<KeyboardView>?
     private var sessionState: SessionState?
 
@@ -22,6 +22,7 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         channel = DarwinChannel()
+        insertionController = TextInsertionController(proxy: textDocumentProxy)
         apply(channel?.readState())
 
         if !UIInputViewController.self.responds(to: #selector(getter: hasFullAccess)) || !hasFullAccess {
@@ -43,6 +44,11 @@ final class KeyboardViewController: UIInputViewController {
         hostingController = hosting
 
         Task { await observe() }
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        insertionController = TextInsertionController(proxy: textDocumentProxy)
     }
 
     private func makeKeyboardView() -> KeyboardView {
@@ -70,8 +76,14 @@ final class KeyboardViewController: UIInputViewController {
         for await signal in channel.signals {
             switch signal {
             case .stateChanged:
-                let state = channel.readState()
-                await MainActor.run { apply(state) }
+                if let state = channel.readState() {
+                    await MainActor.run {
+                        apply(state)
+                        if state.phase == .idle {
+                            insertionController?.reset()
+                        }
+                    }
+                }
             case .draftUpdated:
                 await MainActor.run { applyDraft() }
             case .resultReady:
@@ -102,15 +114,12 @@ final class KeyboardViewController: UIInputViewController {
     /// Insert only what is new. Ignore anything older than what we already typed, or the field
     /// thrashes — that is the failure mode spike 3 exists to prevent.
     private func applyDraft() {
-        guard let draft = channel?.readDraft(), draft.isNewer(than: lastAppliedDraft) else { return }
-        lastAppliedDraft = draft
-        // TODO: diff against what we already inserted, deleteBackward the unstable tail,
-        // insertText the new tail.
+        guard let draft = channel?.readDraft() else { return }
+        insertionController?.apply(draft)
     }
 
     private func applyResult() {
         guard let result = channel?.readResult() else { return }
-        // TODO: replace the streamed draft with result.shipped, then reset lastSequence.
-        _ = result
+        insertionController?.commit(result)
     }
 }
