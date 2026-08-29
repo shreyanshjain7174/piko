@@ -118,9 +118,6 @@ Implementations:
 Routing must not cost the fast path. Order: regex and keyword prefilter → tiny routing model
 only when the prefilter is unsure → never the rewrite model.
 
-Acceptance: cleanup of a 60-word transcript completes in under 600 ms on the oldest supported
-device, or the cleanup step becomes optional on that device.
-
 **Planned profile addition (Phase 6, not yet in `Contracts.swift`):** an `.agent` profile —
 rewrites for a coding agent or LLM to parse unambiguously, not for a human reader. Draft
 instruction, matching the style of the four shipped profiles: "Imperative, unambiguous, no
@@ -129,6 +126,9 @@ greeting, no pleasantries, no restating the obvious." This is a new `Profile` en
 is Phase 1 (`PikoKit`) contract surface — do not add it ad hoc; land it as part of Phase 6
 planning so the picker UI (`App/Piko/PikoApp.swift`) and `SystemBrain` prompt table update
 together, not piecemeal.
+
+Acceptance: cleanup of a 60-word transcript completes in under 600 ms on the oldest supported
+device, or the cleanup step becomes optional on that device.
 
 ### PikoMemory
 Local index and the learning loop.

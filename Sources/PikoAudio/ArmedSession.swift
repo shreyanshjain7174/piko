@@ -1,5 +1,11 @@
+import AVFAudio
 import Foundation
 import PikoKit
+
+/// AVFAudio does not mark `AVAudioPCMBuffer` Sendable. The engine tap yields each
+/// buffer across the render thread via `AsyncStream`; callers treat it as an
+/// immutable snapshot and must not mutate it after yield.
+extension AVAudioPCMBuffer: @unchecked Sendable {}
 
 /// Owns the microphone. The one object allowed to touch AVAudioSession.
 ///
@@ -8,6 +14,8 @@ import PikoKit
 /// the session survives backgrounding via the `audio` background mode (C3).
 public protocol ArmedSession: Sendable {
     var phase: AsyncStream<SessionPhase> { get }
+    /// PCM buffers from the engine tap. Idle until `startCapture()`; finished on `disarm()`.
+    var buffers: AsyncStream<AVAudioPCMBuffer> { get }
     /// Foreground only. Throws `PikoError.notForeground` otherwise.
     func arm() async throws
     func disarm() async

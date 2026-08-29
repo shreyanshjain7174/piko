@@ -11,59 +11,66 @@ import Testing
 /// proves the transition occurs deterministically on the first stream element after the
 /// triggering event; it does not and cannot certify the literal "within 1 second" wall-clock
 /// figure -- that remains a manual, physical-device entry in docs/SPIKES.md Spike 2.
-@Suite("SessionCoordinator interruption recovery")
+@Suite("SessionCoordinator interruption recovery", .serialized)
 struct SessionCoordinatorInterruptionTests {
 
     @Test @MainActor
     func beganDrivesPhaseToIdle() async throws {
-        let interruptions = MockInterruptionSource()
-        let coordinator = SessionCoordinator(
-            channel: MockSessionChannel(),
-            interruptions: interruptions,
-            isForeground: { true })
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let interruptions = MockInterruptionSource()
+            let coordinator = SessionCoordinator(
+                channel: MockSessionChannel(),
+                interruptions: interruptions,
+                isForeground: { true })
 
-        var iterator = coordinator.phase.makeAsyncIterator()
-        try await coordinator.arm()
-        #expect(await iterator.next() == .armed)
+            var iterator = coordinator.phase.makeAsyncIterator()
+            try await coordinator.arm()
+            #expect(await iterator.next() == .armed)
 
-        interruptions.send(.began)
-        #expect(await iterator.next() == .idle)
+            interruptions.send(.began)
+            #expect(await iterator.next() == .idle)
+        }
     }
 
     @Test @MainActor
     func routeChangedDrivesPhaseToIdle() async throws {
-        let interruptions = MockInterruptionSource()
-        let coordinator = SessionCoordinator(
-            channel: MockSessionChannel(),
-            interruptions: interruptions,
-            isForeground: { true })
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let interruptions = MockInterruptionSource()
+            let coordinator = SessionCoordinator(
+                channel: MockSessionChannel(),
+                interruptions: interruptions,
+                isForeground: { true })
 
-        var iterator = coordinator.phase.makeAsyncIterator()
-        try await coordinator.arm()
-        #expect(await iterator.next() == .armed)
+            var iterator = coordinator.phase.makeAsyncIterator()
+            try await coordinator.arm()
+            #expect(await iterator.next() == .armed)
 
-        interruptions.send(.routeChanged)
-        #expect(await iterator.next() == .idle)
+            interruptions.send(.routeChanged)
+            #expect(await iterator.next() == .idle)
+        }
     }
 
     @Test @MainActor
     func lowPowerModeEnabledDrivesPhaseToIdle() async throws {
-        let interruptions = MockInterruptionSource()
-        let coordinator = SessionCoordinator(
-            channel: MockSessionChannel(),
-            interruptions: interruptions,
-            isForeground: { true })
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let interruptions = MockInterruptionSource()
+            let coordinator = SessionCoordinator(
+                channel: MockSessionChannel(),
+                interruptions: interruptions,
+                isForeground: { true })
 
-        var iterator = coordinator.phase.makeAsyncIterator()
-        try await coordinator.arm()
-        #expect(await iterator.next() == .armed)
+            var iterator = coordinator.phase.makeAsyncIterator()
+            try await coordinator.arm()
+            #expect(await iterator.next() == .armed)
 
-        interruptions.send(.lowPowerModeChanged(enabled: true))
-        #expect(await iterator.next() == .idle)
+            interruptions.send(.lowPowerModeChanged(enabled: true))
+            #expect(await iterator.next() == .idle)
+        }
     }
 
     @Test @MainActor
     func nonRecoveringEventsDoNotDisarm() async throws {
+        try await AudioSessionTestGate.shared.run { @MainActor in
         let interruptions = MockInterruptionSource()
         let coordinator = SessionCoordinator(
             channel: MockSessionChannel(),
@@ -117,6 +124,7 @@ struct SessionCoordinatorInterruptionTests {
 
         if case .observed(let phase) = probe {
             Issue.record("non-recovering event unexpectedly drove an extra phase transition to \(phase)")
+        }
         }
     }
 }

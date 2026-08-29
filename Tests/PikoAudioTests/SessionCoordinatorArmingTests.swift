@@ -4,20 +4,23 @@ import Testing
 @testable import PikoAudio
 @testable import PikoKit
 
-@Suite("SessionCoordinator arming")
+@Suite("SessionCoordinator arming", .serialized)
 struct SessionCoordinatorArmingTests {
 
     @Test @MainActor
     func armTransitionsIdleToArmed() async throws {
-        let coordinator = SessionCoordinator(
-            channel: MockSessionChannel(),
-            interruptions: MockInterruptionSource(),
-            isForeground: { true })
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let coordinator = SessionCoordinator(
+                channel: MockSessionChannel(),
+                interruptions: MockInterruptionSource(),
+                isForeground: { true })
 
-        var iterator = coordinator.phase.makeAsyncIterator()
-        try await coordinator.arm()
+            var iterator = coordinator.phase.makeAsyncIterator()
+            try await coordinator.arm()
 
-        #expect(await iterator.next() == .armed)
+            #expect(await iterator.next() == .armed)
+            await coordinator.disarm()
+        }
     }
 
     @Test @MainActor
@@ -56,21 +59,24 @@ struct SessionCoordinatorArmingTests {
 
     @Test @MainActor
     func stopCaptureReturnsToArmedNotIdle() async throws {
-        let coordinator = SessionCoordinator(
-            channel: MockSessionChannel(),
-            interruptions: MockInterruptionSource(),
-            isForeground: { true })
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let coordinator = SessionCoordinator(
+                channel: MockSessionChannel(),
+                interruptions: MockInterruptionSource(),
+                isForeground: { true })
 
-        var iterator = coordinator.phase.makeAsyncIterator()
+            var iterator = coordinator.phase.makeAsyncIterator()
 
-        try await coordinator.arm()
-        #expect(await iterator.next() == .armed)
+            try await coordinator.arm()
+            #expect(await iterator.next() == .armed)
 
-        try await coordinator.startCapture()
-        #expect(await iterator.next() == .capturing)
+            try await coordinator.startCapture()
+            #expect(await iterator.next() == .capturing)
 
-        await coordinator.stopCapture()
-        #expect(await iterator.next() == .armed)
+            await coordinator.stopCapture()
+            #expect(await iterator.next() == .armed)
+            await coordinator.disarm()
+        }
     }
 }
 #endif
