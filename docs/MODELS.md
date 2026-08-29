@@ -72,3 +72,57 @@ Everything above sits behind `Brain` in `PikoBrain`. WWDC26's `LanguageModel` pr
 `SystemLanguageModel`, `PrivateCloudComputeLanguageModel`, `CoreAILanguageModel` and
 `MLXLanguageModel` swap by import. Build against the protocol from day one and tier 2 becomes a
 configuration change instead of a rewrite.
+
+## PikoTranscribe: ASR model strategy
+
+Same two-tier shape as `Brain`, applied to `Transcriber` (see `SPEC.md`). Tier 1 ships; tier 2 is
+an opt-in swap, never a silent fallback the user can't see.
+
+### Tier 1 — Apple SpeechAnalyzer / SpeechTranscriber (ships in v0.1)
+
+Free, on-device, zero download, zero RAM budget of our own. `SpeechTranscriber.results` is an
+`AsyncSequence` of phrase results; `ReportingOption`/`ResultAttributeOption` control whether
+interim (volatile) results are delivered alongside finals — this is what `Hypothesis.stablePrefix`
+in `SPEC.md` is built on. This is the only ASR tier this project has a plan to actually ship.
+
+### Tier 2 — open-weight local ASR (research only, not yet planned as a phase)
+
+The `Transcriber` protocol makes this a config choice, not a rewrite, same as `Brain`. Candidates,
+same shape as Handy's stack (github.com/cjpais/Handy — Rust/Tauri desktop app, whisper.cpp GGML +
+Parakeet via CPU-optimized inference, Silero VAD; **desktop only, not iOS** — its exact runtime
+doesn't port, but the model choices are still relevant):
+
+| Model | Why it's a candidate | Caveat |
+|---|---|---|
+| WhisperKit (argmaxinc) | Swift-native, Core ML-converted Whisper, built for Apple Silicon/Neural Engine | Still Whisper-family latency characteristics, not built for streaming |
+| Moonshine (Jeffries et al. 2024, arXiv:2410.15608) | Encoder-decoder + RoPE, no zero-padding — 5x less compute than Whisper tiny-en at equal WER on short segments. Explicitly designed for live transcription/voice commands. | Newer, smaller ecosystem than Whisper; verify iOS/Core ML conversion path before committing |
+| MLX-Whisper | Runs on MLX Swift, same framework already planned for `LocalBrain` — one runtime instead of two if both tiers ship | Still Whisper-family, same streaming caveat as WhisperKit |
+
+**Why this stays tier 2, not a replacement:** Apple's framework is already on-device, already
+free, and already ships the volatile/final split the app's algorithm needs (see below). An
+open-weight model only earns its download size and RAM budget if it beats SpeechAnalyzer on
+devices/locales Apple doesn't cover, or on latency for this app's specific streaming pattern —
+that's a benchmark to run against a real device, not an assumption to build on.
+
+### The streaming self-correction algorithm (informs Phase 5's `Transcriber` implementation)
+
+The literal mechanism behind "words get corrected as more context arrives" is well-studied, not
+novel — apply the existing technique rather than inventing one:
+
+- **LocalAgreement-n policy** (Macháček, Dabre, Bojar 2023, "Turning Whisper into Real-Time
+  Transcription System", arXiv:2307.14743 — Whisper-Streaming): commit a prefix once N consecutive
+  re-decodes agree on it; hold the tail as volatile. Self-adaptive latency. Reported 3.3s latency
+  on unsegmented long-form speech in their benchmark — **not** "ultra-low"; that number is Whisper's
+  own decode cost on long context, not a floor for every model.
+- **Punctuation as a stronger commit signal than n-gram agreement**: a sentence-final punctuation
+  mark (`.`, `?`, `!`) is a natural re-segmentation point — once one is emitted, the ASR is
+  unlikely to revise anything before it, so it can raise `stablePrefix` immediately rather than
+  waiting for N more re-decodes to agree. This is a refinement on top of LocalAgreement, not a
+  replacement for it: use LocalAgreement for the general case, and let punctuation short-circuit
+  the wait when it fires.
+- Apple's `SpeechTranscriber` may already deliver something close to this natively via its
+  reporting/attribute options — verify exactly what "volatile" vs "final" means for SpeechAnalyzer
+  before reimplementing LocalAgreement on top of it; only build the custom policy if Apple's own
+  volatile-result boundary doesn't already give `stablePrefix` for free.
+
+
