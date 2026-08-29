@@ -18,7 +18,7 @@ as future milestones, not broken into phases yet — see `docs/ROADMAP.md` for t
 - [x] **Phase 3: Armed Session** - `PikoAudio` arm/disarm/capture with interruption recovery — merged to master 2026-08-29. All 11 PikoAudioTests verified passing on iOS Simulator. VERIFICATION.md verdict PARTIALLY DONE stands: Back Tap/Action Button device binding (SESS-02/03) and 45-min soak (SESS-05) remain open, both requiring physical iPhone hardware with no Simulator/CI equivalent.
 - [x] **Phase 4: Keyboard Extension & Streaming Insertion** - mic button drives the armed session, stablePrefix-based insertion (completed 2026-08-29)
 - [x] **Phase 5: On-Device Transcription** - `PikoTranscribe` wired to Apple's SpeechAnalyzer/SpeechTranscriber (code complete 2026-08-29). CAPT-03/CAPT-04 (400ms first word / 30s thrash) remain open — MockTranscriber integration only; physical-device speech not measured.
-- [ ] **Phase 6: On-Device Cleanup & Routing** - `PikoBrain` SystemBrain rewrite + write-path routing
+- [x] **Phase 6: On-Device Cleanup & Routing** - `PikoBrain` SystemBrain rewrite + write-path routing (code complete 2026-08-29). CLNP-03 complete. CLNP-01/CLNP-02 remain open — Simulator is graceful skip, not physical Apple Intelligence quality or 600ms.
 - [ ] **Phase 7: Live Activity** - armed/listening/tidying states with a working stop button
 - [ ] **Phase 8: Local History & Skins** - `PikoMemory` searchable history + four Piko skins
 
@@ -116,7 +116,7 @@ router never taxes the fast path.
 
 Plans:
 - [x] 06-01-PLAN.md — SystemBrain rewrite via Foundation Models under an enforced 600ms budget (wave 1)
-- [ ] 06-02-PLAN.md — Prefilter-only routing plus Brain wiring into CaptureCoordinator with graceful skip (wave 2)
+- [x] 06-02-PLAN.md — Prefilter-only routing plus Brain wiring into CaptureCoordinator with graceful skip (wave 2)
 - [x] 06-03-PLAN.md — .agent Profile case, the Phase 6 contract addition reserved by docs/SPEC.md (wave 1)
 
 ### Phase 7: Live Activity

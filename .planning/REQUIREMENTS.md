@@ -45,8 +45,9 @@ whatever field you're already in, entirely on-device.
   casing corrected
 - [ ] **CLNP-02**: Cleanup of a 60-word transcript completes in under 600ms on the oldest
   supported device, or the cleanup step becomes optional on that device
-- [ ] **CLNP-03**: Routing (write/command/recall) never costs the fast path — regex/keyword
+- [x] **CLNP-03**: Routing (write/command/recall) never costs the fast path — regex/keyword
   prefilter first, tiny routing model only when unsure, rewrite model never in the routing path
+  (Phase 6 Plan 02: RoutePrefilterTests inference call counter remains zero)
 
 ### Live Activity
 
@@ -107,7 +108,8 @@ Deferred to the next milestone. Tracked but not in the current roadmap.
 | BRDG-02, BRDG-03, BRDG-04 | Phase 2 | Pending (macOS SPM App Group gap; Simulator PikoBridgeTests 6/6) |
 | CAPT-01, CAPT-02 | Phase 4 Plan 02 | Complete (unit-tested insertion; live speech/device UI unverified) |
 | CAPT-03, CAPT-04 | Phase 5 | Pending |
-| CLNP-01, CLNP-02, CLNP-03 | Phase 6 | Pending |
+| CLNP-01, CLNP-02 | Phase 6 | Pending (Simulator skip only; no physical Apple Intelligence quality or 600ms proof) |
+| CLNP-03 | Phase 6 Plan 02 | Complete (RoutePrefilterTests: rewrite inference never invoked from route) |
 | LACT-01, LACT-02 | Phase 7 | Pending |
 | HIST-01, HIST-02 | Phase 8 | Pending |
 | SKIN-01 | Phase 8 | Pending |
