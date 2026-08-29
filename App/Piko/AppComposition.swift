@@ -10,10 +10,12 @@ import UIKit
 final class AppComposition {
     static let shared = AppComposition()
 
+    let channel: any SessionChannel
     let session: SessionCoordinator
 
     private init() {
         let channel = DarwinChannel()!
-        session = SessionCoordinator(channel: channel, interruptions: NullInterruptionSource(), isForeground: { UIApplication.shared.applicationState == .active })
+        self.channel = channel
+        session = SessionCoordinator(channel: channel, interruptions: AVAudioSessionInterruptionSource(), isForeground: { UIApplication.shared.applicationState == .active })
     }
 }
