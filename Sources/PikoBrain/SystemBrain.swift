@@ -8,7 +8,24 @@ import PikoKit
 /// speaking, with a 600 ms target (see docs/SPIKES.md, spike 5).
 public struct SystemBrain: Brain {
 
-    public init() {}
+    public typealias Inference = @Sendable (_ instructions: String, _ prompt: String) async throws -> String
+
+    private let budget: Duration
+    private let inference: Inference
+
+    public init(budget: Duration = .milliseconds(600), inference: Inference? = nil) {
+        self.budget = budget
+        self.inference = inference ?? Self.defaultInference
+    }
+
+    private static let defaultInference: Inference = { instructions, prompt in
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            return try await FoundationModelsInference.run(instructions: instructions, prompt: prompt)
+        }
+        #endif
+        throw PikoError.brainUnavailable("Foundation Models requires iOS 26")
+    }
 
     // MARK: routing
 
@@ -36,13 +53,13 @@ public struct SystemBrain: Brain {
                         profile: Profile,
                         lexicon: [String],
                         examples: [EditPair]) async throws -> String {
-        // TODO: replace with FoundationModels.LanguageModelSession once the target builds
-        // against iOS 26. Keep this signature — the prompt shape below is the contract.
-        //
-        //   let session = LanguageModelSession(instructions: Self.instructions(profile, lexicon))
-        //   let response = try await session.respond(to: Self.prompt(text, examples))
-        //   return response.content
-        throw PikoError.brainUnavailable("SystemBrain not wired yet — see docs/SPIKES.md spike 5")
+        let instructions = Self.instructions(profile, lexicon)
+        let prompt = Self.prompt(text, examples)
+        let inference = self.inference
+        let cleaned = try await withRewriteBudget(budget) {
+            try await inference(instructions, prompt)
+        }
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// The system prompt. Faithfulness first: a rewriter that invents a sentence in the user's
