@@ -17,7 +17,7 @@ Phase 6 wires `SystemBrain.rewrite()` to Apple's on-device Foundation Models fra
 | Availability check | Container App | — | Must check before wiring session |
 | Rewrite inference | Container App | — | C4 constraint: 60MB keyboard limit precludes model loading |
 | Routing prefilter | PikoBrain module | — | Stateless string matching, no model |
-| Timeout/skip logic | CaptureCoordinator | — | Owns the stopCapture → result flow |
+| Hard rewrite deadline | PikoBrain module | CaptureCoordinator | Brain owns inference budget; coordinator owns raw-text fallback |
 
 ## User Constraints (from project docs)
 
@@ -308,22 +308,17 @@ await session.prewarm(promptPrefix: "Heard:")
 | A2 | 3 few-shot examples sufficient for quality | Prompt Design | May need more examples or different approach |
 | A3 | `prewarm()` significantly reduces first-inference latency | Latency | May need alternative warm-up strategy |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Oldest supported device performance**
-   - What we know: Budget is 600ms per Spike 5
-   - What's unclear: Actual latency on iPhone 15 (oldest with Apple Intelligence)
-   - Recommendation: Run Spike 5 before finalizing skip-threshold
-
-2. **Prewarm timing**
-   - What we know: `prewarm(promptPrefix:)` exists
-   - What's unclear: How much latency it saves in practice
-   - Recommendation: Instrument with/without prewarm in Spike 5
-
-3. **Model version drift**
-   - What we know: Apple updates model in OS updates (26.0-26.3, 26.4, 27.0)
-   - What's unclear: Whether prompt effectiveness degrades across versions
-   - Recommendation: Add prompt version tracking per Apple docs
+1. **Oldest supported device performance** — RESOLVED for planning: `SystemBrain.rewrite` enforces a hard
+   600 ms deadline independent of cooperative model cancellation, and `CaptureCoordinator` ships raw text on
+   timeout. Full phase acceptance still requires Spike 5 on the oldest supported Apple Intelligence device;
+   Simulator results must not be presented as model-quality or latency evidence.
+2. **Prewarm timing** — RESOLVED: do not prewarm in Phase 6. A useful prewarm requires retaining an
+   instructions-keyed session; measure cold/warm behavior in Spike 5 before adding that mutable lifecycle.
+3. **Model version drift** — RESOLVED: no prompt-version subsystem in this phase. Re-run the fixed rewrite
+   evaluation corpus during supported OS qualification; introduce version tracking only if measured drift
+   requires it.
 
 ## Environment Availability
 
@@ -350,20 +345,19 @@ await session.prewarm(promptPrefix: "Heard:")
 | Full suite command | `swift test` |
 
 ### Phase Requirements → Test Map
-| Req ID | Behavior | Test Type | Automated Command | File Exists? |
-|--------|----------|-----------|-------------------|-------------|
-| CLNP-01 | Filler removal | unit | `swift test --filter testFillerRemoval` | ❌ Wave 0 |
-| CLNP-02 | Timeout enforcement | unit | `swift test --filter testTimeoutSkip` | ❌ Wave 0 |
-| CLNP-03 | Prefilter routing | unit | `swift test --filter testRoutePrefilter` | ✅ (MockBrain tests) |
+| Req ID | Behavior | Test files planned | Automated command |
+|--------|----------|--------------------|-------------------|
+| CLNP-01 | Rewrite contract and coordinator cleanup | `SystemBrainRewriteTests.swift`, `CaptureCoordinatorBrainTests.swift` | `swift test --filter SystemBrainRewriteTests`; Simulator coordinator tests |
+| CLNP-02 | Hard deadline plus raw fallback | `RewriteBudgetTests.swift`, `CaptureCoordinatorBrainTests.swift` | `swift test --filter PikoBrainTests`; Simulator coordinator tests |
+| CLNP-03 | Prefilter never invokes inference | `RoutePrefilterTests.swift` | `swift test --filter RoutePrefilterTests` |
 
 ### Sampling Rate
-- **Per task commit:** `swift test --filter PikoBrainTests -x`
-- **Per wave merge:** `swift test`
-- **Phase gate:** Full suite green before `/gsd:verify-work`
+- **Per task:** focused command from the task's `<automated>` block
+- **Per wave:** full iOS Simulator package suite
+- **Phase gate:** full suite plus physical-device Spike 5 evidence from `06-VALIDATION.md`
 
 ### Wave 0 Gaps
-- [ ] `Tests/PikoBrainTests/SystemBrainTests.swift` — covers CLNP-01, CLNP-02
-- [ ] Test fixture with mock LanguageModelSession — enables unit testing without device
+None. Each TDD task creates its named test before implementation and runs a focused automated check.
 
 ## Security Domain
 
