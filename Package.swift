@@ -27,6 +27,7 @@ let package = Package(
         .testTarget(name: "PikoKitTests", dependencies: ["PikoKit", "PikoBrain", "PikoMemory"]),
         .testTarget(name: "PikoBridgeTests", dependencies: ["PikoBridge", "PikoKit"]),
         .testTarget(name: "PikoAudioTests", dependencies: ["PikoAudio", "PikoKit"]),
+        .testTarget(name: "PikoTranscribeTests", dependencies: ["PikoTranscribe", "PikoKit"]),
         // Insertion algorithm only — so PikoKeyboardTests can exercise App/PikoKeyboard
         // TextInsertionController without compiling the UIKit keyboard shell on macOS.
         .target(
