@@ -112,11 +112,12 @@ router never taxes the fast path.
   2. Cleanup of a 60-word transcript completes in under 600ms on the oldest supported device, or
      is skipped on that device with no user-visible failure
   3. Routing uses a regex/keyword prefilter first; the rewrite model is never invoked for routing
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 06-01: Implement SystemBrain rewrite using Apple Foundation Models
-- [ ] 06-02: Implement write-path routing with prefilter-before-model ordering
+- [ ] 06-01-PLAN.md — SystemBrain rewrite via Foundation Models under an enforced 600ms budget (wave 1)
+- [ ] 06-02-PLAN.md — Prefilter-only routing plus Brain wiring into CaptureCoordinator with graceful skip (wave 2)
+- [ ] 06-03-PLAN.md — .agent Profile case, the Phase 6 contract addition reserved by docs/SPEC.md (wave 1)
 
 ### Phase 7: Live Activity
 **Goal**: The user can see and stop an in-progress capture from the Lock Screen/Dynamic Island.
