@@ -62,3 +62,28 @@ pairs. This is perceived latency — it runs after the user stops talking.
 **Pass:** under 600 ms on the oldest device we intend to support, or cleanup becomes optional there.
 
 **Result:** _not run_
+
+---
+
+## Spike 6 — Back Tap / Action Button arming via App Intents
+
+Bind `ArmSessionIntent` (registered via `PikoShortcuts`) to Back Tap
+(Settings -> Accessibility -> Touch -> Back Tap) and, on an iPhone 15 Pro or later, the Action
+Button (Settings -> Action Button -> Shortcut). Trigger each and observe whether Piko briefly
+foregrounds (expected, given `openAppWhenRun = true`) before `arm()` succeeds with no thrown
+`PikoError.notForeground`, and whether the app's phase text reflects `.armed` afterward.
+
+**Pass:** both triggers invoke `arm()` successfully with no thrown error, and the visible
+foreground flash (if any) is judged acceptable UX. If no Action-Button-equipped device is
+available, SESS-03 specifically is recorded as not verified rather than silently marked passed.
+
+**Result:** Not run this session — no physical iPhone was available to this autonomous execution
+pass, and Back Tap / the Action Button have no Simulator or CI equivalent (per
+`03-RESEARCH.md`'s Environment Availability table). The code-level prerequisites
+(`ArmSessionIntent` with `openAppWhenRun = true`, `PikoShortcuts` registering it as an
+`AppShortcut`) are in place and compile clean under `swift build` and a best-effort Xcode
+Simulator build, but the `openAppWhenRun = true` requirement itself remains a MEDIUM-confidence,
+device-unverified assumption per `03-RESEARCH.md` Assumptions Log A1. SESS-02 and SESS-03 are
+**not** closed by this session — a human with a physical iPhone (and, for SESS-03, an iPhone 15
+Pro or later) must complete the steps above and update this Result before either requirement is
+considered device-verified.
