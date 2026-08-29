@@ -46,12 +46,15 @@ final class TextInsertionController {
     func apply(_ draft: CaptureDraft) {
         guard draft.isNewer(than: lastApplied) else { return }
 
+        // Incoming draft.stablePrefix is the transcriber's current freeze point.
+        // Using lastApplied.stablePrefix would full-replace whenever the previous
+        // draft had not yet frozen any prefix (research Pattern 1 bug).
         // New epoch: leftover insertion from the previous session is not this draft.
         let alreadyStable: Int
         if lastApplied.map({ $0.sessionEpoch != draft.sessionEpoch }) == true {
             alreadyStable = 0
         } else {
-            alreadyStable = lastApplied.map { min($0.stablePrefix, insertedChars) } ?? 0
+            alreadyStable = min(draft.stablePrefix, insertedChars)
         }
 
         let toDelete = insertedChars - alreadyStable
