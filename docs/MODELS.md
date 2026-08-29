@@ -73,56 +73,60 @@ Everything above sits behind `Brain` in `PikoBrain`. WWDC26's `LanguageModel` pr
 `MLXLanguageModel` swap by import. Build against the protocol from day one and tier 2 becomes a
 configuration change instead of a rewrite.
 
-## PikoTranscribe: ASR model strategy
+## Transcriber tiers (PikoTranscribe)
 
-Same two-tier shape as `Brain`, applied to `Transcriber` (see `SPEC.md`). Tier 1 ships; tier 2 is
-an opt-in swap, never a silent fallback the user can't see.
+Same tiered structure as `Brain` above, applied to speech-to-text instead of rewrite.
 
-### Tier 1 — Apple SpeechAnalyzer / SpeechTranscriber (ships in v0.1)
+### Tier 1 — what ships in v0.1
 
-Free, on-device, zero download, zero RAM budget of our own. `SpeechTranscriber.results` is an
-`AsyncSequence` of phrase results; `ReportingOption`/`ResultAttributeOption` control whether
-interim (volatile) results are delivered alongside finals — this is what `Hypothesis.stablePrefix`
-in `SPEC.md` is built on. This is the only ASR tier this project has a plan to actually ship.
+Apple's SpeechAnalyzer/SpeechTranscriber, unchanged from `docs/SPEC.md`. Zero download, zero new
+dependency, zero memory budget of our own — same reasoning as `SystemBrain`.
 
-### Tier 2 — open-weight local ASR (research only, not yet planned as a phase)
+The "ultra-low-latency, self-correcting via punctuation" want is a **stable-prefix commit
+policy**, not a model choice — it decides which characters of an already-streaming hypothesis are
+safe to hand to the keyboard, regardless of which engine produced them. `stablePrefix` on
+`CaptureDraft` (`Sources/PikoKit/Contracts.swift`) already exists for exactly this. The reference
+technique is LocalAgreement-n (compare N consecutive hypothesis updates, commit their longest
+common prefix) plus punctuation-boundary trimming, from Mach\u00e1\u010dek, Dabre, Bojar,
+["Turning Whisper into Real-Time Transcription System"](https://aclanthology.org/2023.ijcnlp-demo.3/)
+(IJCNLP-AACL 2023), implemented in `github.com/ufal/whisper_streaming`.
 
-The `Transcriber` protocol makes this a config choice, not a rewrite, same as `Brain`. Candidates,
-same shape as Handy's stack (github.com/cjpais/Handy — Rust/Tauri desktop app, whisper.cpp GGML +
-Parakeet via CPU-optimized inference, Silero VAD; **desktop only, not iOS** — its exact runtime
-doesn't port, but the model choices are still relevant):
+**Not yet verified against Apple's actual API** \u2014 see `docs/SPIKES.md` Spike 3. LocalAgreement-n
+assumes comparing full-hypothesis re-decodes of the same window; `SpeechTranscriber` instead
+emits range-scoped, non-monotonic per-phrase results. Confirm the real revision behavior on
+device before committing to a specific commit-policy shape. Whisper-style *audio*-buffer
+trimming at sentence boundaries does not apply either way \u2014 `SpeechAnalyzer` owns its own
+decoding window and cannot be rewound or re-chunked from outside.
 
-| Model | Why it's a candidate | Caveat |
-|---|---|---|
-| WhisperKit (argmaxinc) | Swift-native, Core ML-converted Whisper, built for Apple Silicon/Neural Engine | Still Whisper-family latency characteristics, not built for streaming |
-| Moonshine (Jeffries et al. 2024, arXiv:2410.15608) | Encoder-decoder + RoPE, no zero-padding — 5x less compute than Whisper tiny-en at equal WER on short segments. Explicitly designed for live transcription/voice commands. | Newer, smaller ecosystem than Whisper; verify iOS/Core ML conversion path before committing |
-| MLX-Whisper | Runs on MLX Swift, same framework already planned for `LocalBrain` — one runtime instead of two if both tiers ship | Still Whisper-family, same streaming caveat as WhisperKit |
+A 2025 successor policy, AlignAtt (attention-guided, `github.com/ufal/SimulStreaming`), is
+best-performing but requires a 10GB+ VRAM GPU \u2014 not applicable to an iPhone. SimulStreaming's
+license is also unresolved (README states MIT; its release is tagged "Noncommercial version") \u2014
+do not adopt anything from it without checking that directly.
 
-**Why this stays tier 2, not a replacement:** Apple's framework is already on-device, already
-free, and already ships the volatile/final split the app's algorithm needs (see below). An
-open-weight model only earns its download size and RAM budget if it beats SpeechAnalyzer on
-devices/locales Apple doesn't cover, or on latency for this app's specific streaming pattern —
-that's a benchmark to run against a real device, not an assumption to build on.
+### Tier 2 — open-weight local ASR, opt-in (v0.2+, not v0.1)
 
-### The streaming self-correction algorithm (informs Phase 5's `Transcriber` implementation)
+Deferred, matching `Brain`'s own tier 2 timing and for the same reason: ship it when Apple's
+engine is provably the blocker for someone, not before. The keyboard extension does zero
+inference itself (CONSTRAINTS C1/C4) \u2014 all ASR runs in the container app, so this only ever
+affects the app's own memory/size budget, never the keyboard's.
 
-The literal mechanism behind "words get corrected as more context arrives" is well-studied, not
-novel — apply the existing technique rather than inventing one:
+Reference architecture: [Handy](https://github.com/cjpais/Handy) (MIT, cross-platform local
+dictation app, 30k+ stars) runs entirely offline via a Rust core \u2014 `transcribe-cpp`
+(whisper.cpp/GGML) or [`transcribe-rs`](https://github.com/cjpais/transcribe-rs) (MIT,
+multi-engine: Parakeet, Canary, Moonshine, SenseVoice, GigaAM, Whisper, via ONNX Runtime or
+whisper.cpp) plus Silero VAD. If this tier is ever built, take the smallest slice \u2014 one engine,
+not the full multi-engine surface. `transcribe-rs` lists a `moonshine-streaming` variant
+(Useful Sensors' Moonshine, purpose-built for tiny/fast streaming edge ASR, not chunked-retry
+like Whisper) as the most latency-aligned single candidate, but its iOS/Metal performance is
+unverified \u2014 no published iPhone benchmark exists. Do not pick a model before benchmarking it on
+device.
 
-- **LocalAgreement-n policy** (Macháček, Dabre, Bojar 2023, "Turning Whisper into Real-Time
-  Transcription System", arXiv:2307.14743 — Whisper-Streaming): commit a prefix once N consecutive
-  re-decodes agree on it; hold the tail as volatile. Self-adaptive latency. Reported 3.3s latency
-  on unsegmented long-form speech in their benchmark — **not** "ultra-low"; that number is Whisper's
-  own decode cost on long context, not a floor for every model.
-- **Punctuation as a stronger commit signal than n-gram agreement**: a sentence-final punctuation
-  mark (`.`, `?`, `!`) is a natural re-segmentation point — once one is emitted, the ASR is
-  unlikely to revise anything before it, so it can raise `stablePrefix` immediately rather than
-  waiting for N more re-decodes to agree. This is a refinement on top of LocalAgreement, not a
-  replacement for it: use LocalAgreement for the general case, and let punctuation short-circuit
-  the wait when it fires.
-- Apple's `SpeechTranscriber` may already deliver something close to this natively via its
-  reporting/attribute options — verify exactly what "volatile" vs "final" means for SpeechAnalyzer
-  before reimplementing LocalAgreement on top of it; only build the custom policy if Apple's own
-  volatile-result boundary doesn't already give `stablePrefix` for free.
+Bridging: Rust cross-compiles to iOS targets; Mozilla's
+[UniFFI](https://mozilla.github.io/uniffi-rs/) officially generates Swift bindings for exactly
+this pattern (Rust core embedded in a Swift app) and is the "memory safe" path for embedding a
+C/C++-based engine like whisper.cpp without bridging its raw C API directly into Swift.
 
-
+**The honest cost**, same shape as Brain's tier 2: a Rust toolchain, an FFI bridge, XCFramework
+packaging, a second ASR engine to validate, and an App Review conversation about an embedded
+compiled ML runtime \u2014 a multi-week commitment for a currently-unverified latency gain over Tier 1.
+Ship it when that gain is measured and real, not speculative.

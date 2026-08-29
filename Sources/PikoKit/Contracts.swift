@@ -141,7 +141,7 @@ public struct EditPair: Codable, Sendable, Equatable, Hashable {
 
 /// A tone. The keyboard cannot see the host app (CONSTRAINTS C7), so the user picks this.
 public enum Profile: String, Codable, Sendable, CaseIterable {
-    case message, email, note, code
+    case message, email, note, code, agent
 
     public var styleHint: String {
         switch self {
@@ -149,6 +149,7 @@ public enum Profile: String, Codable, Sendable, CaseIterable {
         case .email:   "Polite and complete. Greeting and sign-off if the speaker implied one."
         case .note:    "Terse. Fragments fine. No pleasantries."
         case .code:    "Imperative mood, present tense, conventional-commit shape when it reads like a commit."
+        case .agent:   "Unambiguous and structured for an AI agent to parse: resolve pronouns, make the subject and action explicit, no rhetorical filler."
         }
     }
 }

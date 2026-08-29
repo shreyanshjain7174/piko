@@ -88,15 +88,6 @@ Default implementation: Apple's SpeechAnalyzer / SpeechTranscriber.
 Contextual bias from the personal lexicon goes in here — verify how far SpeechTranscriber's
 custom vocabulary reaches; `SFSpeechRecognitionRequest.contextualStrings` is the fallback.
 
-`stablePrefix` policy: LocalAgreement-n (Macháček, Dabre, Bojar 2023, "Turning Whisper into
-Real-Time Transcription System", arXiv:2307.14743) — commit a prefix once N re-decodes agree,
-hold the tail as volatile. Sentence-final punctuation (`.`, `?`, `!`) short-circuits the wait: once
-emitted, raise `stablePrefix` immediately rather than waiting for further agreement, since a
-sentence boundary is a natural re-segmentation point the decoder is unlikely to revise past.
-Verify first whether `SpeechTranscriber`'s own volatile/final result reporting already gives this
-for free before implementing LocalAgreement on top of it — see `MODELS.md`'s PikoTranscribe
-section for the full research and open-weight-model comparison (Moonshine, WhisperKit, MLX-Whisper).
-
 Acceptance: first words visible within 400 ms of speech starting; no visible thrash across a
 30-second monologue.
 
@@ -120,15 +111,6 @@ only when the prefilter is unsure → never the rewrite model.
 
 Acceptance: cleanup of a 60-word transcript completes in under 600 ms on the oldest supported
 device, or the cleanup step becomes optional on that device.
-
-**Planned profile addition (Phase 6, not yet in `Contracts.swift`):** an `.agent` profile —
-rewrites for a coding agent or LLM to parse unambiguously, not for a human reader. Draft
-instruction, matching the style of the four shipped profiles: "Imperative, unambiguous, no
-filler words or hedging. State the concrete file/symbol/action if the speaker named one. No
-greeting, no pleasantries, no restating the obvious." This is a new `Profile` enum case, which
-is Phase 1 (`PikoKit`) contract surface — do not add it ad hoc; land it as part of Phase 6
-planning so the picker UI (`App/Piko/PikoApp.swift`) and `SystemBrain` prompt table update
-together, not piecemeal.
 
 ### PikoMemory
 Local index and the learning loop.

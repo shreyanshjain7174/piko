@@ -37,6 +37,18 @@ Wire SpeechTranscriber's volatile results through to `insertText`. The hard part
 it is churn — text that rewrites itself while you watch is worse than text that arrives late.
 Find the stable-prefix threshold that feels calm.
 
+**Before picking an algorithm, verify the actual API shape.** LocalAgreement-n (the streaming-ASR
+stability policy from Macháček et al. 2023, `ufal/whisper_streaming`) assumes comparing N
+consecutive whole-hypothesis re-decodes of the same window and taking their longest common
+prefix. Apple's `SpeechTranscriber` instead emits range-scoped, non-monotonic results per
+phrase — each phrase may arrive more than once before finalizing (per Apple's own docs), but not
+necessarily N times, and not as a full re-decoded transcript. Confirm via device logging
+(record every `range`/`text`/`isFinal` emission for a real 30s utterance) whether a
+LocalAgreement-style commit policy applies as-is, or whether only punctuation-boundary trimming
+of the text/state history (not audio-buffer trimming — `SpeechAnalyzer` owns its own decoding
+window, we cannot rewind or re-chunk it) is the applicable half of the technique. Do not build
+`stablePrefix`'s threshold logic against an assumed API shape — verify first.
+
 **Pass:** first words on screen within 400 ms; no visible thrash across a 30-second monologue.
 
 **Result:** _not run_
