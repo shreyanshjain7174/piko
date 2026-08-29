@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: milestone
 status: in_progress
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-08-29T17:37:21.840Z"
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-08-29T18:54:02.944Z"
 last_activity: 2026-08-29
 progress:
   total_phases: 8
   completed_phases: 5
-  total_plans: 10
-  completed_plans: 10
-  percent: 63
+  total_plans: 13
+  completed_plans: 11
+  percent: 85
 ---
 
 # Project State
@@ -26,19 +26,19 @@ whatever field you're already in, entirely on-device.
 
 ## Current Position
 
-Phase: 5 of 8 complete (code); next Phase 6
-Plan: 05-03 complete
-Status: Phase 5 merged to master. CaptureCoordinator wires buffers → Transcriber → channel. Simulator MockTranscriber; device SpeechTranscriberEngine.configure. Piko-Package 52/52. Piko app BUILD SUCCEEDED. CAPT-03/CAPT-04 still pending (400ms / 30s thrash — physical device speech). Phase 3 VERIFICATION.md PARTIALLY DONE still stands (Back Tap/Action Button, 45-min soak — hardware).
-Branch: master (no git remote configured for this repo)
+Phase: 6 of 8 in progress (code); 06-01 complete
+Plan: 06-01 complete; next 06-02 / 06-03
+Status: SystemBrain.rewrite runs injectable or iOS Foundation Models inference under withRewriteBudget (600ms hard deadline). Simulator Piko-Package 60/60. macOS swift test 41/43 (2 pre-existing unsigned SPM App Group). CLNP-01/CLNP-02 still pending (no physical Apple Intelligence quality or 600ms proof). CAPT-03/CAPT-04 still pending. Phase 3 VERIFICATION.md PARTIALLY DONE still stands.
+Branch: piko-06-cleanup-routing-plan01 (no git remote configured for this repo)
 Last activity: 2026-08-29
 
-Progress: [█████░░░░░] 63%
+Progress: [█████████░] 85%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 10
+- Total plans completed: 11
 - Average duration: n/a
 - Total execution time: n/a
 
@@ -58,6 +58,7 @@ Progress: [█████░░░░░] 63%
 | Phase 5 P01 | 28min | 3 tasks | 6 files |
 | Phase 5 P02 | 8min | 3 tasks | 5 files |
 | Phase 5 P03 | 12min | 3 tasks | 5 files |
+| Phase 06 P01 | 38min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,9 @@ Full log lives in PROJECT.md Key Decisions table.
 - [Phase 5 P01]: ArmedSession.buffers + AVAudioEngine tap with local continuation capture. Simulator skips engine.start and pumps silent PCM. FIFO AudioSessionTestGate. CAPT-03/04 not complete.
 - [Phase 5 P02]: SpeechAnalyzer + SpeechTranscriber via AnalyzerInput (AnalyzerInputConverter absent). Option B configure. Phrase accumulation. CAPT-03/04 not complete.
 - [Phase 5 P03]: CaptureCoordinator wires buffers to Transcriber via SpeechTranscriberEngine.configure cast; Simulator MockTranscriber; PikoCaptureCore for tests. CAPT-03/04 not complete.
+- [Phase 6]: Budget race is unstructured Tasks plus withCheckedThrowingContinuation, not withThrowingTaskGroup
+- [Phase 6]: RewriteBudgetRaceState is file-scope; Swift cannot nest a class inside a generic function
+- [Phase 6]: CLNP-01/CLNP-02 not marked complete: no physical Apple Intelligence quality or 600ms device proof
 
 ### Pending Todos
 
@@ -97,6 +101,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-29T17:37:21.836Z
-Stopped at: Completed 05-03-PLAN.md
+Last session: 2026-08-29T18:54:02.939Z
+Stopped at: Completed 06-01-PLAN.md
 Resume file: None
