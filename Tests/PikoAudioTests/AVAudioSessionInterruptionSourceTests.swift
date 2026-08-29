@@ -7,7 +7,12 @@ import Testing
 /// Proves `AVAudioSessionInterruptionSource`'s notification-translation logic using synthetic
 /// `NotificationCenter` posts that fabricate the exact payload shape `AVAudioSession`/`ProcessInfo`
 /// supply on a real device -- no audio hardware or device required.
-@Suite("AVAudioSessionInterruptionSource notification translation")
+///
+/// Serialized: every test posts to the process-wide `NotificationCenter.default`, which every
+/// `AVAudioSessionInterruptionSource` instance observes regardless of which test created it.
+/// Running these concurrently (Swift Testing's default) lets one test's post race into a
+/// sibling test's stream and get consumed as its "first event" instead of its own.
+@Suite("AVAudioSessionInterruptionSource notification translation", .serialized)
 struct AVAudioSessionInterruptionSourceTests {
 
     enum RaceResult { case eventObserved(InterruptionEvent), timedOut }

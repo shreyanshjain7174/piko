@@ -2,6 +2,7 @@
 import Foundation
 import Testing
 @testable import PikoAudio
+@testable import PikoKit
 
 @Suite("SessionCoordinator arming")
 struct SessionCoordinatorArmingTests {
