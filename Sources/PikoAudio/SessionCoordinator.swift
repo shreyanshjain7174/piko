@@ -15,9 +15,14 @@ public final class SessionCoordinator: ArmedSession {
     private var sessionEpoch = 0
     private var currentPhase: SessionPhase = .idle
     private var heartbeatTask: Task<Void, Never>?
+    private let engine = AVAudioEngine()
+    /// True only while a tap is installed. `removeTap` without a matching install crashes.
+    private var tapInstalled = false
 
     private let phaseContinuation: AsyncStream<SessionPhase>.Continuation
     public let phase: AsyncStream<SessionPhase>
+    private let buffersContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation
+    public let buffers: AsyncStream<AVAudioPCMBuffer>
 
     public init(channel: any SessionChannel,
                 interruptions: any InterruptionSource,
@@ -26,6 +31,7 @@ public final class SessionCoordinator: ArmedSession {
         self.interruptions = interruptions
         self.isForeground = isForeground
         (phase, phaseContinuation) = AsyncStream.makeStream()
+        (buffers, buffersContinuation) = AsyncStream.makeStream()
 
         Task { [weak self] in
             guard let events = self?.interruptions.events else { return }
@@ -68,6 +74,13 @@ public final class SessionCoordinator: ArmedSession {
         heartbeatTask?.cancel()
         heartbeatTask = nil
 
+        if tapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+        }
+        engine.stop()
+        buffersContinuation.finish()
+
         try? AVAudioSession.sharedInstance().setActive(false)
 
         currentPhase = .idle
@@ -77,11 +90,37 @@ public final class SessionCoordinator: ArmedSession {
 
     public func startCapture() async throws {
         guard currentPhase == .armed else { throw PikoError.notArmed }
+
+        let inputNode = engine.inputNode
+        let format = inputNode.outputFormat(forBus: 0)
+        // Capture the continuation into a local before installing the tap. The tap
+        // closure runs on the audio render thread; SessionCoordinator is @MainActor,
+        // so a self.buffersContinuation access here would cross actor isolation.
+        let continuation = buffersContinuation
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            continuation.yield(buffer)
+        }
+        tapInstalled = true
+
+        do {
+            try engine.start()
+        } catch {
+            inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+            currentPhase = .armed
+            throw PikoError.sessionInterrupted
+        }
+
         currentPhase = .capturing
         phaseContinuation.yield(currentPhase)
     }
 
     public func stopCapture() async {
+        if tapInstalled {
+            engine.inputNode.removeTap(onBus: 0)
+            tapInstalled = false
+        }
+        engine.stop()
         currentPhase = .armed
         phaseContinuation.yield(currentPhase)
     }
