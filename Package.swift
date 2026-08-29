@@ -27,7 +27,22 @@ let package = Package(
         .testTarget(name: "PikoKitTests", dependencies: ["PikoKit", "PikoBrain", "PikoMemory"]),
         .testTarget(name: "PikoBridgeTests", dependencies: ["PikoBridge", "PikoKit"]),
         .testTarget(name: "PikoAudioTests", dependencies: ["PikoAudio", "PikoKit"]),
-        .testTarget(name: "PikoTranscribeTests", dependencies: ["PikoTranscribe", "PikoKit"]),
+        .testTarget(name: "PikoTranscribeTests", dependencies: ["PikoTranscribe", "PikoKit", "PikoAudio", "PikoCaptureCore"]),
+        // CaptureCoordinator lives in App/Piko; expose it to PikoTranscribeTests
+        // the same way PikoKeyboardCore exposes insertion without the UIKit app shell.
+        .target(
+            name: "PikoCaptureCore",
+            dependencies: ["PikoKit", "PikoAudio", "PikoTranscribe", "PikoBridge"],
+            path: "App/Piko",
+            exclude: [
+                "AppComposition.swift",
+                "PikoApp.swift",
+                "PikoShortcuts.swift",
+                "ArmSessionIntent.swift",
+                "Info.plist",
+                "Piko.entitlements",
+            ]
+        ),
         // Insertion algorithm only — so PikoKeyboardTests can exercise App/PikoKeyboard
         // TextInsertionController without compiling the UIKit keyboard shell on macOS.
         .target(

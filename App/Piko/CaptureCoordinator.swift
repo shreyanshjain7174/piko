@@ -1,4 +1,10 @@
 import Foundation
+
+/// Marker so the PikoCaptureCore SwiftPM target still has a source on macOS,
+/// where `CaptureCoordinator` is compiled out (`SessionCoordinator` is iOS-only).
+public enum PikoCaptureCoreMarker {}
+
+#if os(iOS)
 import PikoKit
 import PikoBridge
 import PikoAudio
@@ -78,3 +84,4 @@ public final class CaptureCoordinator {
         }
     }
 }
+#endif
