@@ -17,7 +17,7 @@ as future milestones, not broken into phases yet — see `docs/ROADMAP.md` for t
 - [x] **Phase 2: Cross-Process Bridge** - `PikoBridge` session channel with the acceptance-tested round trip (completed 2026-08-27)
 - [x] **Phase 3: Armed Session** - `PikoAudio` arm/disarm/capture with interruption recovery — merged to master 2026-08-29. All 11 PikoAudioTests verified passing on iOS Simulator. VERIFICATION.md verdict PARTIALLY DONE stands: Back Tap/Action Button device binding (SESS-02/03) and 45-min soak (SESS-05) remain open, both requiring physical iPhone hardware with no Simulator/CI equivalent.
 - [x] **Phase 4: Keyboard Extension & Streaming Insertion** - mic button drives the armed session, stablePrefix-based insertion (completed 2026-08-29)
-- [ ] **Phase 5: On-Device Transcription** - `PikoTranscribe` wired to Apple's SpeechAnalyzer/SpeechTranscriber
+- [x] **Phase 5: On-Device Transcription** - `PikoTranscribe` wired to Apple's SpeechAnalyzer/SpeechTranscriber (code complete 2026-08-29). CAPT-03/CAPT-04 (400ms first word / 30s thrash) remain open — MockTranscriber integration only; physical-device speech not measured.
 - [ ] **Phase 6: On-Device Cleanup & Routing** - `PikoBrain` SystemBrain rewrite + write-path routing
 - [ ] **Phase 7: Live Activity** - armed/listening/tidying states with a working stop button
 - [ ] **Phase 8: Local History & Skins** - `PikoMemory` searchable history + four Piko skins
@@ -100,7 +100,7 @@ feels instant.
 Plans:
 - [x] 05-01-PLAN.md — AVAudioEngine tap + buffer stream
 - [x] 05-02-PLAN.md — SpeechTranscriberEngine implementation
-- [ ] 05-03-PLAN.md — Wiring buffers→transcriber→channel
+- [x] 05-03-PLAN.md — Wiring buffers→transcriber→channel
 
 ### Phase 6: On-Device Cleanup & Routing
 **Goal**: `PikoBrain` cleans up the final transcript on-device within budget, and the write-path
@@ -154,7 +154,7 @@ Plans:
 | 2. Cross-Process Bridge | 1/1 | Complete   | 2026-08-27 |
 | 3. Armed Session | 3/3 | Complete | 2026-08-29 |
 | 4. Keyboard Extension & Streaming Insertion | 2/2 | Complete   | 2026-08-29 |
-| 5. On-Device Transcription | 2/3 | In Progress|  |
+| 5. On-Device Transcription | 3/3 | Complete   | 2026-08-29 |
 | 6. On-Device Cleanup & Routing | 0/2 | Not started | - |
 | 7. Live Activity | 0/1 | Not started | - |
 | 8. Local History & Skins | 0/2 | Not started | - |
