@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: milestone
 status: in_progress
-stopped_at: Plan 04-02 complete — stablePrefix streaming insertion. Next: Phase 5 transcription. Device keyboard UI unverified.
-last_updated: "2026-08-29T10:49:00.000Z"
+stopped_at: Phase 4 (Keyboard Extension & Streaming Insertion) merged to master 2026-08-29. CAPT-01/CAPT-02 verified algorithm-level via 38/38 Simulator tests. Next: Phase 5 transcription. Device keyboard UI/Full-Access flow and real speech-driven streaming remain unverified (require Phase 5 + physical device).
+last_updated: "2026-08-29T16:30:00.000Z"
 last_activity: 2026-08-29
 progress:
   total_phases: 8
@@ -26,10 +26,10 @@ whatever field you're already in, entirely on-device.
 
 ## Current Position
 
-Phase: 5 of 8 (On-Device Transcription) — Phase 4 code complete
+Phase: 5 of 8 (On-Device Transcription)
 Plan: none yet (05-01 not planned)
-Status: Plan 04-02 complete on branch `piko-04-keyboard-extension-plan01`. CAPT-01/CAPT-02 unit-tested (38/38 Simulator). Live host-field / speech unverified. Phase 3 VERIFICATION.md PARTIALLY DONE still stands (Back Tap/Action Button, 45-min soak — hardware).
-Branch: piko-04-keyboard-extension-plan01
+Status: Phase 4 merged to master. CAPT-01/CAPT-02 unit-tested (38/38 Simulator). Live host-field / speech unverified, requires Phase 5. Phase 3 VERIFICATION.md PARTIALLY DONE still stands (Back Tap/Action Button, 45-min soak — hardware).
+Branch: master (no git remote configured for this repo)
 Last activity: 2026-08-29
 
 Progress: [████░░░░░░] 50%
