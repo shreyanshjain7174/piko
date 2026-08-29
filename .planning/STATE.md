@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: milestone
 status: in_progress
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-08-29T17:10:45.000Z"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-08-29T17:22:22.367Z"
 last_activity: 2026-08-29
 progress:
   total_phases: 8
   completed_phases: 4
   total_plans: 10
-  completed_plans: 8
-  percent: 80
+  completed_plans: 9
+  percent: 90
 ---
 
 # Project State
@@ -27,18 +27,18 @@ whatever field you're already in, entirely on-device.
 ## Current Position
 
 Phase: 5 of 8 (On-Device Transcription)
-Plan: 05-01 complete; next 05-02 SpeechTranscriberEngine
-Status: ArmedSession.buffers + AVAudioEngine tap on piko-05-transcription-plan01. Simulator Piko-Package 42/42. CAPT-03/CAPT-04 still pending (400ms / 30s thrash — need 05-02 + device). Phase 3 VERIFICATION.md PARTIALLY DONE still stands (Back Tap/Action Button, 45-min soak — hardware).
+Plan: 05-02 complete; next 05-03 wire buffers to transcriber to channel
+Status: SpeechTranscriberEngine (SpeechAnalyzer + AnalyzerInput, not AnalyzerInputConverter) + MockTranscriber on piko-05-transcription-plan01. Simulator Piko-Package 50/50. CAPT-03/CAPT-04 still pending (400ms / 30s thrash — need 05-03 + device). Phase 3 VERIFICATION.md PARTIALLY DONE still stands (Back Tap/Action Button, 45-min soak — hardware).
 Branch: piko-05-transcription-plan01
 Last activity: 2026-08-29
 
-Progress: [████████░░] 80%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 8
+- Total plans completed: 9
 - Average duration: n/a
 - Total execution time: n/a
 
@@ -56,6 +56,7 @@ Progress: [████████░░] 80%
 | Phase 4 P01 | 10min | 4 tasks | 6 files |
 | Phase 4 P02 | 16min | 4 tasks | 5 files |
 | Phase 5 P01 | 28min | 3 tasks | 6 files |
+| Phase 5 P02 | 8min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,7 @@ Full log lives in PROJECT.md Key Decisions table.
 - [Phase 4 P01]: Keyboard is remote control only (C1) — posts captureStart/Stop; never opens mic. KeyboardViewModel stays in tests. Simulator iPhone 17 iOS 26 + Piko-Package scheme. CAPT-01 deferred to 04-02.
 - [Phase 4 P02]: alreadyStable = min(draft.stablePrefix, insertedChars); epoch wipe to 0. PikoKeyboardCore SPM slice for tests. @MainActor TextProxy. CAPT-01/02 algorithm-complete, not speech-proven.
 - [Phase 5 P01]: ArmedSession.buffers + AVAudioEngine tap with local continuation capture. Simulator skips engine.start and pumps silent PCM. FIFO AudioSessionTestGate. CAPT-03/04 not complete.
+- [Phase 5 P02]: SpeechAnalyzer + SpeechTranscriber via AnalyzerInput (AnalyzerInputConverter absent). Option B configure. Phrase accumulation. CAPT-03/04 not complete.
 
 ### Pending Todos
 
@@ -93,6 +95,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-29T17:10:45Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-08-29T17:22:22.363Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None

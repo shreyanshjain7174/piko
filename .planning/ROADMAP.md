@@ -99,7 +99,7 @@ feels instant.
 
 Plans:
 - [x] 05-01-PLAN.md — AVAudioEngine tap + buffer stream
-- [ ] 05-02-PLAN.md — SpeechTranscriberEngine implementation
+- [x] 05-02-PLAN.md — SpeechTranscriberEngine implementation
 - [ ] 05-03-PLAN.md — Wiring buffers→transcriber→channel
 
 ### Phase 6: On-Device Cleanup & Routing
@@ -154,7 +154,7 @@ Plans:
 | 2. Cross-Process Bridge | 1/1 | Complete   | 2026-08-27 |
 | 3. Armed Session | 3/3 | Complete | 2026-08-29 |
 | 4. Keyboard Extension & Streaming Insertion | 2/2 | Complete   | 2026-08-29 |
-| 5. On-Device Transcription | 1/3 | In Progress|  |
+| 5. On-Device Transcription | 2/3 | In Progress|  |
 | 6. On-Device Cleanup & Routing | 0/2 | Not started | - |
 | 7. Live Activity | 0/1 | Not started | - |
 | 8. Local History & Skins | 0/2 | Not started | - |
