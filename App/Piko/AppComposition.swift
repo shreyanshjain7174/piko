@@ -28,11 +28,18 @@ final class AppComposition {
         transcriber = SpeechTranscriberEngine()
         #endif
 
+        let brain: any Brain
+        #if targetEnvironment(simulator)
+        brain = MockBrain()
+        #else
+        brain = SystemBrain()
+        #endif
+
         self.captureCoordinator = CaptureCoordinator(
             session: session,
             channel: channel,
             transcriber: transcriber,
-            brain: SystemBrain()
+            brain: brain
         )
 
         Task { [weak self] in
