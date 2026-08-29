@@ -15,7 +15,7 @@ as future milestones, not broken into phases yet — see `docs/ROADMAP.md` for t
 
 - [x] **Phase 1: Shared Contracts** - `PikoKit` types, App Group, notification constants — no platform code (completed 2026-08-27)
 - [x] **Phase 2: Cross-Process Bridge** - `PikoBridge` session channel with the acceptance-tested round trip (completed 2026-08-27)
-- [ ] **Phase 3: Armed Session** - `PikoAudio` arm/disarm/capture with interruption recovery — code complete on `piko-03-armed-session-plan01` 2026-08-29; NOT merged, see VERIFICATION.md (Back Tap/Action Button device binding, 45-min soak, and PikoAudioTests Simulator execution all still pending — no test action configured on the auto-generated `PikoAudio` scheme)
+- [ ] **Phase 3: Armed Session** - `PikoAudio` arm/disarm/capture with interruption recovery — code complete on `piko-03-armed-session-plan01` 2026-08-29; NOT merged, see VERIFICATION.md. All 11 PikoAudioTests now pass on iOS Simulator (2026-08-29 addendum, 3 real bugs found+fixed by first execution). Still pending: Back Tap/Action Button device binding (SESS-02/03) and 45-min soak (SESS-05) — both genuinely require physical iPhone hardware, no Simulator/CI equivalent exists.
 - [ ] **Phase 4: Keyboard Extension & Streaming Insertion** - mic button drives the armed session, stablePrefix-based insertion
 - [ ] **Phase 5: On-Device Transcription** - `PikoTranscribe` wired to Apple's SpeechAnalyzer/SpeechTranscriber
 - [ ] **Phase 6: On-Device Cleanup & Routing** - `PikoBrain` SystemBrain rewrite + write-path routing

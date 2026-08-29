@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: milestone
 status: verifying
-stopped_at: Phase 3 (Armed Session) code complete on branch piko-03-armed-session-plan01; VERIFICATION.md verdict PARTIALLY DONE pending physical-device pass (Back Tap/Action Button, 45-min soak) and a Simulator test-action fix for PikoAudioTests
-last_updated: "2026-08-29T13:30:00.000Z"
+stopped_at: Phase 3 (Armed Session) code complete on branch piko-03-armed-session-plan01; VERIFICATION.md verdict PARTIALLY DONE; PikoAudioTests now verified passing on iOS Simulator (2026-08-29 addendum, 3 real bugs found+fixed by first execution); still pending physical-device pass (Back Tap/Action Button, 45-min soak)
+last_updated: "2026-08-29T14:50:00.000Z"
 last_activity: 2026-08-29
 progress:
   total_phases: 8
@@ -28,11 +28,11 @@ whatever field you're already in, entirely on-device.
 
 Phase: 3 of 8 (Armed Session)
 Plan: 3 of 3 in current phase (03-01, 03-02, 03-03 all executed)
-Status: Code complete, PARTIALLY DONE per VERIFICATION.md — awaiting physical-device verification
+Status: Code complete, PARTIALLY DONE per VERIFICATION.md — all 11 PikoAudioTests now verified passing on iOS Simulator; awaiting physical-device verification (Back Tap/Action Button, 45-min soak)
 Branch: piko-03-armed-session-plan01 (not merged to master; no git remote configured for this repo)
 Last activity: 2026-08-29
 
-Progress: [██████████] 100% (Phases 1-2), Phase 3 code-complete pending device verification
+Progress: [██████████] 100% (Phases 1-2), Phase 3 code-complete + Simulator-test-verified, pending device verification
 
 ## Performance Metrics
 
