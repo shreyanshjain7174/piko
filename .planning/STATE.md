@@ -28,8 +28,8 @@ whatever field you're already in, entirely on-device.
 
 Phase: 5 of 8 complete (code); next Phase 6
 Plan: 05-03 complete
-Status: CaptureCoordinator wires buffers → Transcriber → channel on piko-05-transcription-plan01. Simulator MockTranscriber; device SpeechTranscriberEngine.configure. Piko-Package 52/52. Piko app BUILD SUCCEEDED. CAPT-03/CAPT-04 still pending (400ms / 30s thrash — physical device speech). Phase 3 VERIFICATION.md PARTIALLY DONE still stands (Back Tap/Action Button, 45-min soak — hardware).
-Branch: piko-05-transcription-plan01
+Status: Phase 5 merged to master. CaptureCoordinator wires buffers → Transcriber → channel. Simulator MockTranscriber; device SpeechTranscriberEngine.configure. Piko-Package 52/52. Piko app BUILD SUCCEEDED. CAPT-03/CAPT-04 still pending (400ms / 30s thrash — physical device speech). Phase 3 VERIFICATION.md PARTIALLY DONE still stands (Back Tap/Action Button, 45-min soak — hardware).
+Branch: master (no git remote configured for this repo)
 Last activity: 2026-08-29
 
 Progress: [█████░░░░░] 63%
