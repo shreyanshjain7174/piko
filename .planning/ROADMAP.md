@@ -117,7 +117,7 @@ router never taxes the fast path.
 Plans:
 - [x] 06-01-PLAN.md — SystemBrain rewrite via Foundation Models under an enforced 600ms budget (wave 1)
 - [ ] 06-02-PLAN.md — Prefilter-only routing plus Brain wiring into CaptureCoordinator with graceful skip (wave 2)
-- [ ] 06-03-PLAN.md — .agent Profile case, the Phase 6 contract addition reserved by docs/SPEC.md (wave 1)
+- [x] 06-03-PLAN.md — .agent Profile case, the Phase 6 contract addition reserved by docs/SPEC.md (wave 1)
 
 ### Phase 7: Live Activity
 **Goal**: The user can see and stop an in-progress capture from the Lock Screen/Dynamic Island.
@@ -156,7 +156,7 @@ Plans:
 | 3. Armed Session | 3/3 | Complete | 2026-08-29 |
 | 4. Keyboard Extension & Streaming Insertion | 2/2 | Complete   | 2026-08-29 |
 | 5. On-Device Transcription | 3/3 | Complete   | 2026-08-29 |
-| 6. On-Device Cleanup & Routing | 1/3 | In Progress|  |
+| 6. On-Device Cleanup & Routing | 2/3 | In Progress|  |
 | 7. Live Activity | 0/1 | Not started | - |
 | 8. Local History & Skins | 0/2 | Not started | - |
 

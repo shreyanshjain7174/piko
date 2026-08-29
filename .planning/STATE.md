@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: milestone
 status: in_progress
-stopped_at: Completed 06-01-PLAN.md
-last_updated: "2026-08-29T18:54:02.944Z"
+stopped_at: Completed 06-03-PLAN.md
+last_updated: "2026-08-29T19:07:53.750Z"
 last_activity: 2026-08-29
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 13
-  completed_plans: 11
-  percent: 85
+  completed_plans: 12
+  percent: 92
 ---
 
 # Project State
@@ -26,19 +26,19 @@ whatever field you're already in, entirely on-device.
 
 ## Current Position
 
-Phase: 6 of 8 in progress (code); 06-01 complete
-Plan: 06-01 complete; next 06-02 / 06-03
-Status: SystemBrain.rewrite runs injectable or iOS Foundation Models inference under withRewriteBudget (600ms hard deadline). Simulator Piko-Package 60/60. macOS swift test 41/43 (2 pre-existing unsigned SPM App Group). CLNP-01/CLNP-02 still pending (no physical Apple Intelligence quality or 600ms proof). CAPT-03/CAPT-04 still pending. Phase 3 VERIFICATION.md PARTIALLY DONE still stands.
+Phase: 6 of 8 in progress (code); 06-01 and 06-03 complete
+Plan: 06-03 complete; next 06-02
+Status: Profile.agent is selectable from the keyboard and persists through SessionCoordinator writes. Simulator Piko-Package 69/69. macOS swift test 48/50 (2 pre-existing unsigned SPM App Group). CLNP-01/CLNP-02 still pending (no physical Apple Intelligence quality or 600ms proof). CAPT-03/CAPT-04 still pending. Phase 3 VERIFICATION.md PARTIALLY DONE still stands.
 Branch: piko-06-cleanup-routing-plan01 (no git remote configured for this repo)
 Last activity: 2026-08-29
 
-Progress: [█████████░] 85%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 11
+- Total plans completed: 12
 - Average duration: n/a
 - Total execution time: n/a
 
@@ -59,6 +59,7 @@ Progress: [█████████░] 85%
 | Phase 5 P02 | 8min | 3 tasks | 5 files |
 | Phase 5 P03 | 12min | 3 tasks | 5 files |
 | Phase 06 P01 | 38min | 3 tasks | 7 files |
+| Phase 06 P03 | 10min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,8 @@ Full log lives in PROJECT.md Key Decisions table.
 - [Phase 6]: Budget race is unstructured Tasks plus withCheckedThrowingContinuation, not withThrowingTaskGroup
 - [Phase 6]: RewriteBudgetRaceState is file-scope; Swift cannot nest a class inside a generic function
 - [Phase 6]: CLNP-01/CLNP-02 not marked complete: no physical Apple Intelligence quality or 600ms device proof
+- [Phase 6]: SPEC .agent is shipped only after picker plus persistence, not after the enum case alone
+- [Phase 6]: Do not mark CLNP-01 complete after 06-03: agent styleHint quality needs physical Apple Intelligence; Simulator does not count
 
 ### Pending Todos
 
@@ -101,6 +104,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-29T18:54:02.939Z
-Stopped at: Completed 06-01-PLAN.md
+Last session: 2026-08-29T19:07:53.745Z
+Stopped at: Completed 06-03-PLAN.md
 Resume file: None
