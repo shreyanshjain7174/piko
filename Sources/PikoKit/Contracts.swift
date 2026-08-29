@@ -3,6 +3,8 @@ import Foundation
 /// Identifiers shared by the app, the keyboard extension and the widget extension.
 /// Change these in one place or the processes stop seeing each other.
 public enum AppGroup {
+    /// Must match `com.apple.security.application-groups` in every target's entitlements;
+    /// mirrored by hand in `App/project.yml` since XcodeGen cannot read this constant.
     public static let identifier = "group.dev.piko.shared"
     public static let draftFile = "draft.json"
     public static let resultFile = "result.json"
@@ -54,16 +56,30 @@ public struct SessionState: Codable, Sendable, Equatable {
 /// The keyboard inserts up to that point and only rewrites what follows — this is the
 /// difference between text that arrives and text that thrashes.
 public struct CaptureDraft: Codable, Sendable, Equatable {
+    /// Bumped once per `arm()`, never reset mid-session. Compared before `sequence` so a
+    /// new session's drafts always outrank a stale high-water mark left by the previous one.
+    public var sessionEpoch: Int
     public var sequence: Int
     public var text: String
     public var stablePrefix: Int
     public var startedAt: Date
 
-    public init(sequence: Int, text: String, stablePrefix: Int, startedAt: Date = .now) {
+    public init(sessionEpoch: Int = 0, sequence: Int, text: String, stablePrefix: Int, startedAt: Date = .now) {
+        self.sessionEpoch = sessionEpoch
         self.sequence = sequence
         self.text = text
         self.stablePrefix = stablePrefix
         self.startedAt = startedAt
+    }
+
+    /// The shared "is this newer" rule both processes must agree on. A `nil` previous draft is
+    /// always superseded. A higher `sessionEpoch` always wins regardless of `sequence` — this is
+    /// what closes the silent-drop bug where a new session's counter restarting at 0 would
+    /// otherwise lose to the previous session's leftover high-water mark.
+    public func isNewer(than previous: CaptureDraft?) -> Bool {
+        guard let previous else { return true }
+        if sessionEpoch != previous.sessionEpoch { return sessionEpoch > previous.sessionEpoch }
+        return sequence > previous.sequence
     }
 }
 

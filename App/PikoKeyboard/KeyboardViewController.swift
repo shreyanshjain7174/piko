@@ -11,7 +11,7 @@ import PikoBridge
 final class KeyboardViewController: UIInputViewController {
 
     private var channel: DarwinChannel?
-    private var lastSequence = -1
+    private var lastAppliedDraft: CaptureDraft?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -33,8 +33,8 @@ final class KeyboardViewController: UIInputViewController {
     /// Insert only what is new. Ignore anything older than what we already typed, or the field
     /// thrashes — that is the failure mode spike 3 exists to prevent.
     private func applyDraft() {
-        guard let draft = channel?.readDraft(), draft.sequence > lastSequence else { return }
-        lastSequence = draft.sequence
+        guard let draft = channel?.readDraft(), draft.isNewer(than: lastAppliedDraft) else { return }
+        lastAppliedDraft = draft
         // TODO: diff against what we already inserted, deleteBackward the unstable tail,
         // insertText the new tail.
     }

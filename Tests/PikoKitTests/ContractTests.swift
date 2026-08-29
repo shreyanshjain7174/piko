@@ -17,10 +17,41 @@ func staleSession() {
 
 @Test("drafts survive a round trip")
 func draftCoding() throws {
-    let draft = CaptureDraft(sequence: 7, text: "hey can we push it", stablePrefix: 12)
+    let draft = CaptureDraft(sessionEpoch: 3, sequence: 7, text: "hey can we push it", stablePrefix: 12)
     let data = try JSONEncoder().encode(draft)
     let back = try JSONDecoder().decode(CaptureDraft.self, from: data)
     #expect(back == draft)
+}
+
+@Test("session state survives a round trip")
+func sessionStateCoding() throws {
+    let state = SessionState(phase: .capturing, heartbeat: .now, skin: .hero, profile: .code)
+    let data = try JSONEncoder().encode(state)
+    let back = try JSONDecoder().decode(SessionState.self, from: data)
+    #expect(back == state)
+}
+
+@Test("capture results, including nested timings, survive a round trip")
+func captureResultCoding() throws {
+    let result = CaptureResult(raw: "um so basically", shipped: "So.", route: .write,
+                                profile: .note, timings: .init(firstWordMS: 120, transcribeMS: 300, brainMS: 80))
+    let data = try JSONEncoder().encode(result)
+    let back = try JSONDecoder().decode(CaptureResult.self, from: data)
+    #expect(back == result)
+}
+
+@Test("edit pairs survive a round trip")
+func editPairCoding() throws {
+    let pair = EditPair(raw: "um hey", shipped: "Hey.", final: "Hey!", profile: .message)
+    let data = try JSONEncoder().encode(pair)
+    let back = try JSONDecoder().decode(EditPair.self, from: data)
+    #expect(back == pair)
+}
+
+@Test("app group and signal are singly defined")
+func appGroupAndSignalAreSinglyDefined() {
+    #expect(!AppGroup.identifier.isEmpty)
+    #expect(Signal.allCases.count == 5)
 }
 
 @Test("commands and recalls route away from write")

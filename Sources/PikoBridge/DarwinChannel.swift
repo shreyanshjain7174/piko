@@ -20,6 +20,13 @@ public final class DarwinChannel: SessionChannel, @unchecked Sendable {
         observeAll()
     }
 
+    deinit {
+        // Mirrors every CFNotificationCenterAddObserver call made in observeAll() for this
+        // instance's observer pointer — without this, the pointer dangles the instant a second
+        // DarwinChannel is constructed and this one is deallocated.
+        CFNotificationCenterRemoveEveryObserver(center, Unmanaged.passUnretained(self).toOpaque())
+    }
+
     // MARK: signalling
 
     public func post(_ signal: Signal) {
