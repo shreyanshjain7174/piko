@@ -16,7 +16,7 @@ as future milestones, not broken into phases yet — see `docs/ROADMAP.md` for t
 - [x] **Phase 1: Shared Contracts** - `PikoKit` types, App Group, notification constants — no platform code (completed 2026-08-27)
 - [x] **Phase 2: Cross-Process Bridge** - `PikoBridge` session channel with the acceptance-tested round trip (completed 2026-08-27)
 - [x] **Phase 3: Armed Session** - `PikoAudio` arm/disarm/capture with interruption recovery — merged to master 2026-08-29. All 11 PikoAudioTests verified passing on iOS Simulator. VERIFICATION.md verdict PARTIALLY DONE stands: Back Tap/Action Button device binding (SESS-02/03) and 45-min soak (SESS-05) remain open, both requiring physical iPhone hardware with no Simulator/CI equivalent.
-- [ ] **Phase 4: Keyboard Extension & Streaming Insertion** - mic button drives the armed session, stablePrefix-based insertion
+- [x] **Phase 4: Keyboard Extension & Streaming Insertion** - mic button drives the armed session, stablePrefix-based insertion (completed 2026-08-29)
 - [ ] **Phase 5: On-Device Transcription** - `PikoTranscribe` wired to Apple's SpeechAnalyzer/SpeechTranscriber
 - [ ] **Phase 6: On-Device Cleanup & Routing** - `PikoBrain` SystemBrain rewrite + write-path routing
 - [ ] **Phase 7: Live Activity** - armed/listening/tidying states with a working stop button
@@ -83,7 +83,7 @@ transcript streams into the host field without visible thrash.
 
 Plans:
 - [x] 04-01-PLAN.md — Keyboard extension UI with mic button wired to SessionChannel
-- [ ] 04-02-PLAN.md — stablePrefix-based streaming text replacement
+- [x] 04-02-PLAN.md — stablePrefix-based streaming text replacement
 
 ### Phase 5: On-Device Transcription
 **Goal**: `PikoTranscribe` turns audio buffers into a hypothesis stream fast enough that the loop
@@ -152,7 +152,7 @@ Plans:
 | 1. Shared Contracts | 1/1 | Complete   | 2026-08-27 |
 | 2. Cross-Process Bridge | 1/1 | Complete   | 2026-08-27 |
 | 3. Armed Session | 3/3 | Complete | 2026-08-29 |
-| 4. Keyboard Extension & Streaming Insertion | 0/2 | Not started | - |
+| 4. Keyboard Extension & Streaming Insertion | 2/2 | Complete   | 2026-08-29 |
 | 5. On-Device Transcription | 0/2 | Not started | - |
 | 6. On-Device Cleanup & Routing | 0/2 | Not started | - |
 | 7. Live Activity | 0/1 | Not started | - |
