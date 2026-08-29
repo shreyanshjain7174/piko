@@ -33,8 +33,8 @@ whatever field you're already in, entirely on-device.
 
 ### Capture & Transcription
 
-- [ ] **CAPT-01**: Partial transcript streams into the host text field as speech is recognized
-- [ ] **CAPT-02**: Streaming insertion only rewrites characters after `stablePrefix`, not the
+- [x] **CAPT-01**: Partial transcript streams into the host text field as speech is recognized
+- [x] **CAPT-02**: Streaming insertion only rewrites characters after `stablePrefix`, not the
   whole string, on every update
 - [ ] **CAPT-03**: First words are visible within 400ms of speech starting
 - [ ] **CAPT-04**: No visible text thrash across a continuous 30-second monologue
@@ -103,8 +103,10 @@ Deferred to the next milestone. Tracked but not in the current roadmap.
 |-------------|-------|--------|
 | FOUND-01 | Phase 1 | Complete |
 | SESS-01, SESS-02, SESS-03, SESS-04, SESS-05 | Phase 3 | Pending |
-| BRDG-01, BRDG-02, BRDG-03, BRDG-04 | Phase 2 | Pending |
-| CAPT-01, CAPT-02, CAPT-03, CAPT-04 | Phase 4, Phase 5 | Pending |
+| BRDG-01 | Phase 2, Phase 4 Plan 01 | Complete (unit-tested remote-control path; device UI unverified) |
+| BRDG-02, BRDG-03, BRDG-04 | Phase 2 | Pending (macOS SPM App Group gap; Simulator PikoBridgeTests 6/6) |
+| CAPT-01, CAPT-02 | Phase 4 Plan 02 | Complete (unit-tested insertion; live speech/device UI unverified) |
+| CAPT-03, CAPT-04 | Phase 5 | Pending |
 | CLNP-01, CLNP-02, CLNP-03 | Phase 6 | Pending |
 | LACT-01, LACT-02 | Phase 7 | Pending |
 | HIST-01, HIST-02 | Phase 8 | Pending |
