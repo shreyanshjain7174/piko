@@ -87,38 +87,38 @@ policy**, not a model choice — it decides which characters of an already-strea
 safe to hand to the keyboard, regardless of which engine produced them. `stablePrefix` on
 `CaptureDraft` (`Sources/PikoKit/Contracts.swift`) already exists for exactly this. The reference
 technique is LocalAgreement-n (compare N consecutive hypothesis updates, commit their longest
-common prefix) plus punctuation-boundary trimming, from Mach\u00e1\u010dek, Dabre, Bojar,
+common prefix) plus punctuation-boundary trimming, from Macháček, Dabre, Bojar,
 ["Turning Whisper into Real-Time Transcription System"](https://aclanthology.org/2023.ijcnlp-demo.3/)
 (IJCNLP-AACL 2023), implemented in `github.com/ufal/whisper_streaming`.
 
-**Not yet verified against Apple's actual API** \u2014 see `docs/SPIKES.md` Spike 3. LocalAgreement-n
+**Not yet verified against Apple's actual API** — see `docs/SPIKES.md` Spike 3. LocalAgreement-n
 assumes comparing full-hypothesis re-decodes of the same window; `SpeechTranscriber` instead
 emits range-scoped, non-monotonic per-phrase results. Confirm the real revision behavior on
 device before committing to a specific commit-policy shape. Whisper-style *audio*-buffer
-trimming at sentence boundaries does not apply either way \u2014 `SpeechAnalyzer` owns its own
+trimming at sentence boundaries does not apply either way — `SpeechAnalyzer` owns its own
 decoding window and cannot be rewound or re-chunked from outside.
 
 A 2025 successor policy, AlignAtt (attention-guided, `github.com/ufal/SimulStreaming`), is
-best-performing but requires a 10GB+ VRAM GPU \u2014 not applicable to an iPhone. SimulStreaming's
-license is also unresolved (README states MIT; its release is tagged "Noncommercial version") \u2014
+best-performing but requires a 10GB+ VRAM GPU — not applicable to an iPhone. SimulStreaming's
+license is also unresolved (README states MIT; its release is tagged "Noncommercial version") —
 do not adopt anything from it without checking that directly.
 
 ### Tier 2 — open-weight local ASR, opt-in (v0.2+, not v0.1)
 
 Deferred, matching `Brain`'s own tier 2 timing and for the same reason: ship it when Apple's
 engine is provably the blocker for someone, not before. The keyboard extension does zero
-inference itself (CONSTRAINTS C1/C4) \u2014 all ASR runs in the container app, so this only ever
+inference itself (CONSTRAINTS C1/C4) — all ASR runs in the container app, so this only ever
 affects the app's own memory/size budget, never the keyboard's.
 
 Reference architecture: [Handy](https://github.com/cjpais/Handy) (MIT, cross-platform local
-dictation app, 30k+ stars) runs entirely offline via a Rust core \u2014 `transcribe-cpp`
+dictation app, 30k+ stars) runs entirely offline via a Rust core — `transcribe-cpp`
 (whisper.cpp/GGML) or [`transcribe-rs`](https://github.com/cjpais/transcribe-rs) (MIT,
 multi-engine: Parakeet, Canary, Moonshine, SenseVoice, GigaAM, Whisper, via ONNX Runtime or
-whisper.cpp) plus Silero VAD. If this tier is ever built, take the smallest slice \u2014 one engine,
+whisper.cpp) plus Silero VAD. If this tier is ever built, take the smallest slice — one engine,
 not the full multi-engine surface. `transcribe-rs` lists a `moonshine-streaming` variant
 (Useful Sensors' Moonshine, purpose-built for tiny/fast streaming edge ASR, not chunked-retry
 like Whisper) as the most latency-aligned single candidate, but its iOS/Metal performance is
-unverified \u2014 no published iPhone benchmark exists. Do not pick a model before benchmarking it on
+unverified — no published iPhone benchmark exists. Do not pick a model before benchmarking it on
 device.
 
 Bridging: Rust cross-compiles to iOS targets; Mozilla's
@@ -128,5 +128,5 @@ C/C++-based engine like whisper.cpp without bridging its raw C API directly into
 
 **The honest cost**, same shape as Brain's tier 2: a Rust toolchain, an FFI bridge, XCFramework
 packaging, a second ASR engine to validate, and an App Review conversation about an embedded
-compiled ML runtime \u2014 a multi-week commitment for a currently-unverified latency gain over Tier 1.
+compiled ML runtime — a multi-week commitment for a currently-unverified latency gain over Tier 1.
 Ship it when that gain is measured and real, not speculative.
