@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: milestone
-status: verifying
-stopped_at: Phase 3 (Armed Session) code complete on branch piko-03-armed-session-plan01; VERIFICATION.md verdict PARTIALLY DONE; PikoAudioTests now verified passing on iOS Simulator (2026-08-29 addendum, 3 real bugs found+fixed by first execution); still pending physical-device pass (Back Tap/Action Button, 45-min soak)
-last_updated: "2026-08-29T14:50:00.000Z"
+status: in_progress
+stopped_at: Phase 3 (Armed Session) merged to master; VERIFICATION.md verdict PARTIALLY DONE stands — Back Tap/Action Button device binding and 45-min soak remain open, both requiring physical iPhone hardware unavailable in this environment. Starting Phase 4.
+last_updated: "2026-08-29T15:00:00.000Z"
 last_activity: 2026-08-29
 progress:
   total_phases: 8
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 5
   completed_plans: 5
-  percent: 25
+  percent: 37
 ---
 
 # Project State
@@ -22,17 +22,17 @@ See: .planning/PROJECT.md (updated 2026-08-27)
 
 **Core value:** Dictation that starts instantly from wherever you are and inserts clean text into
 whatever field you're already in, entirely on-device.
-**Current focus:** Phase 3 — Armed Session (verification pending, not merged to master)
+**Current focus:** Phase 4 — Keyboard Extension & Streaming Insertion
 
 ## Current Position
 
-Phase: 3 of 8 (Armed Session)
-Plan: 3 of 3 in current phase (03-01, 03-02, 03-03 all executed)
-Status: Code complete, PARTIALLY DONE per VERIFICATION.md — all 11 PikoAudioTests now verified passing on iOS Simulator; awaiting physical-device verification (Back Tap/Action Button, 45-min soak)
-Branch: piko-03-armed-session-plan01 (not merged to master; no git remote configured for this repo)
+Phase: 4 of 8 (Keyboard Extension & Streaming Insertion)
+Plan: not yet planned
+Status: Phase 3 merged to master (PARTIALLY DONE per VERIFICATION.md stands — Back Tap/Action Button and 45-min soak remain open, hardware-only gaps). Starting Phase 4.
+Branch: master (no git remote configured for this repo)
 Last activity: 2026-08-29
 
-Progress: [██████████] 100% (Phases 1-2), Phase 3 code-complete + Simulator-test-verified, pending device verification
+Progress: [██████████] 100% (Phases 1-3 merged), Phase 4 starting
 
 ## Performance Metrics
 
