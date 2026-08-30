@@ -76,10 +76,11 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.piko.Piko.PikoWidgets
     dependencies:
       - package: Piko
-        products: [PikoKit, PikoUI]
+        products: [PikoKit, PikoBridge, PikoUI]
     info:
       path: PikoWidgets/Info.plist
       properties:
+        CFBundleDisplayName: Piko
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
