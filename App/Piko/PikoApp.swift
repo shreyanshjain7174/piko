@@ -18,6 +18,8 @@ struct ArmView: View {
     @State private var hasArmedThisLaunch = false
     @State private var staleAtLaunch = false
     @State private var currentSkin: Skin = .cute
+    @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding = false
+    @State private var showOnboarding = false
 
     private var showReArmBanner: Bool {
         (hasArmedThisLaunch && phaseText == "idle") || staleAtLaunch
@@ -135,8 +137,24 @@ struct ArmView: View {
                 .padding(20)
             }
             .background(currentSkin.background.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showOnboarding = true
+                    } label: {
+                        Image(systemName: "questionmark.circle")
+                    }
+                }
+            }
+            .sheet(isPresented: $showOnboarding) {
+                OnboardingView(isPresented: $showOnboarding)
+            }
         }
         .task {
+            if !hasSeenOnboarding {
+                showOnboarding = true
+                hasSeenOnboarding = true
+            }
             // Process-kill sub-case: reuse Phase 1's existing staleness rule, no new heuristic.
             if let state = AppComposition.shared.channel.readState(), !state.isLive() {
                 staleAtLaunch = true
@@ -196,6 +214,63 @@ private extension Skin {
 
     var background: Color {
         Color(.systemGroupedBackground)
+    }
+}
+
+/// Apple gives no API to detect whether a custom keyboard is installed/enabled (privacy —
+/// a host app enumerating keyboards would be a fingerprinting vector), and no deep link
+/// straight to Settings > Keyboards (`openSettingsURLString` only opens *this app's* settings
+/// page). So this is instructions plus a best-effort shortcut, not a verified checklist —
+/// each step is self-reported by the user, not detected.
+struct OnboardingView: View {
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    step(1, "Arm", "Tap Arm on the main screen. This is the only thing that legally opens the microphone.")
+                    step(2, "Add the Piko keyboard", "Settings → General → Keyboard → Keyboards → Add New Keyboard → Piko. Then tap Piko again in that list and turn on Allow Full Access.")
+                    step(3, "Switch to Piko", "In any text field, tap the globe icon (🌐) on the keyboard to switch to Piko.")
+                    step(4, "Dictate", "Tap the mic button in the Piko keyboard to start capturing, speak, tap again to stop.")
+
+                    Button {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Label("Open Settings", systemImage: "gear")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .padding(.top, 8)
+                }
+                .padding(20)
+            }
+            .navigationTitle("Get Piko working")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { isPresented = false }
+                }
+            }
+        }
+    }
+
+    private func step(_ number: Int, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Text("\(number)")
+                .font(.headline)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(Color.accentColor.opacity(0.15)))
+                .foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.headline)
+                Text(detail).font(.subheadline).foregroundStyle(.secondary)
+            }
+        }
     }
 }
 
