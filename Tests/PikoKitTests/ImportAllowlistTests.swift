@@ -1,8 +1,13 @@
 import Testing
 import Foundation
 
-@Test("PikoKit sources import only Foundation")
+@Test("PikoKit sources import only an allowlisted set of modules")
 func importAllowlist() throws {
+    // Foundation is the baseline every file may import unconditionally.
+    // ActivityKit is permitted only because LiveActivityAttributes.swift guards it
+    // behind `#if os(iOS)` — it never actually imports on macOS/other platforms.
+    let allowedImports: Set<String> = ["import Foundation", "import ActivityKit"]
+
     let sourcesDir = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
         .deletingLastPathComponent()
@@ -19,7 +24,7 @@ func importAllowlist() throws {
         for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard trimmed.hasPrefix("import ") else { continue }
-            #expect(trimmed == "import Foundation",
+            #expect(allowedImports.contains(trimmed),
                     "\(file.lastPathComponent): unexpected import '\(trimmed)'")
         }
     }
