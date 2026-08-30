@@ -86,6 +86,104 @@ struct CaptureIntegrationTests {
             await session.disarm()
         }
     }
+
+    @Test @MainActor func stopRequestedStopsCaptureThenDisarms() async throws {
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let channel = MockSessionChannel()
+            let mock = MockTranscriber()
+            let script = MockTranscriber.Script(drafts: [
+                CaptureDraft(sessionEpoch: 1, sequence: 1, text: "Final text.", stablePrefix: 11),
+            ], delayBetween: .milliseconds(10))
+            await mock.setScript(script)
+
+            let session = SessionCoordinator(
+                channel: channel,
+                interruptions: NullInterruptionSource(),
+                isForeground: { true }
+            )
+
+            let coordinator = CaptureCoordinator(
+                session: session,
+                channel: channel,
+                transcriber: mock,
+                brain: MockBrain()
+            )
+
+            try await session.arm()
+            try await coordinator.startCapture()
+            try await Task.sleep(for: .milliseconds(100))
+
+            await coordinator.handleSignal(.stopRequested)
+
+            #expect(channel.readResult() != nil)
+            #expect(channel.readState()?.phase == .idle)
+        }
+    }
+
+    @Test @MainActor func stopRequestedWhenArmedOnlySkipsStopCaptureButStillDisarms() async throws {
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let channel = MockSessionChannel()
+            let mock = MockTranscriber()
+
+            let session = SessionCoordinator(
+                channel: channel,
+                interruptions: NullInterruptionSource(),
+                isForeground: { true }
+            )
+
+            let coordinator = CaptureCoordinator(
+                session: session,
+                channel: channel,
+                transcriber: mock,
+                brain: MockBrain()
+            )
+
+            try await session.arm()
+
+            await coordinator.handleSignal(.stopRequested)
+
+            #expect(channel.readResult() == nil)
+            #expect(channel.readState()?.phase == .idle)
+        }
+    }
+
+    @Test @MainActor func stopCaptureFiresTidyingChangeAroundRewriteWindow() async throws {
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let channel = MockSessionChannel()
+            let mock = MockTranscriber()
+            let script = MockTranscriber.Script(drafts: [
+                CaptureDraft(sessionEpoch: 1, sequence: 1, text: "Final text.", stablePrefix: 11),
+            ], delayBetween: .milliseconds(10))
+            await mock.setScript(script)
+
+            let session = SessionCoordinator(
+                channel: channel,
+                interruptions: NullInterruptionSource(),
+                isForeground: { true }
+            )
+
+            let coordinator = CaptureCoordinator(
+                session: session,
+                channel: channel,
+                transcriber: mock,
+                brain: MockBrain()
+            )
+
+            var tidyingEvents: [Bool] = []
+            coordinator.onTidyingChange = { tidying in
+                tidyingEvents.append(tidying)
+            }
+
+            try await session.arm()
+            try await coordinator.startCapture()
+            try await Task.sleep(for: .milliseconds(100))
+            await coordinator.stopCapture()
+
+            #expect(tidyingEvents == [true, false])
+
+            await session.disarm()
+        }
+    }
     #endif
 }
 
