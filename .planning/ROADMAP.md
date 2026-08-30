@@ -20,7 +20,7 @@ as future milestones, not broken into phases yet — see `docs/ROADMAP.md` for t
 - [x] **Phase 5: On-Device Transcription** - `PikoTranscribe` wired to Apple's SpeechAnalyzer/SpeechTranscriber (code complete 2026-08-29). CAPT-03/CAPT-04 (400ms first word / 30s thrash) remain open — MockTranscriber integration only; physical-device speech not measured.
 - [x] **Phase 6: On-Device Cleanup & Routing** - `PikoBrain` SystemBrain rewrite + write-path routing (code complete 2026-08-29). CLNP-03 complete. CLNP-01/CLNP-02 remain open — Simulator is graceful skip, not physical Apple Intelligence quality or 600ms.
 - [x] **Phase 7: Live Activity** - armed/listening/tidying states with a working stop button (code complete 2026-08-30). Real on-device cadence/background delivery and physical stop-button tap remain device-only gaps.
-- [ ] **Phase 8: Local History & Skins** - `PikoMemory` searchable history + four Piko skins
+- [x] **Phase 8: Local History & Skins** - `PikoMemory` searchable history + four Piko skins (completed 2026-08-30)
 
 ## Phase Details
 
@@ -163,7 +163,7 @@ Plans:
 | 5. On-Device Transcription | 3/3 | Complete   | 2026-08-29 |
 | 6. On-Device Cleanup & Routing | 3/3 | Complete   | 2026-08-30 |
 | 7. Live Activity | 1/1 | Complete   | 2026-08-30 |
-| 8. Local History & Skins | 3/5 | In Progress|  |
+| 8. Local History & Skins | 5/5 | Complete   | 2026-08-30 |
 
 ## Future Milestones (not yet broken into phases)
 

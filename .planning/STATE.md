@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-08-30T09:53:35.504Z"
-last_activity: 2026-08-29
+status: complete
+stopped_at: Phase 8 merged to master. All 8 roadmap phases complete.
+last_updated: "2026-08-30T16:30:00Z"
+last_activity: 2026-08-30
 progress:
   total_phases: 8
-  completed_phases: 6
+  completed_phases: 8
   total_plans: 21
-  completed_plans: 17
-  percent: 75
+  completed_plans: 21
+  percent: 100
 ---
 
 # Project State
@@ -22,17 +22,27 @@ See: .planning/PROJECT.md (updated 2026-08-27)
 
 **Core value:** Dictation that starts instantly from wherever you are and inserts clean text into
 whatever field you're already in, entirely on-device.
-**Current focus:** Phase 8 — Local History & Skins
+**Current focus:** All v0.2 milestone phases complete. Remaining work is device-only
+verification (Phase 3 Back Tap/Action Button/45-min soak, Phase 7 Live Activity real cadence)
+and any new milestone the user wants to start next.
 
 ## Current Position
 
-Phase: 7 of 8 complete (code); next Phase 8
-Plan: all Phase 7 plans complete
-Status: Phase 7 merged to master. Live Activity starts at arm time (foreground, C5), updates on phase transitions, ends on idle. .tidying synthesized via CaptureCoordinator.onTidyingChange. Stop button (LiveActivityIntent) posts Signal.stopRequested through DarwinChannel; CaptureCoordinator checks transcriptionTask liveness (not stale heartbeat state) before stopCapture()+disarm(). Simulator Piko-Package 115/115. macOS swift test 65/65 (2 pre-existing unsigned SPM App Group). Real on-device Live Activity cadence/background delivery and physical stop-button tap unverified — device-only gap, same class as Phase 3's Back Tap/Action Button/45-min soak. CLNP-01/CLNP-02, CAPT-03/CAPT-04 still pending. Phase 3 VERIFICATION.md PARTIALLY DONE still stands.
+Phase: 8 of 8 complete (code)
+Plan: all phases' plans complete
+Status: Phase 8 merged to master. Real SQLiteMemory (SQLite3+FTS5) records every session;
+searchable via HistoryView. Real PikoFace SVG-to-SwiftUI port, four skins selectable via chip
+buttons in ArmView. Fixed two real bugs found during live verification: SessionCoordinator.phase
+broadcast to multiple simultaneous subscribers (was single-continuation, raced when Phase 8 added
+a second real consumer); .searchable List moved off ArmView onto its own HistoryView after it was
+found intercepting taps meant for Arm/skin controls. Simulator Piko-Package 140/140. macOS swift
+test 83/85 (2 pre-existing unsigned SPM App Group). No device-only gap this phase. CLNP-01/CLNP-02
+(Phase 6), CAPT-03/CAPT-04, Phase 3 VERIFICATION.md PARTIALLY DONE, and Phase 7's real on-device
+Live Activity cadence/stop-button tap all still pending physical device access.
 Branch: master (no git remote configured for this repo)
-Last activity: 2026-08-29
+Last activity: 2026-08-30
 
-Progress: [████████░░] 81%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
