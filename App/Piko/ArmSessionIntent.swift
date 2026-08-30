@@ -11,7 +11,7 @@ struct ArmSessionIntent: AppIntent {
     static let openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
-        try await AppComposition.shared.session.arm()
+        try await AppComposition.shared.armSession()
         return .result()
     }
 }

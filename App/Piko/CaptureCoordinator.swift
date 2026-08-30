@@ -23,6 +23,11 @@ public final class CaptureCoordinator {
     private var transcriptionTask: Task<Void, Never>?
     private var sessionEpoch = 0
 
+    /// Fires around the post-capture rewrite window: `true` when tidying starts,
+    /// `false` once `resultReady` has posted. The only source of a `.tidying`
+    /// transition anywhere in this codebase — `SessionPhase` itself never emits it.
+    public var onTidyingChange: (@MainActor (Bool) -> Void)?
+
     public init(session: SessionCoordinator,
                 channel: any SessionChannel,
                 transcriber: any Transcriber,
@@ -57,6 +62,7 @@ public final class CaptureCoordinator {
     /// Stop capture: finalize transcription and write result.
     public func stopCapture() async {
         await session.stopCapture()
+        onTidyingChange?(true)
         transcriptionTask?.cancel()
         transcriptionTask = nil
 
@@ -80,6 +86,7 @@ public final class CaptureCoordinator {
         )
         channel.writeResult(result)
         channel.post(.resultReady)
+        onTidyingChange?(false)
     }
 
     /// Respond to keyboard signals
@@ -93,6 +100,14 @@ public final class CaptureCoordinator {
             }
         case .captureStop:
             await stopCapture()
+        case .stopRequested:
+            // transcriptionTask is this type's own synchronous liveness flag — unlike
+            // channel.readState().phase (heartbeat-refreshed, up to 2s stale), it can never
+            // miss a capture that started moments ago and silently leak the task.
+            if transcriptionTask != nil {
+                await stopCapture()
+            }
+            await session.disarm()
         default:
             break
         }

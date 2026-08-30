@@ -13,14 +13,15 @@ public enum AppGroup {
 
 /// Darwin notification names. Cross-process, no payload — the payload goes through the App Group.
 public enum Signal: String, Sendable, CaseIterable {
-    case captureStart = "dev.piko.capture.start"
-    case captureStop  = "dev.piko.capture.stop"
-    case draftUpdated = "dev.piko.draft.updated"
-    case resultReady  = "dev.piko.result.ready"
-    case stateChanged = "dev.piko.state.changed"
+    case captureStart  = "dev.piko.capture.start"
+    case captureStop   = "dev.piko.capture.stop"
+    case draftUpdated  = "dev.piko.draft.updated"
+    case resultReady   = "dev.piko.result.ready"
+    case stateChanged  = "dev.piko.state.changed"
+    case stopRequested = "dev.piko.stop.requested"
 }
 
-public enum SessionPhase: String, Codable, Sendable {
+public enum SessionPhase: String, Codable, Sendable, Hashable {
     case idle       // app not holding an audio session
     case armed      // session active, mic not capturing
     case capturing  // buffering audio
@@ -157,6 +158,6 @@ public enum Profile: String, Codable, Sendable, CaseIterable {
     }
 }
 
-public enum Skin: String, Codable, Sendable, CaseIterable {
+public enum Skin: String, Codable, Sendable, CaseIterable, Hashable {
     case cute, cool, hero, sparkle
 }

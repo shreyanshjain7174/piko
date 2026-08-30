@@ -51,7 +51,24 @@ func editPairCoding() throws {
 @Test("app group and signal are singly defined")
 func appGroupAndSignalAreSinglyDefined() {
     #expect(!AppGroup.identifier.isEmpty)
-    #expect(Signal.allCases.count == 5)
+    #expect(Signal.allCases.count == 6)
+}
+
+@Test("stopRequested signal has the expected raw value")
+func stopRequestedSignalRawValue() {
+    #expect(Signal(rawValue: "dev.piko.stop.requested") == .stopRequested)
+}
+
+@Test("SessionPhase is Hashable")
+func sessionPhaseIsHashable() {
+    let set: Set<SessionPhase> = [.armed, .armed, .idle]
+    #expect(set.count == 2)
+}
+
+@Test("Skin is Hashable")
+func skinIsHashable() {
+    let set: Set<Skin> = [.cute, .cute, .cool]
+    #expect(set.count == 2)
 }
 
 @Test("commands and recalls route away from write")

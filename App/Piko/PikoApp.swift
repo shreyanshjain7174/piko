@@ -36,7 +36,7 @@ struct ArmView: View {
             Button("Arm") {
                 Task {
                     do {
-                        try await AppComposition.shared.session.arm()
+                        try await AppComposition.shared.armSession()
                         hasArmedThisLaunch = true
                         staleAtLaunch = false
                         armError = nil
