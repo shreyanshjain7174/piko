@@ -24,6 +24,36 @@ struct SessionCoordinatorArmingTests {
     }
 
     @Test @MainActor
+    func twoSimultaneousPhaseSubscribersBothSeeEveryTransition() async throws {
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            // Reproduces the real-world shape: AppComposition's LiveActivityController
+            // observation loop and ArmView's own phase-observing task both subscribe to
+            // `session.phase` at the same time. Before the broadcast fix, `phase` was a
+            // single shared `AsyncStream` continuation — two concurrent `for await`
+            // consumers raced for each yielded value instead of both receiving it.
+            let coordinator = SessionCoordinator(
+                channel: MockSessionChannel(),
+                interruptions: MockInterruptionSource(),
+                isForeground: { true })
+
+            var firstSubscriber = coordinator.phase.makeAsyncIterator()
+            var secondSubscriber = coordinator.phase.makeAsyncIterator()
+
+            try await coordinator.arm()
+
+            #expect(await firstSubscriber.next() == .armed)
+            #expect(await secondSubscriber.next() == .armed)
+
+            try await coordinator.startCapture()
+
+            #expect(await firstSubscriber.next() == .capturing)
+            #expect(await secondSubscriber.next() == .capturing)
+
+            await coordinator.disarm()
+        }
+    }
+
+    @Test @MainActor
     func armThrowsNotForegroundWhenBackgrounded() async {
         let coordinator = SessionCoordinator(
             channel: MockSessionChannel(),
