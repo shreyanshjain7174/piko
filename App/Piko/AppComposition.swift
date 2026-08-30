@@ -3,6 +3,7 @@ import PikoAudio
 import PikoBrain
 import PikoBridge
 import PikoKit
+import PikoMemory
 import PikoTranscribe
 import UIKit
 
@@ -16,6 +17,7 @@ final class AppComposition {
     let session: SessionCoordinator
     public let captureCoordinator: CaptureCoordinator
     public let liveActivityController: LiveActivityController
+    public let memory: any Memory
 
     private init() {
         let channel = DarwinChannel()!
@@ -36,11 +38,19 @@ final class AppComposition {
         brain = SystemBrain()
         #endif
 
+        let appSupportURL = try! FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask,
+            appropriateFor: nil, create: true)
+        let dbURL = appSupportURL.appendingPathComponent("history.sqlite")
+        let memory: any Memory = try! SQLiteMemory(path: dbURL)
+        self.memory = memory
+
         self.captureCoordinator = CaptureCoordinator(
             session: session,
             channel: channel,
             transcriber: transcriber,
-            brain: brain
+            brain: brain,
+            memory: memory
         )
         self.liveActivityController = LiveActivityController()
 

@@ -19,6 +19,7 @@ public final class CaptureCoordinator {
     private let channel: any SessionChannel
     private let transcriber: any Transcriber
     private let brain: any Brain
+    private let memory: any Memory
 
     private var transcriptionTask: Task<Void, Never>?
     private var sessionEpoch = 0
@@ -31,11 +32,13 @@ public final class CaptureCoordinator {
     public init(session: SessionCoordinator,
                 channel: any SessionChannel,
                 transcriber: any Transcriber,
-                brain: any Brain) {
+                brain: any Brain,
+                memory: any Memory) {
         self.session = session
         self.channel = channel
         self.transcriber = transcriber
         self.brain = brain
+        self.memory = memory
     }
 
     /// Start capture: begin audio recording and transcription pipeline.
@@ -86,6 +89,7 @@ public final class CaptureCoordinator {
         )
         channel.writeResult(result)
         channel.post(.resultReady)
+        await memory.record(result)
         onTidyingChange?(false)
     }
 

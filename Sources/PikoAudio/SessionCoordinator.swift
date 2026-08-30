@@ -24,10 +24,28 @@ public final class SessionCoordinator: ArmedSession {
     /// hardware tap never fires in that state; 05-02 still needs a live buffer stream.
     private var silencePumpTask: Task<Void, Never>?
 
-    private let phaseContinuation: AsyncStream<SessionPhase>.Continuation
-    public let phase: AsyncStream<SessionPhase>
+    /// Fanned out to every independent subscriber — `phase` hands back a fresh stream per
+    /// access, not one shared continuation, so two simultaneous observers (e.g. the app's UI
+    /// and `LiveActivityController`) each see every emission instead of racing for it.
+    private var phaseSubscribers: [UUID: AsyncStream<SessionPhase>.Continuation] = [:]
     private let buffersContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation
     public let buffers: AsyncStream<AVAudioPCMBuffer>
+
+    public var phase: AsyncStream<SessionPhase> {
+        let id = UUID()
+        return AsyncStream { [weak self] continuation in
+            guard let self else {
+                continuation.finish()
+                return
+            }
+            self.phaseSubscribers[id] = continuation
+            continuation.onTermination = { [weak self] _ in
+                Task { @MainActor in
+                    self?.phaseSubscribers[id] = nil
+                }
+            }
+        }
+    }
 
     public init(channel: any SessionChannel,
                 interruptions: any InterruptionSource,
@@ -35,7 +53,6 @@ public final class SessionCoordinator: ArmedSession {
         self.channel = channel
         self.interruptions = interruptions
         self.isForeground = isForeground
-        (phase, phaseContinuation) = AsyncStream.makeStream()
         (buffers, buffersContinuation) = AsyncStream.makeStream()
 
         Task { [weak self] in
@@ -62,7 +79,7 @@ public final class SessionCoordinator: ArmedSession {
         try session.setActive(true)
 
         currentPhase = .armed
-        phaseContinuation.yield(currentPhase)
+        broadcastPhase()
         writeChannelState(phase: .armed)
 
         heartbeatTask?.cancel()
@@ -91,8 +108,14 @@ public final class SessionCoordinator: ArmedSession {
         try? AVAudioSession.sharedInstance().setActive(false)
 
         currentPhase = .idle
-        phaseContinuation.yield(currentPhase)
+        broadcastPhase()
         writeChannelState(phase: .idle)
+    }
+
+    private func broadcastPhase() {
+        for continuation in phaseSubscribers.values {
+            continuation.yield(currentPhase)
+        }
     }
 
     /// Phase and heartbeat are coordinator-owned. Profile and skin are user-owned
@@ -172,7 +195,7 @@ public final class SessionCoordinator: ArmedSession {
         #endif
 
         currentPhase = .capturing
-        phaseContinuation.yield(currentPhase)
+        broadcastPhase()
     }
 
     private func startSilencePump(
@@ -203,7 +226,7 @@ public final class SessionCoordinator: ArmedSession {
         }
         engine.stop()
         currentPhase = .armed
-        phaseContinuation.yield(currentPhase)
+        broadcastPhase()
     }
 }
 #endif

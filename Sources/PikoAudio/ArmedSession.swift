@@ -13,7 +13,7 @@ extension AVAudioPCMBuffer: @unchecked Sendable {}
 /// activation impossible, and no accessory, intent or notification changes that. Once armed,
 /// the session survives backgrounding via the `audio` background mode (C3).
 public protocol ArmedSession: Sendable {
-    var phase: AsyncStream<SessionPhase> { get }
+    @MainActor var phase: AsyncStream<SessionPhase> { get }
     /// PCM buffers from the engine tap. Idle until `startCapture()`; finished on `disarm()`.
     var buffers: AsyncStream<AVAudioPCMBuffer> { get }
     /// Foreground only. Throws `PikoError.notForeground` otherwise.
