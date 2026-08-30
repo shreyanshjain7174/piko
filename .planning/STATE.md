@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: milestone
 status: in_progress
-stopped_at: Completed 06-02-PLAN.md
-last_updated: "2026-08-29T19:16:00Z"
+stopped_at: Phase 6 merged to master. Next Phase 7.
+last_updated: "2026-08-30T04:00:00Z"
 last_activity: 2026-08-29
 progress:
   total_phases: 8
@@ -22,14 +22,14 @@ See: .planning/PROJECT.md (updated 2026-08-27)
 
 **Core value:** Dictation that starts instantly from wherever you are and inserts clean text into
 whatever field you're already in, entirely on-device.
-**Current focus:** Phase 6 — On-Device Cleanup & Routing
+**Current focus:** Phase 7 — Live Activity
 
 ## Current Position
 
-Phase: 6 of 8 code-complete (06-01, 06-02, 06-03); next Phase 7
-Plan: 06-02 complete
-Status: CaptureCoordinator stopCapture routes then rewrites with try? skip. Simulator Piko-Package 79/79. macOS swift test 52/54 (2 pre-existing unsigned SPM App Group). CLNP-03 complete (route never calls inference). CLNP-01/CLNP-02 still pending (Simulator is skip, not live rewrite quality or 600ms). CAPT-03/CAPT-04 still pending. Phase 3 VERIFICATION.md PARTIALLY DONE still stands.
-Branch: piko-06-cleanup-routing-plan01 (no git remote configured for this repo)
+Phase: 6 of 8 complete (code); next Phase 7
+Plan: all Phase 6 plans complete
+Status: Phase 6 merged to master. CaptureCoordinator stopCapture routes then rewrites with try? skip. Simulator Piko-Package 79/79. macOS swift test 52/54 (2 pre-existing unsigned SPM App Group). CLNP-03 complete (route never calls inference). CLNP-01/CLNP-02 still pending (Simulator is skip, not live rewrite quality or 600ms). CAPT-03/CAPT-04 still pending. Phase 3 VERIFICATION.md PARTIALLY DONE still stands.
+Branch: master (no git remote configured for this repo)
 Last activity: 2026-08-29
 
 Progress: [██████░░░░] 75%
