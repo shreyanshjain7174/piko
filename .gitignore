@@ -9,3 +9,4 @@ Packages/
 *.mlaimodel
 models/
 graphify-out/
+App/build/
