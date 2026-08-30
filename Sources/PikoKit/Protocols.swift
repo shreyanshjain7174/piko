@@ -52,5 +52,8 @@ public enum PikoError: Error, Sendable {
     /// `startCapture()` was called before `arm()`.
     case notArmed
     case sessionInterrupted
+    /// The model cannot run here (ineligible device, Apple Intelligence off, not iOS 26).
     case brainUnavailable(String)
+    /// The model could run but did not finish within the rewrite budget.
+    case brainBudgetExceeded(milliseconds: Int)
 }

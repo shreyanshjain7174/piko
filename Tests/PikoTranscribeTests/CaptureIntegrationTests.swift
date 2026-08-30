@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import PikoBrain
 import PikoKit
 @testable import PikoTranscribe
 #if os(iOS)
@@ -31,7 +32,8 @@ struct CaptureIntegrationTests {
             let coordinator = CaptureCoordinator(
                 session: session,
                 channel: channel,
-                transcriber: mock
+                transcriber: mock,
+                brain: MockBrain()
             )
 
             try await session.arm()
@@ -67,7 +69,8 @@ struct CaptureIntegrationTests {
             let coordinator = CaptureCoordinator(
                 session: session,
                 channel: channel,
-                transcriber: mock
+                transcriber: mock,
+                brain: MockBrain()
             )
 
             try await session.arm()

@@ -1,5 +1,6 @@
 import Foundation
 import PikoAudio
+import PikoBrain
 import PikoBridge
 import PikoKit
 import PikoTranscribe
@@ -27,10 +28,18 @@ final class AppComposition {
         transcriber = SpeechTranscriberEngine()
         #endif
 
+        let brain: any Brain
+        #if targetEnvironment(simulator)
+        brain = MockBrain()
+        #else
+        brain = SystemBrain()
+        #endif
+
         self.captureCoordinator = CaptureCoordinator(
             session: session,
             channel: channel,
-            transcriber: transcriber
+            transcriber: transcriber,
+            brain: brain
         )
 
         Task { [weak self] in

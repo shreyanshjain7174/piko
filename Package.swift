@@ -27,12 +27,12 @@ let package = Package(
         .testTarget(name: "PikoKitTests", dependencies: ["PikoKit", "PikoBrain", "PikoMemory"]),
         .testTarget(name: "PikoBridgeTests", dependencies: ["PikoBridge", "PikoKit"]),
         .testTarget(name: "PikoAudioTests", dependencies: ["PikoAudio", "PikoKit"]),
-        .testTarget(name: "PikoTranscribeTests", dependencies: ["PikoTranscribe", "PikoKit", "PikoAudio", "PikoCaptureCore"]),
+        .testTarget(name: "PikoTranscribeTests", dependencies: ["PikoTranscribe", "PikoKit", "PikoAudio", "PikoCaptureCore", "PikoBrain"]),
         // CaptureCoordinator lives in App/Piko; expose it to PikoTranscribeTests
         // the same way PikoKeyboardCore exposes insertion without the UIKit app shell.
         .target(
             name: "PikoCaptureCore",
-            dependencies: ["PikoKit", "PikoAudio", "PikoTranscribe", "PikoBridge"],
+            dependencies: ["PikoKit", "PikoAudio", "PikoTranscribe", "PikoBridge", "PikoBrain"],
             path: "App/Piko",
             exclude: [
                 "AppComposition.swift",
@@ -58,5 +58,6 @@ let package = Package(
             ]
         ),
         .testTarget(name: "PikoKeyboardTests", dependencies: ["PikoKit", "PikoKeyboardCore"]),
+        .testTarget(name: "PikoBrainTests", dependencies: ["PikoBrain", "PikoKit"]),
     ]
 )

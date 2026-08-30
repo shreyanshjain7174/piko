@@ -43,6 +43,9 @@ targets:
     type: app-extension
     platform: iOS
     sources: [PikoKeyboard]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.piko.Piko.PikoKeyboard
     # Deliberately short. CONSTRAINTS C4 — this list is the ~60 MB ceiling in build form.
     dependencies:
       - package: Piko
@@ -50,6 +53,7 @@ targets:
     info:
       path: PikoKeyboard/Info.plist
       properties:
+        CFBundleDisplayName: Piko
         NSExtension:
           NSExtensionPointIdentifier: com.apple.keyboard-service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardViewController
@@ -67,6 +71,9 @@ targets:
     type: app-extension
     platform: iOS
     sources: [PikoWidgets]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.piko.Piko.PikoWidgets
     dependencies:
       - package: Piko
         products: [PikoKit, PikoUI]

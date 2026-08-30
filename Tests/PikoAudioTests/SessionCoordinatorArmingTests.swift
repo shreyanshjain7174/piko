@@ -78,5 +78,64 @@ struct SessionCoordinatorArmingTests {
             await coordinator.disarm()
         }
     }
+
+    @Test @MainActor
+    func armPreservesAgentProfileRatherThanResettingToMessage() async throws {
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let channel = MockSessionChannel()
+            let priorHeartbeat = Date(timeIntervalSinceNow: -1)
+            channel.writeState(SessionState(
+                phase: .idle,
+                heartbeat: priorHeartbeat,
+                skin: .hero,
+                profile: .agent))
+
+            let coordinator = SessionCoordinator(
+                channel: channel,
+                interruptions: MockInterruptionSource(),
+                isForeground: { true })
+
+            try await coordinator.arm()
+            let armed = try #require(channel.readState())
+            #expect(armed.profile == .agent)
+            #expect(armed.skin == .hero)
+            #expect(armed.phase == .armed)
+
+            await coordinator.disarm()
+            let idle = try #require(channel.readState())
+            #expect(idle.profile == .agent)
+            #expect(idle.skin == .hero)
+            #expect(idle.phase == .idle)
+        }
+    }
+
+    @Test @MainActor
+    func heartbeatPublicationPreservesSelectedAgentProfile() async throws {
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let channel = MockSessionChannel()
+            channel.writeState(SessionState(
+                phase: .idle,
+                heartbeat: Date(timeIntervalSinceNow: -1),
+                skin: .sparkle,
+                profile: .agent))
+
+            let coordinator = SessionCoordinator(
+                channel: channel,
+                interruptions: MockInterruptionSource(),
+                isForeground: { true })
+
+            try await coordinator.arm()
+            let armedHeartbeat = try #require(channel.readState()).heartbeat
+
+            try await Task.sleep(for: .seconds(2.5))
+            let later = try #require(channel.readState())
+            #expect(later.profile == .agent)
+            #expect(later.skin == .sparkle)
+            #expect(later.phase == .armed)
+            #expect(later.heartbeat > armedHeartbeat)
+
+            await coordinator.disarm()
+        }
+    }
 }
 #endif

@@ -18,7 +18,7 @@ as future milestones, not broken into phases yet — see `docs/ROADMAP.md` for t
 - [x] **Phase 3: Armed Session** - `PikoAudio` arm/disarm/capture with interruption recovery — merged to master 2026-08-29. All 11 PikoAudioTests verified passing on iOS Simulator. VERIFICATION.md verdict PARTIALLY DONE stands: Back Tap/Action Button device binding (SESS-02/03) and 45-min soak (SESS-05) remain open, both requiring physical iPhone hardware with no Simulator/CI equivalent.
 - [x] **Phase 4: Keyboard Extension & Streaming Insertion** - mic button drives the armed session, stablePrefix-based insertion (completed 2026-08-29)
 - [x] **Phase 5: On-Device Transcription** - `PikoTranscribe` wired to Apple's SpeechAnalyzer/SpeechTranscriber (code complete 2026-08-29). CAPT-03/CAPT-04 (400ms first word / 30s thrash) remain open — MockTranscriber integration only; physical-device speech not measured.
-- [ ] **Phase 6: On-Device Cleanup & Routing** - `PikoBrain` SystemBrain rewrite + write-path routing
+- [x] **Phase 6: On-Device Cleanup & Routing** - `PikoBrain` SystemBrain rewrite + write-path routing (code complete 2026-08-29). CLNP-03 complete. CLNP-01/CLNP-02 remain open — Simulator is graceful skip, not physical Apple Intelligence quality or 600ms.
 - [ ] **Phase 7: Live Activity** - armed/listening/tidying states with a working stop button
 - [ ] **Phase 8: Local History & Skins** - `PikoMemory` searchable history + four Piko skins
 
@@ -112,11 +112,12 @@ router never taxes the fast path.
   2. Cleanup of a 60-word transcript completes in under 600ms on the oldest supported device, or
      is skipped on that device with no user-visible failure
   3. Routing uses a regex/keyword prefilter first; the rewrite model is never invoked for routing
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 06-01: Implement SystemBrain rewrite using Apple Foundation Models
-- [ ] 06-02: Implement write-path routing with prefilter-before-model ordering
+- [x] 06-01-PLAN.md — SystemBrain rewrite via Foundation Models under an enforced 600ms budget (wave 1)
+- [x] 06-02-PLAN.md — Prefilter-only routing plus Brain wiring into CaptureCoordinator with graceful skip (wave 2)
+- [x] 06-03-PLAN.md — .agent Profile case, the Phase 6 contract addition reserved by docs/SPEC.md (wave 1)
 
 ### Phase 7: Live Activity
 **Goal**: The user can see and stop an in-progress capture from the Lock Screen/Dynamic Island.
@@ -155,7 +156,7 @@ Plans:
 | 3. Armed Session | 3/3 | Complete | 2026-08-29 |
 | 4. Keyboard Extension & Streaming Insertion | 2/2 | Complete   | 2026-08-29 |
 | 5. On-Device Transcription | 3/3 | Complete   | 2026-08-29 |
-| 6. On-Device Cleanup & Routing | 0/2 | Not started | - |
+| 6. On-Device Cleanup & Routing | 2/3 | In Progress|  |
 | 7. Live Activity | 0/1 | Not started | - |
 | 8. Local History & Skins | 0/2 | Not started | - |
 

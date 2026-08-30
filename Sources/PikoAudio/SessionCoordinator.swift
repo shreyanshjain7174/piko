@@ -63,14 +63,14 @@ public final class SessionCoordinator: ArmedSession {
 
         currentPhase = .armed
         phaseContinuation.yield(currentPhase)
-        channel.writeState(SessionState(phase: .armed, heartbeat: .now))
+        writeChannelState(phase: .armed)
 
         heartbeatTask?.cancel()
         heartbeatTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(2))
                 guard !Task.isCancelled, let self else { return }
-                self.channel.writeState(SessionState(phase: self.currentPhase, heartbeat: .now))
+                self.writeChannelState(phase: self.currentPhase)
             }
         }
     }
@@ -92,7 +92,19 @@ public final class SessionCoordinator: ArmedSession {
 
         currentPhase = .idle
         phaseContinuation.yield(currentPhase)
-        channel.writeState(SessionState(phase: .idle, heartbeat: .now))
+        writeChannelState(phase: .idle)
+    }
+
+    /// Phase and heartbeat are coordinator-owned. Profile and skin are user-owned
+    /// and must survive arm / heartbeat / disarm publications.
+    private func writeChannelState(phase: SessionPhase, heartbeat: Date = .now) {
+        let existing = channel.readState()
+        channel.writeState(SessionState(
+            phase: phase,
+            heartbeat: heartbeat,
+            skin: existing?.skin ?? .cute,
+            profile: existing?.profile ?? .message
+        ))
     }
 
     public func startCapture() async throws {
