@@ -56,7 +56,7 @@ whatever field you're already in, entirely on-device.
 
 ### History
 
-- [ ] **HIST-01**: Every capture session is recorded to local history
+- [x] **HIST-01**: Every capture session is recorded to local history
 - [ ] **HIST-02**: Local history is searchable
 
 ### Skins
