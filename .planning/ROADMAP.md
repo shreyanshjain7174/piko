@@ -126,10 +126,12 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. A Live Activity starts at arm time and shows armed / listening / tidying state
   2. The stop button in the Live Activity ends the session reliably
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 07-01: Implement Live Activity with armed/listening/tidying states and stop action
+- [ ] 07-01-PLAN.md — PikoKit contract move (PikoAttributes, Hashable fix) + Signal.stopRequested wiring (wave 1)
+- [ ] 07-02-PLAN.md — LiveActivityController lifecycle + AppComposition wiring (wave 2)
+- [ ] 07-03-PLAN.md — Widget extension UI (@main WidgetBundle, DynamicIsland/Lock Screen, StopSessionIntent) (wave 2)
 
 ### Phase 8: Local History & Skins
 **Goal**: Every session is recorded and searchable, and the user can pick from four Piko skins.
