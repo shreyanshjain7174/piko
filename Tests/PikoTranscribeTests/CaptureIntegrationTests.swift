@@ -2,6 +2,7 @@ import Foundation
 import Testing
 import PikoBrain
 import PikoKit
+import PikoMemory
 @testable import PikoTranscribe
 #if os(iOS)
 @testable import PikoAudio
@@ -33,7 +34,8 @@ struct CaptureIntegrationTests {
                 session: session,
                 channel: channel,
                 transcriber: mock,
-                brain: MockBrain()
+                brain: MockBrain(),
+                memory: EphemeralMemory()
             )
 
             try await session.arm()
@@ -70,7 +72,8 @@ struct CaptureIntegrationTests {
                 session: session,
                 channel: channel,
                 transcriber: mock,
-                brain: MockBrain()
+                brain: MockBrain(),
+                memory: EphemeralMemory()
             )
 
             try await session.arm()
@@ -106,7 +109,8 @@ struct CaptureIntegrationTests {
                 session: session,
                 channel: channel,
                 transcriber: mock,
-                brain: MockBrain()
+                brain: MockBrain(),
+                memory: EphemeralMemory()
             )
 
             try await session.arm()
@@ -135,7 +139,8 @@ struct CaptureIntegrationTests {
                 session: session,
                 channel: channel,
                 transcriber: mock,
-                brain: MockBrain()
+                brain: MockBrain(),
+                memory: EphemeralMemory()
             )
 
             try await session.arm()
@@ -166,7 +171,8 @@ struct CaptureIntegrationTests {
                 session: session,
                 channel: channel,
                 transcriber: mock,
-                brain: MockBrain()
+                brain: MockBrain(),
+                memory: EphemeralMemory()
             )
 
             var tidyingEvents: [Bool] = []
@@ -180,6 +186,42 @@ struct CaptureIntegrationTests {
             await coordinator.stopCapture()
 
             #expect(tidyingEvents == [true, false])
+
+            await session.disarm()
+        }
+    }
+
+    @Test @MainActor func stopCaptureRecordsResultIntoMemory() async throws {
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let channel = MockSessionChannel()
+            let mock = MockTranscriber()
+            let script = MockTranscriber.Script(drafts: [
+                CaptureDraft(sessionEpoch: 1, sequence: 1, text: "Final text.", stablePrefix: 11),
+            ], delayBetween: .milliseconds(10))
+            await mock.setScript(script)
+
+            let session = SessionCoordinator(
+                channel: channel,
+                interruptions: NullInterruptionSource(),
+                isForeground: { true }
+            )
+
+            let memory = EphemeralMemory()
+            let coordinator = CaptureCoordinator(
+                session: session,
+                channel: channel,
+                transcriber: mock,
+                brain: MockBrain(),
+                memory: memory
+            )
+
+            try await session.arm()
+            try await coordinator.startCapture()
+            try await Task.sleep(for: .milliseconds(100))
+            await coordinator.stopCapture()
+
+            let found = await memory.search("Final", limit: 10)
+            #expect(found.count == 1)
 
             await session.disarm()
         }

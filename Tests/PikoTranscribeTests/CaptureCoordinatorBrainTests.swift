@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import PikoKit
+import PikoMemory
 @testable import PikoTranscribe
 #if os(iOS)
 @testable import PikoAudio
@@ -121,7 +122,8 @@ struct CaptureCoordinatorBrainTests {
             session: session,
             channel: channel,
             transcriber: mock,
-            brain: brain
+            brain: brain,
+            memory: EphemeralMemory()
         )
         try await session.arm()
         try await coordinator.startCapture()

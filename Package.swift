@@ -29,7 +29,7 @@ let package = Package(
         .testTarget(name: "PikoUITests", dependencies: ["PikoUI", "PikoKit"]),
         .testTarget(name: "PikoBridgeTests", dependencies: ["PikoBridge", "PikoKit"]),
         .testTarget(name: "PikoAudioTests", dependencies: ["PikoAudio", "PikoKit"]),
-        .testTarget(name: "PikoTranscribeTests", dependencies: ["PikoTranscribe", "PikoKit", "PikoAudio", "PikoCaptureCore", "PikoBrain"]),
+        .testTarget(name: "PikoTranscribeTests", dependencies: ["PikoTranscribe", "PikoKit", "PikoAudio", "PikoCaptureCore", "PikoBrain", "PikoMemory"]),
         // CaptureCoordinator lives in App/Piko; expose it to PikoTranscribeTests
         // the same way PikoKeyboardCore exposes insertion without the UIKit app shell.
         .target(
