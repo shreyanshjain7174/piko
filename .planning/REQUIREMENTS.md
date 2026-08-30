@@ -57,11 +57,11 @@ whatever field you're already in, entirely on-device.
 ### History
 
 - [x] **HIST-01**: Every capture session is recorded to local history
-- [ ] **HIST-02**: Local history is searchable
+- [x] **HIST-02**: Local history is searchable
 
 ### Skins
 
-- [ ] **SKIN-01**: Four skins for the Piko character are available and selectable locally
+- [x] **SKIN-01**: Four skins for the Piko character are available and selectable locally
 
 ## v2 Requirements (v0.2 — "the identity")
 
@@ -111,8 +111,8 @@ Deferred to the next milestone. Tracked but not in the current roadmap.
 | CLNP-01, CLNP-02 | Phase 6 | Pending (Simulator skip only; no physical Apple Intelligence quality or 600ms proof) |
 | CLNP-03 | Phase 6 Plan 02 | Complete (RoutePrefilterTests: rewrite inference never invoked from route) |
 | LACT-01, LACT-02 | Phase 7 | Pending |
-| HIST-01, HIST-02 | Phase 8 | Pending |
-| SKIN-01 | Phase 8 | Pending |
+| HIST-01, HIST-02 | Phase 8 | Done |
+| SKIN-01 | Phase 8 | Done |
 
 **Coverage:**
 - v1 requirements: 21 total
