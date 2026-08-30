@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v0.2
 milestone_name: milestone
 status: in_progress
-stopped_at: Phase 6 merged to master. Next Phase 7.
-last_updated: "2026-08-30T04:00:00Z"
+stopped_at: Phase 7 merged to master. Next Phase 8.
+last_updated: "2026-08-30T14:30:00Z"
 last_activity: 2026-08-29
 progress:
   total_phases: 8
@@ -22,13 +22,13 @@ See: .planning/PROJECT.md (updated 2026-08-27)
 
 **Core value:** Dictation that starts instantly from wherever you are and inserts clean text into
 whatever field you're already in, entirely on-device.
-**Current focus:** Phase 7 — Live Activity
+**Current focus:** Phase 8 — Local History & Skins
 
 ## Current Position
 
-Phase: 6 of 8 complete (code); next Phase 7
-Plan: all Phase 6 plans complete
-Status: Phase 6 merged to master. CaptureCoordinator stopCapture routes then rewrites with try? skip. Simulator Piko-Package 79/79. macOS swift test 52/54 (2 pre-existing unsigned SPM App Group). CLNP-03 complete (route never calls inference). CLNP-01/CLNP-02 still pending (Simulator is skip, not live rewrite quality or 600ms). CAPT-03/CAPT-04 still pending. Phase 3 VERIFICATION.md PARTIALLY DONE still stands.
+Phase: 7 of 8 complete (code); next Phase 8
+Plan: all Phase 7 plans complete
+Status: Phase 7 merged to master. Live Activity starts at arm time (foreground, C5), updates on phase transitions, ends on idle. .tidying synthesized via CaptureCoordinator.onTidyingChange. Stop button (LiveActivityIntent) posts Signal.stopRequested through DarwinChannel; CaptureCoordinator checks transcriptionTask liveness (not stale heartbeat state) before stopCapture()+disarm(). Simulator Piko-Package 115/115. macOS swift test 65/65 (2 pre-existing unsigned SPM App Group). Real on-device Live Activity cadence/background delivery and physical stop-button tap unverified — device-only gap, same class as Phase 3's Back Tap/Action Button/45-min soak. CLNP-01/CLNP-02, CAPT-03/CAPT-04 still pending. Phase 3 VERIFICATION.md PARTIALLY DONE still stands.
 Branch: master (no git remote configured for this repo)
 Last activity: 2026-08-29
 

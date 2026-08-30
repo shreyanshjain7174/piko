@@ -19,7 +19,7 @@ as future milestones, not broken into phases yet — see `docs/ROADMAP.md` for t
 - [x] **Phase 4: Keyboard Extension & Streaming Insertion** - mic button drives the armed session, stablePrefix-based insertion (completed 2026-08-29)
 - [x] **Phase 5: On-Device Transcription** - `PikoTranscribe` wired to Apple's SpeechAnalyzer/SpeechTranscriber (code complete 2026-08-29). CAPT-03/CAPT-04 (400ms first word / 30s thrash) remain open — MockTranscriber integration only; physical-device speech not measured.
 - [x] **Phase 6: On-Device Cleanup & Routing** - `PikoBrain` SystemBrain rewrite + write-path routing (code complete 2026-08-29). CLNP-03 complete. CLNP-01/CLNP-02 remain open — Simulator is graceful skip, not physical Apple Intelligence quality or 600ms.
-- [ ] **Phase 7: Live Activity** - armed/listening/tidying states with a working stop button
+- [x] **Phase 7: Live Activity** - armed/listening/tidying states with a working stop button (code complete 2026-08-30). Real on-device cadence/background delivery and physical stop-button tap remain device-only gaps.
 - [ ] **Phase 8: Local History & Skins** - `PikoMemory` searchable history + four Piko skins
 
 ## Phase Details
@@ -159,7 +159,7 @@ Plans:
 | 4. Keyboard Extension & Streaming Insertion | 2/2 | Complete   | 2026-08-29 |
 | 5. On-Device Transcription | 3/3 | Complete   | 2026-08-29 |
 | 6. On-Device Cleanup & Routing | 3/3 | Complete   | 2026-08-30 |
-| 7. Live Activity | 0/1 | Not started | - |
+| 7. Live Activity | 1/1 | Complete   | 2026-08-30 |
 | 8. Local History & Skins | 0/2 | Not started | - |
 
 ## Future Milestones (not yet broken into phases)
