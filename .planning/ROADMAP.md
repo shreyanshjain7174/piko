@@ -141,11 +141,14 @@ Plans:
   1. Every completed capture session appears in local history
   2. History is searchable by content
   3. Four skins exist and can be selected locally, with no network call involved
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] 08-01: Implement PikoMemory local index with search
-- [ ] 08-02: Implement four Piko skins and local selection UI
+- [ ] 08-01-PLAN.md — Package.swift scaffolding: PikoMemoryTests + PikoUITests targets (wave 1)
+- [ ] 08-02-PLAN.md — Real SQLiteMemory (SQLite3 + FTS5, actor-isolated) implementing Memory (wave 2)
+- [ ] 08-03-PLAN.md — PikoFace SVG-to-SwiftUI port: real body/eyes/mouth/skin accessories (wave 2)
+- [ ] 08-04-PLAN.md — AppComposition + CaptureCoordinator wiring: memory.record() on every capture (wave 3)
+- [ ] 08-05-PLAN.md — ArmView: history list + search, skin picker, PikoFace wired in (wave 4)
 
 ## Progress
 
@@ -160,7 +163,7 @@ Plans:
 | 5. On-Device Transcription | 3/3 | Complete   | 2026-08-29 |
 | 6. On-Device Cleanup & Routing | 3/3 | Complete   | 2026-08-30 |
 | 7. Live Activity | 1/1 | Complete   | 2026-08-30 |
-| 8. Local History & Skins | 0/2 | Not started | - |
+| 8. Local History & Skins | 0/5 | Not started | - |
 
 ## Future Milestones (not yet broken into phases)
 
