@@ -156,7 +156,7 @@ Plans:
 | 3. Armed Session | 3/3 | Complete | 2026-08-29 |
 | 4. Keyboard Extension & Streaming Insertion | 2/2 | Complete   | 2026-08-29 |
 | 5. On-Device Transcription | 3/3 | Complete   | 2026-08-29 |
-| 6. On-Device Cleanup & Routing | 2/3 | In Progress|  |
+| 6. On-Device Cleanup & Routing | 3/3 | Complete   | 2026-08-30 |
 | 7. Live Activity | 0/1 | Not started | - |
 | 8. Local History & Skins | 0/2 | Not started | - |
 
