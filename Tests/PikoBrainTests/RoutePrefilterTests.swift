@@ -63,4 +63,41 @@ struct RoutePrefilterTests {
         #expect(await brain.route("   \n\t  ") == .write)
         #expect(SystemBrain.prefilterRoute("") == .write)
     }
+
+    // MARK: - Battle tests: real adversarial input, not just clean ASCII keyword matches.
+
+    @Test func emojiOnlyInputRoutesToWriteNotCrash() async {
+        let brain = SystemBrain()
+        #expect(await brain.route("👍👍👍") == .write)
+        // Prefilter is a pure hasPrefix match (documented in SystemBrain.prefilterRoute) —
+        // leading emoji, like any leading noise, defeats it. Not a bug: real ASR output
+        // never contains emoji, so this input shape can't occur on the real pipeline.
+        #expect(await brain.route("🎉 remind me 🎉") == .write)
+        #expect(await brain.route("remind me 🎉 to call back") == .command, "keyword still at the true prefix, emoji only in the tail")
+    }
+
+    @Test func nonLatinScriptInputDoesNotFalsePositiveOnEnglishKeywords() async {
+        let brain = SystemBrain()
+        // Arabic/Hindi/Japanese text containing no English command/recall keywords must
+        // route to .write, not accidentally match a substring of a transliterated word.
+        #expect(await brain.route("مرحبا كيف حالك اليوم") == .write)
+        #expect(await brain.route("आज मौसम बहुत अच्छा है") == .write)
+        #expect(await brain.route("今日はいい天気ですね") == .write)
+    }
+
+    @Test func veryLongInputDoesNotHangOrCrash() async {
+        let brain = SystemBrain()
+        let longText = String(repeating: "the quick brown fox jumps over the lazy dog ", count: 2000)
+        let route = await brain.route(longText)
+        #expect(route == .write)
+        #expect(await brain.route("remind me " + longText) == .command)
+    }
+
+    @Test func keywordEmbeddedInsideALongerWordDoesNotFalsePositive() async {
+        let brain = SystemBrain()
+        // "remind" is a command starter; "reminders" and "remindful" (not a real word, but
+        // adversarially close) must not match as a whole-word/prefix false positive if the
+        // prefilter is meant to match starters, not arbitrary substrings.
+        #expect(await brain.route("reminders app is full") == .write, "the word 'reminders' alone, not a command sentence, should not misroute")
+    }
 }

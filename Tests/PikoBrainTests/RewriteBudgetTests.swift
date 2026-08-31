@@ -61,4 +61,36 @@ struct RewriteBudgetTests {
             Issue.record("wrong error: \(error)")
         }
     }
+
+    // MARK: - Battle test: many concurrent races, mixed pass/timeout, each isolated.
+    // RewriteBudgetRaceState is constructed fresh per call (no shared/static state), so
+    // this proves that holds under real concurrency, not just by code inspection.
+
+    @Test func fiftyConcurrentBudgetRacesEachGetTheirOwnCorrectOutcome() async {
+        await withTaskGroup(of: (Int, Bool).self) { group in
+            for i in 0..<50 {
+                group.addTask {
+                    let shouldTimeout = i % 2 == 0
+                    do {
+                        let value = try await withRewriteBudget(.milliseconds(60)) {
+                            if shouldTimeout {
+                                try await Task.sleep(for: .seconds(2))
+                            }
+                            return i
+                        }
+                        return (i, !shouldTimeout && value == i)
+                    } catch PikoError.brainBudgetExceeded {
+                        return (i, shouldTimeout)
+                    } catch {
+                        return (i, false)
+                    }
+                }
+            }
+            var mismatches: [Int] = []
+            for await (index, correct) in group where !correct {
+                mismatches.append(index)
+            }
+            #expect(mismatches.isEmpty, "cross-contaminated race state at indices: \(mismatches)")
+        }
+    }
 }

@@ -142,4 +142,84 @@ struct TextInsertionControllerTests {
         #expect(mock.insertedText.isEmpty)
         #expect(mock.deleteCount == 0)
     }
+
+    // MARK: - Battle tests: real adversarial Unicode, not just ASCII.
+    // `insertedChars`/`dropFirst` use Swift's grapheme-cluster count, matching
+    // UITextDocumentProxy.deleteBackward()'s documented one-character-per-call
+    // contract — these prove that holds for multi-scalar clusters, not just guess it.
+
+    @Test("flag emoji (2 scalars, 1 grapheme) counts and diffs as a single character")
+    func flagEmojiSingleGrapheme() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+
+        controller.apply(draft(sequence: 1, text: "🇮🇳", stablePrefix: 0))
+        #expect(controller.insertedChars == 1)
+
+        controller.apply(draft(sequence: 2, text: "🇮🇳🇺🇸", stablePrefix: 1))
+        #expect(mock.deleteCount == 0)
+        #expect(mock.insertedText == ["🇮🇳", "🇺🇸"])
+        #expect(controller.insertedChars == 2)
+    }
+
+    @Test("ZWJ family emoji (many scalars, 1 grapheme) deletes as one character on revision")
+    func zwjFamilyEmojiRevisionDeletesOneCharacter() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+        let family = "👨‍👩‍👧‍👦"
+
+        controller.apply(draft(sequence: 1, text: family, stablePrefix: 0))
+        #expect(controller.insertedChars == 1)
+        mock.deleteCount = 0
+        mock.insertedText = []
+
+        // Revise the unstable tail: same stablePrefix (0), different single-grapheme text.
+        controller.apply(draft(sequence: 2, text: "👍", stablePrefix: 0))
+        #expect(mock.deleteCount == 1, "one grapheme cluster, regardless of scalar count, is one deleteBackward()")
+        #expect(mock.insertedText == ["👍"])
+        #expect(controller.insertedChars == 1)
+    }
+
+    @Test("combining diacritic (e + combining acute, 2 scalars, 1 grapheme) round-trips correctly")
+    func combiningDiacriticSingleGrapheme() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+        let combining = "cafe\u{0301}" // "café" spelled with a combining acute accent, not the precomposed é
+
+        controller.apply(draft(sequence: 1, text: combining, stablePrefix: combining.count))
+        #expect(controller.insertedChars == combining.count)
+        #expect(combining.count == 4, "grapheme-cluster count treats e+combining-accent as one character")
+
+        controller.commit(result(raw: combining, shipped: "Café."))
+        #expect(mock.deleteCount == 4)
+        #expect(mock.insertedText.last == "Café.")
+    }
+
+    @Test("RTL Arabic text streams and revises without corrupting insertedChars")
+    func rtlArabicTextStreamsCorrectly() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+        let partial = "مرحبا"
+        let extended = "مرحبا بك"
+
+        controller.apply(draft(sequence: 1, text: partial, stablePrefix: 0))
+        #expect(controller.insertedChars == partial.count)
+
+        controller.apply(draft(sequence: 2, text: extended, stablePrefix: partial.count))
+        #expect(controller.insertedChars == extended.count)
+        #expect(mock.insertedText.last == " بك")
+    }
+
+    @Test("rapid sequence of ten revisions never desyncs insertedChars from the last draft's length")
+    func rapidRevisionSequenceStaysConsistent() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+        var text = ""
+
+        for i in 1...10 {
+            text += "word\(i) "
+            controller.apply(draft(sequence: i, text: text, stablePrefix: max(0, text.count - 6)))
+            #expect(controller.insertedChars == text.count, "desync at revision \(i)")
+        }
+    }
 }
