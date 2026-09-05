@@ -6,7 +6,7 @@ import PikoKit
 /// Darwin notifications carry no data and no delivery guarantee, which is fine: they are a
 /// doorbell. The payload always goes through a file in the shared container, so a missed
 /// notification degrades to "the keyboard notices on its next poll" rather than data loss.
-public final class DarwinChannel: SessionChannel, @unchecked Sendable {
+public final class DarwinChannel: SessionChannel, AudioLevelChannel, @unchecked Sendable {
 
     private let container: URL
     private let center = CFNotificationCenterGetDarwinNotifyCenter()
@@ -17,6 +17,12 @@ public final class DarwinChannel: SessionChannel, @unchecked Sendable {
         guard let url = FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: groupID) else { return nil }
         self.container = url
+        observeAll()
+    }
+
+    /// Isolated storage for tests; production always resolves the entitled App Group.
+    init(container: URL) {
+        self.container = container
         observeAll()
     }
 
@@ -72,6 +78,10 @@ public final class DarwinChannel: SessionChannel, @unchecked Sendable {
     public func writeDraft(_ draft: CaptureDraft) { write(draft, to: AppGroup.draftFile, signal: .draftUpdated) }
     public func readResult() -> CaptureResult? { read(AppGroup.resultFile) }
     public func writeResult(_ result: CaptureResult) { write(result, to: AppGroup.resultFile, signal: .resultReady) }
+    public func readAudioLevel() -> AudioLevel? { read(AppGroup.audioLevelFile) }
+    public func writeAudioLevel(_ sample: AudioLevel) {
+        write(sample, to: AppGroup.audioLevelFile, signal: .audioLevelUpdated)
+    }
 
     private func read<T: Decodable>(_ name: String) -> T? {
         guard let data = try? Data(contentsOf: container.appendingPathComponent(name)) else { return nil }

@@ -213,3 +213,44 @@ func protocolConformanceParity() async throws {
     await assertRecordAndSearchRoundTrips(EphemeralMemory())
     await assertRecordAndSearchRoundTrips(try SQLiteMemory(path: temporaryDatabaseURL()))
 }
+
+// MARK: - Deletion, so a privacy product can actually forget something
+
+@Test("delete removes a result from both the table and the FTS index")
+func deleteRemovesFromTableAndIndex() async throws {
+    let memory = try SQLiteMemory(path: temporaryDatabaseURL())
+    let keep = CaptureResult(raw: "keep raw", shipped: "a keepable phrase")
+    let drop = CaptureResult(raw: "drop raw", shipped: "a droppable phrase")
+    await memory.record(keep)
+    await memory.record(drop)
+
+    #expect(await memory.search("droppable", limit: 10).count == 1)
+
+    await memory.delete(drop.id)
+
+    #expect(await memory.search("droppable", limit: 10).isEmpty)
+    #expect(await memory.search("keepable", limit: 10).contains { $0.id == keep.id })
+}
+
+@Test("deleting an unknown id changes nothing")
+func deleteUnknownIDIsHarmless() async throws {
+    let memory = try SQLiteMemory(path: temporaryDatabaseURL())
+    let result = CaptureResult(raw: "raw", shipped: "a distinctive phrase here")
+    await memory.record(result)
+
+    await memory.delete(UUID())
+
+    #expect(await memory.search("distinctive", limit: 10).count == 1)
+}
+
+@Test("EphemeralMemory.delete matches the SQLite behaviour")
+func ephemeralDeleteMatches() async {
+    let memory = EphemeralMemory()
+    let result = CaptureResult(raw: "raw", shipped: "a distinctive phrase here")
+    await memory.record(result)
+
+    await memory.delete(result.id)
+
+    #expect(await memory.search("distinctive", limit: 10).isEmpty)
+}
+

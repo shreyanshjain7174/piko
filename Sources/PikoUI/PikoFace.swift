@@ -8,6 +8,8 @@ public struct PikoFace: View {
     public var phase: SessionPhase
     public var skin: Skin
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     public init(phase: SessionPhase, skin: Skin = .cute) {
         self.phase = phase
         self.skin = skin
@@ -22,7 +24,12 @@ public struct PikoFace: View {
             }
         }
         .aspectRatio(Self.viewBoxSize.width / Self.viewBoxSize.height, contentMode: .fit)
-        .animation(.spring(duration: 0.35), value: phase)
+        .animation(phaseTransition, value: phase)
+        .accessibilityHidden(true)
+    }
+
+    private var phaseTransition: Animation {
+        reduceMotion ? .easeInOut(duration: 0.15) : .spring(duration: 0.35)
     }
 
     /// The SVG's own `viewBox="0 0 140 148"` — every `Path` below is authored in this space.

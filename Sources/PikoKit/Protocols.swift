@@ -44,6 +44,7 @@ public protocol Memory: Sendable {
     func lexicon(limit: Int) async -> [String]
     func nearestEdits(to text: String, limit: Int) async -> [EditPair]
     func search(_ query: String, limit: Int) async -> [CaptureResult]
+    func delete(_ id: UUID) async
 }
 
 public enum PikoError: Error, Sendable {
@@ -56,4 +57,32 @@ public enum PikoError: Error, Sendable {
     case brainUnavailable(String)
     /// The model could run but did not finish within the rewrite budget.
     case brainBudgetExceeded(milliseconds: Int)
+    case microphoneDenied
+    case audioUnavailable
+}
+
+extension PikoError {
+    public var userMessage: String {
+        switch self {
+        case .notForeground:
+            "Piko can only arm while it is on screen. Open Piko and tap Arm."
+        case .notArmed:
+            "Piko is not armed yet. Tap Arm first."
+        case .sessionInterrupted:
+            "Something else took over the microphone. Tap Arm to start again."
+        case .microphoneDenied:
+            "Piko needs the microphone to hear you. Turn it on in Settings › Piko › Microphone."
+        case .audioUnavailable:
+            "The microphone is busy. Close whatever is using it, then tap Arm."
+        case .brainUnavailable:
+            "Piko can still transcribe, but tidying needs Apple Intelligence turned on for this device."
+        case .brainBudgetExceeded:
+            "Tidying took too long, so Piko used what it heard instead."
+        }
+    }
+
+    public static func userMessage(for error: any Error) -> String {
+        (error as? PikoError)?.userMessage
+            ?? "Piko could not open the microphone. Tap Arm to try again."
+    }
 }

@@ -135,5 +135,28 @@ struct SessionCoordinatorBufferTests {
             #expect(await phaseIterator.next() == .idle)
         }
     }
+
+    @Test @MainActor
+    func rearmCreatesAWorkingBufferStream() async throws {
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let coordinator = SessionCoordinator(
+                channel: MockSessionChannel(),
+                interruptions: MockInterruptionSource(),
+                isForeground: { true })
+
+            try await coordinator.arm()
+            await coordinator.disarm()
+
+            try await coordinator.arm()
+            let box = BufferIteratorBox(coordinator.buffers.makeAsyncIterator())
+            try await coordinator.startCapture()
+
+            let probe = try await raceNextBuffer(box, timeout: .seconds(2))
+            #expect(probe == .observed)
+
+            await coordinator.stopCapture()
+            await coordinator.disarm()
+        }
+    }
 }
 #endif

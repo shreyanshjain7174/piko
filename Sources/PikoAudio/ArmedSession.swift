@@ -15,7 +15,7 @@ extension AVAudioPCMBuffer: @unchecked Sendable {}
 public protocol ArmedSession: Sendable {
     @MainActor var phase: AsyncStream<SessionPhase> { get }
     /// PCM buffers from the engine tap. Idle until `startCapture()`; finished on `disarm()`.
-    var buffers: AsyncStream<AVAudioPCMBuffer> { get }
+    @MainActor var buffers: AsyncStream<AVAudioPCMBuffer> { get }
     /// Foreground only. Throws `PikoError.notForeground` otherwise.
     func arm() async throws
     func disarm() async

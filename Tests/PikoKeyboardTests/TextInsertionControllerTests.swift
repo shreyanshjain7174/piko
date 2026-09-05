@@ -222,4 +222,74 @@ struct TextInsertionControllerTests {
             #expect(controller.insertedChars == text.count, "desync at revision \(i)")
         }
     }
+
+    @Test("revertToRaw swaps the rewriter's output for what the transcriber heard")
+    func revertToRawRestoresTranscript() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+
+        controller.apply(draft(sequence: 1, text: "um hello world", stablePrefix: 14))
+        controller.commit(result(raw: "um hello world", shipped: "Hello world."))
+        mock.deleteCount = 0
+        mock.insertedText = []
+
+        #expect(controller.canRevertToRaw)
+        #expect(controller.revertToRaw())
+
+        #expect(mock.deleteCount == 12)
+        #expect(mock.insertedText == ["um hello world"])
+        #expect(!controller.canRevertToRaw)
+    }
+
+    @Test("revertToRaw is unavailable when the rewriter changed nothing")
+    func revertUnavailableWhenShippedEqualsRaw() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+
+        controller.commit(result(raw: "Hello world.", shipped: "Hello world."))
+
+        #expect(!controller.canRevertToRaw)
+        #expect(!controller.revertToRaw())
+    }
+
+    @Test("a second revert is a no-op rather than deleting the restored text")
+    func secondRevertIsNoOp() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+
+        controller.commit(result(raw: "raw text", shipped: "Raw text."))
+        #expect(controller.revertToRaw())
+        mock.deleteCount = 0
+        mock.insertedText = []
+
+        #expect(!controller.revertToRaw())
+        #expect(mock.deleteCount == 0)
+        #expect(mock.insertedText.isEmpty)
+    }
+
+    @Test("a new draft withdraws the revert offer, so it can never delete live text")
+    func newDraftClearsRevertOffer() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+
+        controller.commit(result(raw: "raw", shipped: "Raw."))
+        #expect(controller.canRevertToRaw)
+
+        controller.apply(draft(epoch: 2, sequence: 1, text: "next", stablePrefix: 4))
+
+        #expect(!controller.canRevertToRaw)
+    }
+
+    @Test("reset clears the revert offer")
+    func resetClearsRevertOffer() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+
+        controller.commit(result(raw: "raw", shipped: "Raw."))
+        controller.reset()
+
+        #expect(!controller.canRevertToRaw)
+        #expect(controller.lastCommitted == nil)
+    }
 }
+

@@ -23,6 +23,7 @@ public final class CaptureCoordinator {
 
     private var transcriptionTask: Task<Void, Never>?
     private var sessionEpoch = 0
+    public private(set) var isTidying = false
 
     /// Fires around the post-capture rewrite window: `true` when tidying starts,
     /// `false` once `resultReady` has posted. The only source of a `.tidying`
@@ -41,8 +42,21 @@ public final class CaptureCoordinator {
         self.memory = memory
     }
 
+    #if targetEnvironment(simulator)
+    static let simulatorDemoTranscript =
+        "um so like can you send me the deck when you get a chance"
+    #endif
+
     /// Start capture: begin audio recording and transcription pipeline.
     public func startCapture() async throws {
+        guard !isTidying else { return }
+        if transcriptionTask != nil {
+            // An interruption can disarm SessionCoordinator without flowing through
+            // stopCapture(). Once re-armed, discard that obsolete recognition task.
+            guard session.currentPhase == .armed else { return }
+            transcriptionTask?.cancel()
+            transcriptionTask = nil
+        }
         sessionEpoch += 1
         try await session.startCapture()
 
@@ -52,6 +66,13 @@ public final class CaptureCoordinator {
         if let engine = transcriber as? SpeechTranscriberEngine {
             await engine.configure(buffers: session.buffers, sessionEpoch: sessionEpoch)
         }
+
+        #if targetEnvironment(simulator)
+        if let mock = transcriber as? MockTranscriber {
+            await mock.setScript(.progressive(Self.simulatorDemoTranscript,
+                                              sessionEpoch: sessionEpoch))
+        }
+        #endif
 
         transcriptionTask = Task { [weak self] in
             guard let self else { return }
@@ -64,8 +85,10 @@ public final class CaptureCoordinator {
 
     /// Stop capture: finalize transcription and write result.
     public func stopCapture() async {
-        await session.stopCapture()
+        guard transcriptionTask != nil, !isTidying else { return }
+        isTidying = true
         onTidyingChange?(true)
+        await session.stopCapture()
         transcriptionTask?.cancel()
         transcriptionTask = nil
 
@@ -87,9 +110,10 @@ public final class CaptureCoordinator {
             profile: profile,
             timings: .init(brainMS: brainMS)
         )
+        await memory.record(result)
         channel.writeResult(result)
         channel.post(.resultReady)
-        await memory.record(result)
+        isTidying = false
         onTidyingChange?(false)
     }
 

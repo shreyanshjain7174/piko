@@ -32,6 +32,13 @@ final class TextInsertionController {
     private let proxy: any TextProxy
     private(set) var insertedChars: Int = 0
     private(set) var lastApplied: CaptureDraft?
+    private(set) var lastCommitted: CaptureResult?
+    private(set) var committedChars: Int = 0
+
+    var canRevertToRaw: Bool {
+        guard let lastCommitted else { return false }
+        return lastCommitted.raw != lastCommitted.shipped
+    }
 
     init(proxy: any TextProxy) {
         self.proxy = proxy
@@ -45,6 +52,8 @@ final class TextInsertionController {
 
     func apply(_ draft: CaptureDraft) {
         guard draft.isNewer(than: lastApplied) else { return }
+        lastCommitted = nil
+        committedChars = 0
 
         // Incoming draft.stablePrefix is the transcriber's current freeze point.
         // Using lastApplied.stablePrefix would full-replace whenever the previous
@@ -72,10 +81,24 @@ final class TextInsertionController {
         proxy.insertText(result.shipped)
         insertedChars = 0
         lastApplied = nil
+        committedChars = result.shipped.count
+        lastCommitted = result
+    }
+
+    @discardableResult
+    func revertToRaw() -> Bool {
+        guard let result = lastCommitted, result.raw != result.shipped else { return false }
+        for _ in 0..<committedChars { proxy.deleteBackward() }
+        proxy.insertText(result.raw)
+        committedChars = result.raw.count
+        lastCommitted = nil
+        return true
     }
 
     func reset() {
         insertedChars = 0
         lastApplied = nil
+        lastCommitted = nil
+        committedChars = 0
     }
 }

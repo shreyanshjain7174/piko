@@ -11,9 +11,10 @@ public final class SessionCoordinator: ArmedSession {
     private let channel: any SessionChannel
     private let interruptions: any InterruptionSource
     private let isForeground: @MainActor @Sendable () -> Bool
+    private let audioLevelMonitor: AudioLevelMonitor
 
     private var sessionEpoch = 0
-    private var currentPhase: SessionPhase = .idle
+    public private(set) var currentPhase: SessionPhase = .idle
     private var heartbeatTask: Task<Void, Never>?
     /// Recreated on each `startCapture()` after the session is active. An engine
     /// built before `AVAudioSession.setActive(true)` often has a 0 Hz input node.
@@ -28,8 +29,8 @@ public final class SessionCoordinator: ArmedSession {
     /// access, not one shared continuation, so two simultaneous observers (e.g. the app's UI
     /// and `LiveActivityController`) each see every emission instead of racing for it.
     private var phaseSubscribers: [UUID: AsyncStream<SessionPhase>.Continuation] = [:]
-    private let buffersContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation
-    public let buffers: AsyncStream<AVAudioPCMBuffer>
+    private var buffersContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation
+    public private(set) var buffers: AsyncStream<AVAudioPCMBuffer>
 
     public var phase: AsyncStream<SessionPhase> {
         let id = UUID()
@@ -49,8 +50,10 @@ public final class SessionCoordinator: ArmedSession {
 
     public init(channel: any SessionChannel,
                 interruptions: any InterruptionSource,
+                audioLevels: (any AudioLevelChannel)? = nil,
                 isForeground: @escaping @MainActor @Sendable () -> Bool) {
         self.channel = channel
+        self.audioLevelMonitor = AudioLevelMonitor(channel: audioLevels)
         self.interruptions = interruptions
         self.isForeground = isForeground
         (buffers, buffersContinuation) = AsyncStream.makeStream()
@@ -74,9 +77,24 @@ public final class SessionCoordinator: ArmedSession {
 
         sessionEpoch += 1
 
+        // `disarm()` finishes the previous sequence. A fresh arm must publish a fresh stream
+        // or a same-process re-arm would run an audio engine whose STT input is already closed.
+        if currentPhase == .idle {
+            buffersContinuation.finish()
+            (buffers, buffersContinuation) = AsyncStream.makeStream()
+        }
+
+        guard AVAudioApplication.shared.recordPermission != .denied else {
+            throw PikoError.microphoneDenied
+        }
+
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, options: [.allowBluetoothHFP])
-        try session.setActive(true)
+        do {
+            try session.setCategory(.playAndRecord, options: [.allowBluetoothHFP])
+            try session.setActive(true)
+        } catch {
+            throw PikoError.audioUnavailable
+        }
 
         currentPhase = .armed
         broadcastPhase()
@@ -93,6 +111,7 @@ public final class SessionCoordinator: ArmedSession {
     }
 
     public func disarm() async {
+        audioLevelMonitor.stop()
         heartbeatTask?.cancel()
         heartbeatTask = nil
 
@@ -169,7 +188,9 @@ public final class SessionCoordinator: ArmedSession {
         // closure runs on the audio render thread; SessionCoordinator is @MainActor,
         // so a self.buffersContinuation access here would cross actor isolation.
         let continuation = buffersContinuation
+        let levelContinuation = audioLevelMonitor.start()
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            levelContinuation.yield(AudioLevelMonitor.measure(buffer))
             continuation.yield(buffer)
         }
         tapInstalled = true
@@ -184,6 +205,7 @@ public final class SessionCoordinator: ArmedSession {
         do {
             try engine.start()
         } catch {
+            audioLevelMonitor.stop()
             inputNode.removeTap(onBus: 0)
             tapInstalled = false
             currentPhase = .armed
@@ -196,6 +218,7 @@ public final class SessionCoordinator: ArmedSession {
 
         currentPhase = .capturing
         broadcastPhase()
+        writeChannelState(phase: .capturing)
     }
 
     private func startSilencePump(
@@ -218,6 +241,7 @@ public final class SessionCoordinator: ArmedSession {
     }
 
     public func stopCapture() async {
+        audioLevelMonitor.stop()
         silencePumpTask?.cancel()
         silencePumpTask = nil
         if tapInstalled {
@@ -227,6 +251,7 @@ public final class SessionCoordinator: ArmedSession {
         engine.stop()
         currentPhase = .armed
         broadcastPhase()
+        writeChannelState(phase: .armed)
     }
 }
 #endif

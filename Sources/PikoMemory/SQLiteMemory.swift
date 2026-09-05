@@ -48,6 +48,10 @@ public actor SQLiteMemory: Memory {
         CREATE TRIGGER IF NOT EXISTS results_ai AFTER INSERT ON results BEGIN
             INSERT INTO results_fts(rowid, raw, shipped) VALUES (new.rowid, new.raw, new.shipped);
         END;
+        CREATE TRIGGER IF NOT EXISTS results_ad AFTER DELETE ON results BEGIN
+            INSERT INTO results_fts(results_fts, rowid, raw, shipped)
+            VALUES ('delete', old.rowid, old.raw, old.shipped);
+        END;
         CREATE TABLE IF NOT EXISTS edits (
             raw TEXT NOT NULL, shipped TEXT NOT NULL, final TEXT NOT NULL,
             profile TEXT NOT NULL, createdAt REAL NOT NULL
@@ -105,6 +109,19 @@ public actor SQLiteMemory: Memory {
             try insertEdit(pair)
         } catch {
             print("SQLiteMemory: recordEdit failed: \(error)")
+        }
+    }
+
+    public func delete(_ id: UUID) async {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "DELETE FROM results WHERE id = ?", -1, &stmt, nil) == SQLITE_OK else {
+            print("SQLiteMemory: delete failed: \(String(cString: sqlite3_errmsg(db)))")
+            return
+        }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, id.uuidString, -1, SQLITE_TRANSIENT)
+        if sqlite3_step(stmt) != SQLITE_DONE {
+            print("SQLiteMemory: delete failed: \(String(cString: sqlite3_errmsg(db)))")
         }
     }
 
@@ -274,6 +291,7 @@ public actor EphemeralMemory: Memory {
 
     public func record(_ result: CaptureResult) { results.append(result) }
     public func recordEdit(_ pair: EditPair) { edits.append(pair) }
+    public func delete(_ id: UUID) { results.removeAll { $0.id == id } }
     public func lexicon(limit: Int) -> [String] { [] }
     public func nearestEdits(to text: String, limit: Int) -> [EditPair] { Array(edits.suffix(limit)) }
     public func search(_ query: String, limit: Int) -> [CaptureResult] {

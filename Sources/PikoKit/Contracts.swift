@@ -9,6 +9,8 @@ public enum AppGroup {
     public static let draftFile = "draft.json"
     public static let resultFile = "result.json"
     public static let stateFile = "state.json"
+    public static let captureRequestFile = "capture-request.json"
+    public static let audioLevelFile = "audio-level.json"
 }
 
 /// Darwin notification names. Cross-process, no payload — the payload goes through the App Group.
@@ -19,9 +21,23 @@ public enum Signal: String, Sendable, CaseIterable {
     case resultReady   = "dev.piko.result.ready"
     case stateChanged  = "dev.piko.state.changed"
     case stopRequested = "dev.piko.stop.requested"
+    case captureRequested = "dev.piko.capture.requested"
+    case audioLevelUpdated = "dev.piko.audio.level.updated"
 }
 
-public enum SessionPhase: String, Codable, Sendable, Hashable {
+/// A durable request created by a system surface before the container app starts capture.
+/// The UUID prevents an older consumer from clearing a newer cross-process request.
+public struct CaptureLaunchRequest: Codable, Sendable, Equatable {
+    public var id: UUID
+    public var createdAt: Date
+
+    public init(id: UUID = UUID(), createdAt: Date = .now) {
+        self.id = id
+        self.createdAt = createdAt
+    }
+}
+
+public enum SessionPhase: String, Codable, Sendable, Hashable, CaseIterable {
     case idle       // app not holding an audio session
     case armed      // session active, mic not capturing
     case capturing  // buffering audio
@@ -90,7 +106,7 @@ public enum Route: String, Codable, Sendable {
     case recall   // a question about their own history — v0.2
 }
 
-public struct CaptureResult: Codable, Sendable, Equatable {
+public struct CaptureResult: Codable, Sendable, Equatable, Identifiable {
     public var id: UUID
     public var raw: String          // what the transcriber heard, kept for edit-pair learning
     public var shipped: String      // what we inserted
