@@ -45,4 +45,17 @@ import PikoKit
         let result = await mock.finish()
         #expect(result == "Final text.")
     }
+
+    @Test func defaultScriptRefreshesWithoutReplacingAnExplicitFixture() async {
+        let mock = MockTranscriber()
+        await mock.setDefaultScript(.progressive("First", sessionEpoch: 1))
+        await mock.setDefaultScript(.progressive("Second", sessionEpoch: 2))
+
+        #expect(await mock.finish() == "Second")
+
+        await mock.setScript(.progressive("Fixture", sessionEpoch: 3))
+        await mock.setDefaultScript(.progressive("Ignored", sessionEpoch: 4))
+
+        #expect(await mock.finish() == "Fixture")
+    }
 }

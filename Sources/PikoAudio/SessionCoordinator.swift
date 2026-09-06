@@ -152,6 +152,9 @@ public final class SessionCoordinator: ArmedSession {
     public func startCapture() async throws {
         guard currentPhase == .armed else { throw PikoError.notArmed }
 
+        buffersContinuation.finish()
+        (buffers, buffersContinuation) = AsyncStream.makeStream()
+
         if tapInstalled {
             engine.inputNode.removeTap(onBus: 0)
             tapInstalled = false
@@ -249,6 +252,14 @@ public final class SessionCoordinator: ArmedSession {
             tapInstalled = false
         }
         engine.stop()
+        buffersContinuation.finish()
+        currentPhase = .tidying
+        broadcastPhase()
+        writeChannelState(phase: .tidying)
+    }
+
+    public func finishTidying() {
+        guard currentPhase == .tidying else { return }
         currentPhase = .armed
         broadcastPhase()
         writeChannelState(phase: .armed)

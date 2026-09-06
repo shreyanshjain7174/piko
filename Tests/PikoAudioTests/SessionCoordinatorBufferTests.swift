@@ -71,8 +71,8 @@ struct SessionCoordinatorBufferTests {
                 isForeground: { true })
 
             try await coordinator.arm()
-            let box = BufferIteratorBox(coordinator.buffers.makeAsyncIterator())
             try await coordinator.startCapture()
+            let box = BufferIteratorBox(coordinator.buffers.makeAsyncIterator())
 
             let probe = try await raceNextBuffer(box, timeout: .seconds(2))
             #expect(probe == .observed)
@@ -91,8 +91,8 @@ struct SessionCoordinatorBufferTests {
                 isForeground: { true })
 
             try await coordinator.arm()
-            let box = BufferIteratorBox(coordinator.buffers.makeAsyncIterator())
             try await coordinator.startCapture()
+            let box = BufferIteratorBox(coordinator.buffers.makeAsyncIterator())
 
             let first = try await raceNextBuffer(box, timeout: .seconds(2))
             #expect(first == .observed)
@@ -148,8 +148,8 @@ struct SessionCoordinatorBufferTests {
             await coordinator.disarm()
 
             try await coordinator.arm()
-            let box = BufferIteratorBox(coordinator.buffers.makeAsyncIterator())
             try await coordinator.startCapture()
+            let box = BufferIteratorBox(coordinator.buffers.makeAsyncIterator())
 
             let probe = try await raceNextBuffer(box, timeout: .seconds(2))
             #expect(probe == .observed)
