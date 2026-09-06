@@ -7,6 +7,13 @@ open: project
 	open App/Piko.xcodeproj
 
 test:      ## module tests, no simulator needed
+	swift build
+	/usr/libexec/PlistBuddy -c "Clear dict" \
+		-c "Add :CFBundleIdentifier string local.piko.PikoUI.tests" \
+		"$$(swift build --show-bin-path)/Piko_PikoUI.bundle/Info.plist"
+	xcrun actool Sources/PikoUI/Resources/PikoColors.xcassets \
+		--compile "$$(swift build --show-bin-path)/Piko_PikoUI.bundle" \
+		--platform macosx --minimum-deployment-target 15.0
 	swift test
 
 build:     ## build the app for a simulator
