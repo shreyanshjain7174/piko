@@ -60,13 +60,17 @@ public struct VoiceOrb: View {
                                 level: Double, offset: Double) -> Path {
         Path { path in
             // Integer harmonics close seamlessly; every point shares the same energy envelope.
+            let envelope = 0.025 + level * 0.1
             for index in 0..<96 {
                 let angle = Double(index) * 2 * .pi / 96
                 let wave = sin(3 * angle + time * 1.25 + offset) * 0.55
                     + sin(2 * angle - time * 0.85 + offset) * 0.3
                     + sin(5 * angle + time * 0.6) * 0.15
-                let r = radius * (1 + (0.025 + level * 0.1) * wave)
-                let point = CGPoint(x: center.x + cos(angle) * r, y: center.y + sin(angle) * r)
+                let r = radius * CGFloat(1 + envelope * wave)
+                let point = CGPoint(
+                    x: center.x + CGFloat(cos(angle)) * r,
+                    y: center.y + CGFloat(sin(angle)) * r
+                )
                 if index == 0 { path.move(to: point) } else { path.addLine(to: point) }
             }
             path.closeSubpath()
