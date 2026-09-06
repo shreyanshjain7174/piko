@@ -8,9 +8,23 @@ import Testing
 final class MockTextDocumentProxy: NSObject, TextProxy {
     var insertedText: [String] = []
     var deleteCount: Int = 0
+    var text = ""
+    var documentContextBeforeInput: String? { text }
 
-    func insertText(_ text: String) { insertedText.append(text) }
-    func deleteBackward() { deleteCount += 1 }
+    func insertText(_ text: String) {
+        insertedText.append(text)
+        self.text.append(text)
+    }
+
+    func deleteBackward() {
+        deleteCount += 1
+        guard !text.isEmpty else { return }
+        text.removeLast()
+    }
+
+    func userTypes(_ text: String) {
+        self.text.append(text)
+    }
 }
 
 @MainActor
@@ -77,6 +91,22 @@ struct TextInsertionControllerTests {
         #expect(controller.insertedChars == 11)
     }
 
+    @Test("a newly stable character is replaced when it differs from the prior draft")
+    func revisedCharacterIsNotPreservedByNewStablePrefix() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+
+        controller.apply(draft(sequence: 1, text: "cat", stablePrefix: 0))
+        mock.deleteCount = 0
+        mock.insertedText = []
+
+        controller.apply(draft(sequence: 2, text: "car", stablePrefix: 3))
+
+        #expect(mock.deleteCount == 1)
+        #expect(mock.insertedText == ["r"])
+        #expect(mock.text == "car")
+    }
+
     @Test("stale draft with lower sequence in the same epoch is ignored")
     func staleDraftIsIgnored() {
         let mock = MockTextDocumentProxy()
@@ -124,6 +154,121 @@ struct TextInsertionControllerTests {
         #expect(mock.insertedText == ["Hello world."])
         #expect(controller.insertedChars == 0)
         #expect(controller.lastApplied == nil)
+    }
+
+    @Test("commit preserves host text typed after the streamed draft")
+    func commitDoesNotDeleteHostTextAfterDraft() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+
+        controller.apply(draft(sequence: 1, text: "Hello", stablePrefix: 5))
+        mock.userTypes("!")
+        mock.deleteCount = 0
+        mock.insertedText = []
+
+        controller.commit(result(raw: "Hello", shipped: "Hello."))
+
+        #expect(mock.deleteCount == 0)
+        #expect(mock.insertedText.isEmpty)
+        #expect(mock.text == "Hello!")
+    }
+
+    @Test("duplicate result delivery does not insert final text twice")
+    func duplicateCommitIsIgnored() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+        let captureResult = result(raw: "Hello", shipped: "Hello.")
+
+        controller.commit(captureResult)
+        mock.deleteCount = 0
+        mock.insertedText = []
+
+        controller.commit(captureResult)
+
+        #expect(mock.deleteCount == 0)
+        #expect(mock.insertedText.isEmpty)
+        #expect(mock.text == "Hello.")
+    }
+
+    @Test("later updates stay blocked after host text invalidates a capture")
+    func invalidatedCaptureDoesNotApplyLaterDraftOrResult() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+
+        controller.apply(draft(sequence: 1, text: "Hello", stablePrefix: 5))
+        mock.userTypes("!")
+        controller.apply(draft(sequence: 2, text: "Hello world", stablePrefix: 6))
+        controller.commit(result(raw: "Hello world", shipped: "Hello world."))
+
+        #expect(mock.text == "Hello!")
+    }
+
+    @Test("a newer capture resumes insertion after an earlier capture is invalidated")
+    func newerEpochResumesAfterInvalidatedCapture() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+
+        controller.apply(draft(epoch: 1, sequence: 1, text: "Hello", stablePrefix: 5))
+        mock.userTypes("!")
+        controller.apply(draft(epoch: 1, sequence: 2, text: "Hello world", stablePrefix: 6))
+
+        controller.apply(draft(epoch: 2, sequence: 1, text: "Next", stablePrefix: 4))
+
+        #expect(mock.text == "Hello!Next")
+    }
+
+    @Test("a handled result stays deduplicated after reversion")
+    func revertedResultIsNotAppliedAgain() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+        let captureResult = result(raw: "raw", shipped: "Shipped.")
+
+        controller.commit(captureResult)
+        #expect(controller.revertToRaw())
+        mock.deleteCount = 0
+        mock.insertedText = []
+
+        controller.commit(captureResult)
+
+        #expect(mock.deleteCount == 0)
+        #expect(mock.insertedText.isEmpty)
+        #expect(mock.text == "raw")
+    }
+
+    @Test("a late draft cannot re-enable a completed result after reversion")
+    func lateDraftDoesNotReenableHandledResult() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+        let firstDraft = draft(sequence: 1, text: "raw", stablePrefix: 3)
+        let captureResult = result(raw: "raw", shipped: "Shipped.")
+
+        controller.apply(firstDraft)
+        controller.commit(captureResult)
+        #expect(controller.revertToRaw())
+        mock.deleteCount = 0
+        mock.insertedText = []
+
+        controller.apply(firstDraft)
+        controller.commit(captureResult)
+
+        #expect(mock.deleteCount == 0)
+        #expect(mock.insertedText.isEmpty)
+        #expect(mock.text == "raw")
+    }
+
+    @Test("a failed revert preserves the terminal epoch for newer capture recovery")
+    func failedRevertStillAllowsNewerCapture() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+
+        controller.apply(draft(epoch: 1, sequence: 1, text: "raw", stablePrefix: 3))
+        controller.commit(result(raw: "raw", shipped: "Shipped."))
+        mock.userTypes("!")
+
+        #expect(!controller.revertToRaw())
+        controller.apply(draft(epoch: 2, sequence: 1, text: "Next", stablePrefix: 4))
+
+        #expect(mock.text == "Shipped.!Next")
     }
 
     @Test("reset clears state without inserting")

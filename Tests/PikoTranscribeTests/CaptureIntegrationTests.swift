@@ -46,7 +46,7 @@ struct CaptureIntegrationTests {
             let drafts = channel.allDrafts()
             #expect(drafts.count >= 2)
             #expect(drafts.last?.text == "Hello world")
-            #expect(channel.postedSignals.contains(.draftUpdated))
+            #expect(channel.postedSignals.filter { $0 == .draftUpdated }.count == script.drafts.count)
 
             await coordinator.stopCapture()
             await session.disarm()
@@ -84,7 +84,36 @@ struct CaptureIntegrationTests {
             let result = channel.readResult()
             #expect(result != nil)
             #expect(result?.raw == "Final text.")
-            #expect(channel.postedSignals.contains(.resultReady))
+            #expect(channel.postedSignals.filter { $0 == .resultReady }.count == 1)
+
+            await session.disarm()
+        }
+    }
+
+    @Test @MainActor func emptyTranscriptionDoesNotPublishResult() async throws {
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let channel = MockSessionChannel()
+            let mock = MockTranscriber()
+            await mock.setScript(.init(drafts: []))
+            let session = SessionCoordinator(
+                channel: channel,
+                interruptions: NullInterruptionSource(),
+                isForeground: { true }
+            )
+            let coordinator = CaptureCoordinator(
+                session: session,
+                channel: channel,
+                transcriber: mock,
+                brain: MockBrain(),
+                memory: EphemeralMemory()
+            )
+
+            try await session.arm()
+            try await coordinator.startCapture()
+            await coordinator.stopCapture()
+
+            #expect(channel.readResult() == nil)
+            #expect(!channel.postedSignals.contains(.resultReady))
 
             await session.disarm()
         }
@@ -260,9 +289,13 @@ final class MockSessionChannel: SessionChannel, @unchecked Sendable {
             self.draft = draft
             drafts.append(draft)
         }
+        post(.draftUpdated)
     }
     func readResult() -> CaptureResult? { lock.withLock { result } }
-    func writeResult(_ result: CaptureResult) { lock.withLock { self.result = result } }
+    func writeResult(_ result: CaptureResult) {
+        lock.withLock { self.result = result }
+        post(.resultReady)
+    }
 }
 
 /// Serializes tests that touch process-wide `AVAudioSession` / `AVAudioEngine`.

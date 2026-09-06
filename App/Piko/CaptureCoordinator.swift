@@ -69,8 +69,8 @@ public final class CaptureCoordinator {
 
         #if targetEnvironment(simulator)
         if let mock = transcriber as? MockTranscriber {
-            await mock.setScript(.progressive(Self.simulatorDemoTranscript,
-                                              sessionEpoch: sessionEpoch))
+            await mock.setDefaultScript(.progressive(Self.simulatorDemoTranscript,
+                                                      sessionEpoch: sessionEpoch))
         }
         #endif
 
@@ -78,7 +78,6 @@ public final class CaptureCoordinator {
             guard let self else { return }
             for await draft in self.transcriber.hypotheses() {
                 self.channel.writeDraft(draft)
-                self.channel.post(.draftUpdated)
             }
         }
     }
@@ -89,10 +88,17 @@ public final class CaptureCoordinator {
         isTidying = true
         onTidyingChange?(true)
         await session.stopCapture()
-        transcriptionTask?.cancel()
+        let task = transcriptionTask
         transcriptionTask = nil
+        await task?.value
 
         let finalText = await transcriber.finish()
+        guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            await session.finishTidying()
+            isTidying = false
+            onTidyingChange?(false)
+            return
+        }
         let profile = channel.readState()?.profile ?? .message
         let route = await brain.route(finalText)
 
@@ -112,7 +118,7 @@ public final class CaptureCoordinator {
         )
         await memory.record(result)
         channel.writeResult(result)
-        channel.post(.resultReady)
+        await session.finishTidying()
         isTidying = false
         onTidyingChange?(false)
     }

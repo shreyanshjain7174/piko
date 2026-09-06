@@ -33,6 +33,7 @@ public actor MockTranscriber: Transcriber {
     }
 
     private var script: Script?
+    private var usesExplicitScript = false
     private var lexicon: [String] = []
 
     public init() {}
@@ -40,6 +41,12 @@ public actor MockTranscriber: Transcriber {
     public func setLexicon(_ words: [String]) { lexicon = words }
 
     public func setScript(_ script: Script) {
+        self.script = script
+        usesExplicitScript = true
+    }
+
+    public func setDefaultScript(_ script: Script) {
+        guard !usesExplicitScript else { return }
         self.script = script
     }
 

@@ -1,3 +1,4 @@
+import Foundation
 import PikoKit
 #if canImport(UIKit)
 import UIKit
@@ -7,6 +8,7 @@ import UIKit
 /// Isolated to the main actor because `UITextDocumentProxy` is UIKit and not Sendable.
 @MainActor
 protocol TextProxy: AnyObject {
+    var documentContextBeforeInput: String? { get }
     func insertText(_ text: String)
     func deleteBackward()
 }
@@ -21,6 +23,8 @@ final class UITextDocumentProxyBox: TextProxy {
         self.proxy = proxy
     }
 
+    var documentContextBeforeInput: String? { proxy?.documentContextBeforeInput }
+
     func insertText(_ text: String) { proxy?.insertText(text) }
     func deleteBackward() { proxy?.deleteBackward() }
 }
@@ -34,6 +38,10 @@ final class TextInsertionController {
     private(set) var lastApplied: CaptureDraft?
     private(set) var lastCommitted: CaptureResult?
     private(set) var committedChars: Int = 0
+    private var isInvalidated = false
+    private var acceptsResults = true
+    private var lastHandledResultID: UUID?
+    private var terminalSessionEpoch: Int?
 
     var canRevertToRaw: Bool {
         guard let lastCommitted else { return false }
@@ -51,19 +59,33 @@ final class TextInsertionController {
 #endif
 
     func apply(_ draft: CaptureDraft) {
+        if isInvalidated {
+            guard let terminalSessionEpoch, draft.sessionEpoch > terminalSessionEpoch else { return }
+            isInvalidated = false
+        }
+        guard terminalSessionEpoch.map({ draft.sessionEpoch > $0 }) ?? true else { return }
         guard draft.isNewer(than: lastApplied) else { return }
+
+        guard canReplace(lastApplied?.text) else {
+            invalidateCapture()
+            return
+        }
+
         lastCommitted = nil
         committedChars = 0
+        acceptsResults = true
+        lastHandledResultID = nil
 
         // Incoming draft.stablePrefix is the transcriber's current freeze point.
         // Using lastApplied.stablePrefix would full-replace whenever the previous
         // draft had not yet frozen any prefix (research Pattern 1 bug).
         // New epoch: leftover insertion from the previous session is not this draft.
         let alreadyStable: Int
-        if lastApplied.map({ $0.sessionEpoch != draft.sessionEpoch }) == true {
-            alreadyStable = 0
+        if let previous = lastApplied, previous.sessionEpoch == draft.sessionEpoch {
+            let commonPrefix = Self.commonPrefixLength(previous.text, draft.text)
+            alreadyStable = min(draft.stablePrefix, insertedChars, commonPrefix)
         } else {
-            alreadyStable = min(draft.stablePrefix, insertedChars)
+            alreadyStable = 0
         }
 
         let toDelete = insertedChars - alreadyStable
@@ -77,6 +99,13 @@ final class TextInsertionController {
     }
 
     func commit(_ result: CaptureResult) {
+        guard acceptsResults, !isInvalidated, result.id != lastHandledResultID else { return }
+        lastHandledResultID = result.id
+        guard canReplace(lastApplied?.text) else {
+            invalidateCapture()
+            return
+        }
+        terminalSessionEpoch = lastApplied?.sessionEpoch
         for _ in 0..<insertedChars { proxy.deleteBackward() }
         proxy.insertText(result.shipped)
         insertedChars = 0
@@ -88,6 +117,10 @@ final class TextInsertionController {
     @discardableResult
     func revertToRaw() -> Bool {
         guard let result = lastCommitted, result.raw != result.shipped else { return false }
+        guard canReplace(result.shipped) else {
+            invalidateCapture()
+            return false
+        }
         for _ in 0..<committedChars { proxy.deleteBackward() }
         proxy.insertText(result.raw)
         committedChars = result.raw.count
@@ -100,5 +133,29 @@ final class TextInsertionController {
         lastApplied = nil
         lastCommitted = nil
         committedChars = 0
+        isInvalidated = false
+        acceptsResults = false
+    }
+
+    private func invalidateCapture() {
+        isInvalidated = true
+        acceptsResults = false
+        if let activeEpoch = lastApplied?.sessionEpoch {
+            terminalSessionEpoch = activeEpoch
+        }
+        insertedChars = 0
+        lastApplied = nil
+        lastCommitted = nil
+        committedChars = 0
+    }
+
+    private func canReplace(_ expectedText: String?) -> Bool {
+        guard let expectedText else { return insertedChars == 0 }
+        guard let context = proxy.documentContextBeforeInput else { return false }
+        return context.hasSuffix(expectedText)
+    }
+
+    private static func commonPrefixLength(_ lhs: String, _ rhs: String) -> Int {
+        zip(lhs, rhs).prefix { pair in pair.0 == pair.1 }.count
     }
 }

@@ -88,7 +88,7 @@ struct SessionCoordinatorArmingTests {
     }
 
     @Test @MainActor
-    func stopCaptureReturnsToArmedNotIdle() async throws {
+    func stopCaptureTransitionsThroughTidyingBeforeArmed() async throws {
         try await AudioSessionTestGate.shared.run { @MainActor in
             let coordinator = SessionCoordinator(
                 channel: MockSessionChannel(),
@@ -104,6 +104,8 @@ struct SessionCoordinatorArmingTests {
             #expect(await iterator.next() == .capturing)
 
             await coordinator.stopCapture()
+            #expect(await iterator.next() == .tidying)
+            await coordinator.finishTidying()
             #expect(await iterator.next() == .armed)
             await coordinator.disarm()
         }
