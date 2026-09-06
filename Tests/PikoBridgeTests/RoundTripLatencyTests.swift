@@ -11,14 +11,11 @@ import Foundation
 
 @Test("a draft written by one channel is observed via signal and read back correctly by another")
 func roundTripCompletesWithCorrectPayload() async throws {
-    let sideA = try #require(
-        DarwinChannel(),
-        "DarwinChannel() returned nil — the App Group container is unavailable to this test process. This is an environment limitation (likely missing com.apple.security.application-groups entitlement in this unsigned SPM test binary), not necessarily a defect in the mechanism under test."
-    )
-    let sideB = try #require(
-        DarwinChannel(),
-        "DarwinChannel() returned nil for the second (\"keyboard\") side — same environment limitation as above."
-    )
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let sideA = DarwinChannel(container: directory)
+    let sideB = DarwinChannel(container: directory)
 
     let sent = CaptureDraft(sessionEpoch: 0, sequence: 0, text: "roundtrip", stablePrefix: 0, startedAt: .now)
 
@@ -51,10 +48,7 @@ func roundTripCompletesWithCorrectPayload() async throws {
 
     #expect(result == .signalObserved, "round trip did not complete within the 2s CI-safe timeout")
 
-    let received = try #require(
-        sideB.readDraft(),
-        "readDraft() returned nil after observing .draftUpdated — App Group container round trip did not survive; this is an environment limitation consistent with the one noted above, not necessarily a defect in the mechanism under test."
-    )
+    let received = try #require(sideB.readDraft())
     #expect(received == sent)
 
     // Observed in-process elapsed time, recorded for interest only -- this is explicitly NOT the
