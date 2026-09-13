@@ -125,6 +125,38 @@ final class ExperienceFlowTests: XCTestCase {
                       "dismissing onboarding should land on a usable Home")
     }
 
+    /// The pet at rest: arm a session without capturing, and the notch shows the
+    /// mood-keyed pet (not a glyph) in compact and expanded states.
+    @MainActor
+    func testPetRestsInTheNotch() throws {
+        let app = launchPiko()
+        XCTAssertTrue(app.buttons["home.dictate"].waitForExistence(timeout: 8))
+
+        // Arm only — the pet's resting state.
+        XCUIDevice.shared.system.open(URL(string: "piko://arm")!)
+        sleep(3)
+
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        springboard.activate()
+        sleep(2)
+        snap("pet_compact")
+
+        let pet = springboard.images.matching(
+            NSPredicate(format: "label CONTAINS[cd] 'Piko is'")
+        ).firstMatch
+        let petVisible = pet.waitForExistence(timeout: 8)
+        if !petVisible { snap("debug_pet_missing") }
+        XCTAssertTrue(petVisible, "the resting notch should show the mood pet, not a glyph")
+
+        springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.025))
+            .press(forDuration: 1.2)
+        sleep(1)
+        snap("pet_expanded")
+
+        app.activate()
+        XCUIDevice.shared.system.open(URL(string: "piko://disarm")!)
+    }
+
     /// The real-speech smoke test. Real transcription cannot run on Simulator — neither
     /// SpeechTranscriber (no dictation assets) nor SFSpeechRecognizer on-device
     /// (kLSRErrorDomain 300: the sim's local recognizer asset fails to initialize), and a

@@ -15,6 +15,7 @@ public final class LiveActivityController {
     private var isTidyingOverride: Bool = false
     private var levels: [Int] = LiveActivityContent.placeholderLevels()
     private var lastLevelPush: Date?
+    private var armedAt: Date?
 
     /// WidgetKit renders Live Activities at roughly 1–2 updates per second — pushing every
     /// 20 Hz sample would burn the update budget for no visible difference. One bar update
@@ -29,9 +30,12 @@ public final class LiveActivityController {
         defer {
             currentPhase = .armed
             currentWords = 0
+            armedAt = .now
         }
 
-        if let existing = Activity<PikoAttributes>.activities.first {
+        // Adopt only a LIVE activity: an ended one lingers in `.activities` for a while,
+        // and adopting it silently re-arms a notch that can never redisplay.
+        if let existing = Activity<PikoAttributes>.activities.first(where: { $0.activityState == .active }) {
             activity = existing
             return
         }
@@ -40,7 +44,8 @@ public final class LiveActivityController {
         let initialState = PikoAttributes.ContentState(
             phase: .armed,
             words: 0,
-            levels: LiveActivityContent.placeholderLevels()
+            levels: LiveActivityContent.placeholderLevels(),
+            mood: LiveActivityContent.mood(phase: .armed, words: 0, armedSeconds: 0)
         )
         let content = ActivityContent(state: initialState, staleDate: Date().addingTimeInterval(8 * 3600))
 
@@ -97,10 +102,13 @@ public final class LiveActivityController {
     }
 
     private func refreshContent() async {
+        let effectivePhase = LiveActivityContent.effectivePhase(sessionPhase: currentPhase, isTidying: isTidyingOverride)
+        let armedSeconds = armedAt.map { Date().timeIntervalSince($0) } ?? 0
         let state = PikoAttributes.ContentState(
-            phase: LiveActivityContent.effectivePhase(sessionPhase: currentPhase, isTidying: isTidyingOverride),
+            phase: effectivePhase,
             words: currentWords,
-            levels: levels
+            levels: levels,
+            mood: LiveActivityContent.mood(phase: effectivePhase, words: currentWords, armedSeconds: armedSeconds)
         )
         let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(8 * 3600))
         if let activity {

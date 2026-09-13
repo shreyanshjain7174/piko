@@ -78,7 +78,7 @@ targets:
   PikoWidgets:
     type: app-extension
     platform: iOS
-    sources: [PikoWidgets, SharedIntents]
+    sources: [PikoWidgets, SharedIntents, PikoWidgets/PetFrames]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.piko.Piko.PikoWidgets

@@ -7,5 +7,6 @@ import WidgetKit
 struct PikoWidgetsBundle: WidgetBundle {
     var body: some Widget {
         PikoLiveActivityWidget()
+        PikoDictationControl()
     }
 }

@@ -44,4 +44,10 @@ public enum LiveActivityContent {
         if sessionPhase == .idle { return .idle }
         return isTidying ? .tidying : sessionPhase
     }
+
+    /// The pet's feeling, from the session's shape alone. Routed through here so the
+    /// controller, tests and any future surface share one derivation.
+    public static func mood(phase: SessionPhase, words: Int, armedSeconds: TimeInterval, hour: Int = Calendar.current.component(.hour, from: Date())) -> PikoMood {
+        MoodEngine.mood(phase: phase, words: words, armedSeconds: armedSeconds, hour: hour)
+    }
 }
