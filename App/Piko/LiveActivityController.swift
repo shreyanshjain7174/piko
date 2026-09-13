@@ -13,6 +13,13 @@ public final class LiveActivityController {
     private var currentWords: Int = 0
     private var currentPhase: SessionPhase = .idle
     private var isTidyingOverride: Bool = false
+    private var levels: [Int] = LiveActivityContent.placeholderLevels()
+    private var lastLevelPush: Date?
+
+    /// WidgetKit renders Live Activities at roughly 1–2 updates per second — pushing every
+    /// 20 Hz sample would burn the update budget for no visible difference. One bar update
+    /// per interval keeps the notch visibly breathing.
+    private static let levelPushInterval: TimeInterval = 0.8
 
     public init() {}
 
@@ -50,6 +57,21 @@ public final class LiveActivityController {
             await end()
             return
         }
+        if phase == .capturing {
+            levels = LiveActivityContent.placeholderLevels()
+            lastLevelPush = nil
+        }
+        await refreshContent()
+    }
+
+    /// Fed by `.audioLevelUpdated`. Rolls the newest bucket into the bar history and refreshes
+    /// the Activity no more than once per `levelPushInterval`.
+    public func updateLevels(_ sample: AudioLevel) async {
+        guard currentPhase == .capturing, sample.isFresh() else { return }
+        let now = Date()
+        if let last = lastLevelPush, now.timeIntervalSince(last) < Self.levelPushInterval { return }
+        lastLevelPush = now
+        levels = LiveActivityContent.rolled(levels, with: LiveActivityContent.bucket(of: sample.level))
         await refreshContent()
     }
 
@@ -78,7 +100,7 @@ public final class LiveActivityController {
         let state = PikoAttributes.ContentState(
             phase: LiveActivityContent.effectivePhase(sessionPhase: currentPhase, isTidying: isTidyingOverride),
             words: currentWords,
-            levels: LiveActivityContent.placeholderLevels()
+            levels: levels
         )
         let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(8 * 3600))
         if let activity {

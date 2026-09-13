@@ -14,6 +14,25 @@ public enum LiveActivityContent {
         Array(repeating: 0, count: 8)
     }
 
+    /// The Level Activity's bars. A normalized level (0...1) becomes one of eleven
+    /// buckets so the widget extension renders identical bars from identical states.
+    public static func bucket(of level: Double) -> Int {
+        guard level.isFinite else { return 0 }
+        return min(max(Int((level * 10).rounded()), 0), 10)
+    }
+
+    /// Oldest bucket falls off the left, the newest sample enters on the right —
+    /// the bars scroll like speech, not like a meter that twitches in place.
+    public static func rolled(_ levels: [Int], with newBucket: Int) -> [Int] {
+        let next = bucket(of: Double(newBucket) / 10)
+        var result = levels
+        if result.count >= 8 {
+            result.removeFirst(result.count - 7)
+        }
+        result.append(next)
+        return result
+    }
+
     /// `.idle` ends the Activity; every other phase updates it.
     public static func shouldEndActivity(for phase: SessionPhase) -> Bool {
         phase == .idle

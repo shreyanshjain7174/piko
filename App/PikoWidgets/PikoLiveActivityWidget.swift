@@ -13,6 +13,8 @@ struct PikoLiveActivityWidget: Widget {
         } dynamicIsland: { context in
             let phase = context.state.phase
             let words = context.state.words
+            let levels = context.state.levels
+            let tint = context.attributes.skin.controlTint
 
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -42,20 +44,42 @@ struct PikoLiveActivityWidget: Widget {
                         .foregroundStyle(.white)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    StopButton()
+                    HStack(spacing: 14) {
+                        // Bars only while there is something to hear; armed rests silent.
+                        if phase == .capturing {
+                            LevelBars(levels: levels, tint: tint, barWidth: 5, spacing: 5)
+                                .frame(width: 118, height: 26)
+                                .accessibilityLabel("Voice activity")
+                        }
+                        Spacer()
+                        StopButton()
+                    }
+                    .padding(.top, 4)
                 }
             } compactLeading: {
                 Image(systemName: phase.symbolName)
                     .foregroundStyle(phase == .capturing ? .white : .secondary)
                     .accessibilityLabel(phase.spokenStatus)
             } compactTrailing: {
-                WordCount(words: words, phase: phase)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white)
+                // While capturing the notch dances with the voice; otherwise it stays quiet
+                // and reports the words instead.
+                if phase == .capturing {
+                    LevelBars(levels: Array(levels.suffix(3)), tint: tint, barWidth: 3.5, spacing: 2.5)
+                        .frame(width: 17, height: 14)
+                } else {
+                    WordCount(words: words, phase: phase)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white)
+                }
             } minimal: {
-                Image(systemName: phase.symbolName)
-                    .foregroundStyle(phase == .capturing ? .white : .secondary)
-                    .accessibilityLabel(phase.spokenStatus)
+                if phase == .capturing {
+                    LevelBars(levels: Array(levels.suffix(2)), tint: tint, barWidth: 3, spacing: 2)
+                        .frame(width: 9, height: 12)
+                } else {
+                    Image(systemName: phase.symbolName)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(phase.spokenStatus)
+                }
             }
         }
     }
@@ -81,6 +105,12 @@ private struct LockScreenView: View {
 
             Spacer(minLength: 8)
 
+            if state.phase == .capturing {
+                LevelBars(levels: state.levels, tint: skin.controlTint, barWidth: 4.5, spacing: 4)
+                    .frame(width: 66, height: 24)
+                    .accessibilityLabel("Voice activity")
+            }
+
             StopButton()
         }
         .padding(.horizontal, 16)
@@ -105,10 +135,12 @@ private struct WordCount: View {
 }
 
 private struct StopButton: View {
+    var compact = false
+
     var body: some View {
         Button(intent: StopSessionIntent()) {
             Label("Stop", systemImage: "stop.fill")
-                .font(.subheadline.weight(.semibold))
+                .font(compact ? .caption.weight(.semibold) : .subheadline.weight(.semibold))
         }
         .buttonStyle(.bordered)
         .tint(.white)

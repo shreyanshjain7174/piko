@@ -22,6 +22,35 @@ struct LiveActivityContentTests {
         #expect(LiveActivityContent.placeholderLevels().count == 8)
     }
 
+    @Test func bucketCoversTheNormalizedRange() {
+        #expect(LiveActivityContent.bucket(of: 0.0) == 0)
+        #expect(LiveActivityContent.bucket(of: 0.44) == 4)
+        #expect(LiveActivityContent.bucket(of: 0.46) == 5)
+        #expect(LiveActivityContent.bucket(of: 1.0) == 10)
+    }
+
+    @Test func bucketClampsAndRejectsNonfinite() {
+        #expect(LiveActivityContent.bucket(of: -0.5) == 0)
+        #expect(LiveActivityContent.bucket(of: 1.7) == 10)
+        #expect(LiveActivityContent.bucket(of: .nan) == 0)
+    }
+
+    @Test func rolledScrollsOldestOffTheLeft() {
+        let resting = LiveActivityContent.placeholderLevels()
+        var levels = resting
+        for bucket in [1, 2, 3, 4, 5, 6, 7, 8] {
+            levels = LiveActivityContent.rolled(levels, with: bucket)
+        }
+        #expect(levels == [1, 2, 3, 4, 5, 6, 7, 8])
+        levels = LiveActivityContent.rolled(levels, with: 9)
+        #expect(levels == [2, 3, 4, 5, 6, 7, 8, 9])
+    }
+
+    @Test func rolledClampsItsInput() {
+        let levels = LiveActivityContent.rolled([0, 0, 0, 0, 0, 0, 0, 0], with: 42)
+        #expect(levels.last == 10)
+    }
+
     @Test func shouldEndActivityOnlyForIdle() {
         #expect(LiveActivityContent.shouldEndActivity(for: .idle) == true)
     }

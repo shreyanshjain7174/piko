@@ -39,13 +39,27 @@ public struct VoiceOrb: View {
                     let offset = Double(layer) * 0.8
                     let path = Self.contour(center: center, radius: radius + CGFloat(layer) * side * 0.022,
                                             time: time, level: motionLevel, offset: offset)
-                    let colors: [Color] = layer == 0
-                        ? [.white.opacity(0.97), Color.cyan.opacity(0.9), tint, Color(red: 0.08, green: 0.16, blue: 0.38)]
-                        : [Color.cyan.opacity(0.25), tint.opacity(0.2 + level * 0.15)]
-                    context.fill(path, with: .linearGradient(
-                        Gradient(colors: colors),
-                        startPoint: CGPoint(x: center.x - radius, y: center.y - radius),
-                        endPoint: CGPoint(x: center.x + radius, y: center.y + radius)))
+                    if layer == 0 {
+                        // A translucent deep-glass ball: lit core, dark limb, one specular
+                        // highlight — the character stays the subject, the orb is the room.
+                        context.fill(path, with: .radialGradient(
+                            Gradient(colors: [tint.opacity(0.30 + motionLevel * 0.22),
+                                              Color.cyan.opacity(0.13 + motionLevel * 0.14),
+                                              Color(red: 0.03, green: 0.06, blue: 0.14).opacity(0.86)]),
+                            center: CGPoint(x: center.x - radius * 0.22, y: center.y - radius * 0.28),
+                            startRadius: 0, endRadius: radius * 1.55))
+                        let highlight = CGRect(x: center.x - radius * 0.72, y: center.y - radius * 0.88,
+                                               width: radius * 0.95, height: radius * 0.75)
+                        context.fill(Path(ellipseIn: highlight), with: .radialGradient(
+                            Gradient(colors: [.white.opacity(0.22), .white.opacity(0)]),
+                            center: CGPoint(x: highlight.midX, y: highlight.midY),
+                            startRadius: 0, endRadius: radius * 0.52))
+                    } else {
+                        context.fill(path, with: .linearGradient(
+                            Gradient(colors: [Color.cyan.opacity(0.25), tint.opacity(0.2 + level * 0.15)]),
+                            startPoint: CGPoint(x: center.x - radius, y: center.y - radius),
+                            endPoint: CGPoint(x: center.x + radius, y: center.y + radius)))
+                    }
                     context.stroke(path, with: .color(.white.opacity(layer == 0 ? 0.35 : 0.2)), lineWidth: 0.7)
                 }
             }

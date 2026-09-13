@@ -69,8 +69,15 @@ public final class CaptureCoordinator {
 
         #if targetEnvironment(simulator)
         if let mock = transcriber as? MockTranscriber {
-            await mock.setDefaultScript(.progressive(Self.simulatorDemoTranscript,
-                                                      sessionEpoch: sessionEpoch))
+            // Deliberately slow: keeps the Simulator's capturing state alive long enough
+            // to observe the orb, the wave and the notch reacting to demo speech energy.
+            await mock.setDefaultScript(MockTranscriber.Script(
+                drafts: MockTranscriber.Script.progressive(
+                    Self.simulatorDemoTranscript,
+                    chunkSize: 3,
+                    sessionEpoch: sessionEpoch
+                ).drafts,
+                delayBetween: .milliseconds(350)))
         }
         #endif
 

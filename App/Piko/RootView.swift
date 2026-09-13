@@ -14,7 +14,7 @@ struct RootView: View {
 
     var body: some View {
         TabView(selection: $selection) {
-            Tab("Home", systemImage: "house", value: .home) {
+            Tab("Home", systemImage: "waveform", value: .home) {
                 ArmView(model: model)
             }
             Tab("History", systemImage: "clock", value: .history) {

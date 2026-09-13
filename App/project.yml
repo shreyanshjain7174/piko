@@ -39,6 +39,9 @@ targets:
         NSMicrophoneUsageDescription: "Piko turns what you say into text. Audio never leaves this phone."
         NSSpeechRecognitionUsageDescription: "Piko transcribes on this device only."
         NSSupportsLiveActivities: true
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.piko.debug
+            CFBundleURLSchemes: [piko]
     entitlements:
       path: Piko/Piko.entitlements
       properties:
@@ -92,3 +95,37 @@ targets:
       path: PikoWidgets/PikoWidgets.entitlements
       properties:
         com.apple.security.application-groups: [group.dev.piko.shared]
+
+  PikoUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.piko.Piko.PikoUITests
+        TEST_TARGET_NAME: Piko
+    dependencies:
+      - target: Piko
+    info:
+      path: UITests/Info.plist
+      properties: {}
+
+schemes:
+  Piko:
+    build:
+      targets:
+        Piko: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - PikoUITests
+  PikoKeyboard:
+    build:
+      targets:
+        PikoKeyboard: all
+  PikoWidgets:
+    build:
+      targets:
+        PikoWidgets: all
