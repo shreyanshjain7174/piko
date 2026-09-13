@@ -30,6 +30,7 @@ struct KeyboardView: View {
                 Text("piko")
                     .font(.system(size: 21, weight: .bold, design: .rounded))
                     .tracking(-0.8)
+                    .foregroundStyle(.white)
                     .accessibilityHidden(true)
 
                 Spacer()
@@ -37,7 +38,7 @@ struct KeyboardView: View {
                 Menu {
                     Picker("Tone", selection: $selectedProfile) {
                         ForEach(Profile.allCases, id: \.self) { profile in
-                            Text(profile.keyboardTitle).tag(profile)
+                            Text(profile.displayName).tag(profile)
                         }
                     }
                 } label: {
@@ -47,12 +48,13 @@ struct KeyboardView: View {
                         Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold))
                     }
                     .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.85))
                     .padding(.horizontal, 12)
                     .frame(height: 36)
-                    .background(Color(.secondarySystemFill), in: Capsule())
+                    .background(.white.opacity(0.1), in: Capsule())
                 }
                 .accessibilityLabel("Tone")
-                .accessibilityValue(selectedProfile.keyboardTitle)
+                .accessibilityValue(selectedProfile.displayName)
 
                 if setupPrompt != nil {
                     Button { showingHelp = true } label: {
@@ -63,7 +65,7 @@ struct KeyboardView: View {
                     .accessibilityLabel("Keyboard setup")
                 }
             }
-            .foregroundStyle(Color(.secondaryLabel))
+            .foregroundStyle(.white.opacity(0.55))
 
             MicButton(phase: sessionPhase, skin: skin, setupPrompt: setupPrompt,
                       voiceActivity: voiceActivity, action: onMicTap)
@@ -72,6 +74,7 @@ struct KeyboardView: View {
                 Button(action: onRevertTap) {
                     Label("Use original", systemImage: "arrow.uturn.backward")
                         .font(.footnote.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.8))
                         .frame(minHeight: 32)
                 }
                 .accessibilityHint("Restores exactly what you said.")
@@ -84,7 +87,7 @@ struct KeyboardView: View {
         .padding(.top, 4)
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity)
-        .background(Color(.systemBackground))
+        .background(Color(red: 0.04, green: 0.07, blue: 0.14))
         .alert(setupPrompt?.caption ?? "Keyboard setup", isPresented: $showingHelp) {
             Button("Done", role: .cancel) {}
         } message: {
@@ -93,17 +96,6 @@ struct KeyboardView: View {
     }
 }
 
-extension Profile {
-    var keyboardTitle: String {
-        switch self {
-        case .message: "Casual"
-        case .email: "Email"
-        case .note: "Notes"
-        case .code: "Code"
-        case .agent: "Prompt"
-        }
-    }
-}
 
 /// The unmet prerequisite remains available to accessibility and the optional help control.
 enum KeyboardSetupPrompt: Equatable {

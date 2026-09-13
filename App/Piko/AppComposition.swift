@@ -32,14 +32,25 @@ final class AppComposition {
 
         let transcriber: any Transcriber
         #if targetEnvironment(simulator)
-        transcriber = MockTranscriber()
+        // The Simulator ships no speech models, so the default is the scripted mock.
+        // `-pikoRealSpeech` opts a Simulator run into the real engine — the voice-agent
+        // verification path (Mac microphone → Simulator → SpeechTranscriberEngine).
+        if ProcessInfo.processInfo.arguments.contains("-pikoRealSpeech") {
+            transcriber = SpeechTranscriberEngine()
+        } else {
+            transcriber = MockTranscriber()
+        }
         #else
         transcriber = SpeechTranscriberEngine()
         #endif
 
         let brain: any Brain
         #if targetEnvironment(simulator)
-        brain = MockBrain()
+        if ProcessInfo.processInfo.arguments.contains("-pikoRealSpeech") {
+            brain = SystemBrain()
+        } else {
+            brain = MockBrain()
+        }
         #else
         brain = SystemBrain()
         #endif
@@ -115,20 +126,39 @@ final class AppComposition {
             startDemoLevelPump()
         }
         // Development/UI-test hook: walk straight into a capture shortly after launch.
-        // arm() refuses while the app is still activating, so poll briefly.
+        // arm() refuses while the app is still activating, and a wedged host audio device
+        // can stall engine start — so keep trying across the whole window and never break
+        // on a single throw.
         if ProcessInfo.processInfo.arguments.contains("-pikoAutoStart") {
             Task {
                 guard await AVAudioApplication.requestRecordPermission() else { return }
-                for _ in 0..<20 {
+                for _ in 0..<36 {
                     try? await Task.sleep(for: .seconds(0.5))
                     if session.currentPhase == .idle { try? await armSession() }
+                    if session.currentPhase == .capturing { break }
                     guard session.currentPhase == .armed, !captureCoordinator.isTidying else { continue }
                     try? await captureCoordinator.startCapture()
-                    break
                 }
             }
         }
         #endif
+
+        // The notch's Stop button is handled by the widget extension while the app is
+        // backgrounded; Darwin delivery is best-effort there, so poll the durable stop
+        // file while a session is live (the armed session keeps this process alive).
+        Task { [weak self] in
+            guard let store = StopRequestStore() else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(400))
+                guard let self, self.session.currentPhase != .idle else { continue }
+                guard store.consumePending() != nil else { continue }
+                if self.session.currentPhase == .capturing {
+                    await self.captureCoordinator.stopCapture()
+                }
+                await self.session.disarm()
+                await self.liveActivityController.end()
+            }
+        }
 
         captureCoordinator.onTidyingChange = { [weak self] isTidying in
             Task { @MainActor in

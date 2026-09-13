@@ -132,6 +132,28 @@ DEBUG-only hooks that make the capture pipeline observable. None of them compile
 `CaptureCoordinator` feeds `MockTranscriber` a slow canned script on the Simulator
 (`simulatorDemoTranscript`), so dictation visibly streams and lands a tidied result.
 
+### 8.1 Real microphone + real speech on Simulator (`-pikoRealSpeech`)
+
+`-pikoRealSpeech` routes the Simulator through `SpeechTranscriberEngine` instead of the mock,
+with a structured log at every startup gate (`subsystem "dev.piko", category "transcribe"`).
+What we learned, so nobody re-derives it:
+
+- `SpeechTranscriber.isAvailable` is **false** on Simulator — iOS 26 dictation assets are not
+  shipped for simulator runtimes.
+- `SFSpeechRecognizer` with `requiresOnDeviceRecognition` then fails with
+  `kLSRErrorDomain 300` — the sim runtime's local recognizer asset fails to initialize.
+- A server-based recognizer would work but is forbidden here (nothing leaves the machine).
+
+So on Simulator, `-pikoRealSpeech` proves the **audio path** (mic → engine → level channel →
+orb/wave/notch), and `testRealMicCaptureStarts` exercises arming through the real engine.
+Real transcription correctness is a **physical-iPhone** check, matching README's device rule.
+One host-side prerequisite: macOS must grant **Simulator** microphone access (System Settings →
+Privacy & Security → Microphone) — unauthorized access returns pure digital silence, which
+reads as "the mic is broken" but is only a permission. If the built-in mic still returns
+silence with permission granted (lid closed, hardware state), a loopback device (BlackHole)
+fed by the system output is the deterministic harness — switch defaults, reboot the sim so it
+re-latches the device, speak, then restore defaults.
+
 Key visual states are committed under `docs/screenshots/`.
 
 ## Sources

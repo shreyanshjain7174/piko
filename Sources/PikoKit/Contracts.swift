@@ -10,6 +10,7 @@ public enum AppGroup {
     public static let resultFile = "result.json"
     public static let stateFile = "state.json"
     public static let captureRequestFile = "capture-request.json"
+    public static let stopRequestFile = "stop-request.json"
     public static let audioLevelFile = "audio-level.json"
 }
 
@@ -162,6 +163,18 @@ public enum Profile: String, Codable, Sendable, CaseIterable {
     /// Shapes text a machine will parse for instructions. `.code` shapes text a human
     /// will read in a commit or a file.
     case agent
+
+    /// The one human name per tone — shared by the keyboard's Tone menu and History rows
+    /// so a profile never has two names across surfaces.
+    public var displayName: String {
+        switch self {
+        case .message: "Casual"
+        case .email:   "Email"
+        case .note:    "Notes"
+        case .code:    "Code"
+        case .agent:   "Prompt"
+        }
+    }
 
     public var styleHint: String {
         switch self {

@@ -38,13 +38,19 @@ struct MicButton: View {
                         .fill(background)
                         .frame(width: diameter, height: diameter)
                         .overlay(
-                            Circle().strokeBorder(Color(.separator), lineWidth: isDisabled ? 1 : 0)
+                            Circle().strokeBorder(Color(.separator).opacity(0.35), lineWidth: isDisabled ? 1 : 0)
                         )
 
                     if phase == .tidying {
                         ProgressView()
                             .progressViewStyle(.circular)
-                            .tint(Color(.secondaryLabel))
+                            .tint(.white.opacity(0.7))
+                    } else if phase == .armed || phase == .idle || phase == nil {
+                        // The character is the mic. The glyph carries no brand; the face does.
+                        PikoFace(phase: phase ?? .idle, skin: skin)
+                            .frame(width: diameter * 0.62, height: diameter * 0.66)
+                            .offset(y: -diameter * 0.02)
+                            .accessibilityHidden(true)
                     } else {
                         Image(systemName: symbolName)
                             .font(.system(size: diameter * 0.4, weight: .semibold))
@@ -79,7 +85,7 @@ struct MicButton: View {
     private var foreground: Color {
         switch phase {
         case .armed, .capturing: .white
-        default:                 Color(.secondaryLabel)
+        default:                 .white.opacity(0.5)
         }
     }
 

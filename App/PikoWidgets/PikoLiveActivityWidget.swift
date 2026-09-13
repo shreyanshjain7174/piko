@@ -35,11 +35,13 @@ struct PikoLiveActivityWidget: Widget {
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     WordCount(words: words, phase: phase)
-                        .font(.title3.weight(.semibold))
+                        .font(.footnote.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                         .foregroundStyle(.white)
                 }
                 DynamicIslandExpandedRegion(.center) {
-                    Text(phase.displayName)
+                    Text(phase.calmStatus)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.white)
                 }
@@ -95,7 +97,7 @@ private struct LockScreenView: View {
                 .frame(width: 52, height: 55)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(state.phase.displayName)
+                Text(state.phase.calmStatus)
                     .font(.headline)
                     .foregroundStyle(.white)
                 WordCount(words: state.words, phase: state.phase)

@@ -179,13 +179,22 @@ struct ArmView: View {
                             transcriptCard
                         }
                         sessionStrip
-                        privacy
                     }
                     .padding(.horizontal, 22)
                     .padding(.top, 6)
-                    .padding(.bottom, 56)
+                    .padding(.bottom, 12)
                 }
                 .scrollIndicators(.hidden)
+                .safeAreaInset(edge: .bottom) {
+                    // A fixed footer, not scroll content: the privacy promise is always
+                    // fully visible, never half-swallowed by the floating tab bar.
+                    Label("On-device. Nothing ever leaves this iPhone.", systemImage: "lock.shield")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.55))
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 10)
+                        .padding(.bottom, 4)
+                }
             }
             .navigationTitle("piko")
             .navigationBarTitleDisplayMode(.inline)
@@ -195,6 +204,7 @@ struct ArmView: View {
                         Image(systemName: "questionmark.circle")
                     }
                     .accessibilityLabel("Keyboard setup")
+                    .accessibilityIdentifier("home.setup")
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -424,7 +434,7 @@ struct ArmView: View {
 
             Text(model.sessionActive
                  ? "Session live — Piko is listening in every text field."
-                 : "Arm a session, then switch to Piko from the globe key in any text field.")
+                 : "After a one-time setup, arm a session and Piko follows you into any text field.")
                 .font(.subheadline)
                 .foregroundStyle(.white.opacity(0.6))
                 .fixedSize(horizontal: false, vertical: true)
@@ -475,12 +485,5 @@ struct ArmView: View {
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 20))
-    }
-
-    private var privacy: some View {
-        Label("On-device. Nothing ever leaves this iPhone.", systemImage: "lock.shield")
-            .font(.caption)
-            .foregroundStyle(.white.opacity(0.4))
-            .frame(maxWidth: .infinity)
     }
 }

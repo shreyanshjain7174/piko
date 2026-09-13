@@ -65,15 +65,15 @@ extension PikoError {
     public var userMessage: String {
         switch self {
         case .notForeground:
-            "Piko can only arm while it is on screen. Open Piko and tap Arm."
+            "Piko can only arm while it is on screen. Open Piko and tap Start session."
         case .notArmed:
-            "Piko is not armed yet. Tap Arm first."
+            "Piko is not set up yet. Tap Start session on Home first."
         case .sessionInterrupted:
-            "Something else took over the microphone. Tap Arm to start again."
+            "Something else took over the microphone. Tap Start session to try again."
         case .microphoneDenied:
             "Piko needs the microphone to hear you. Turn it on in Settings › Piko › Microphone."
         case .audioUnavailable:
-            "The microphone is busy. Close whatever is using it, then tap Arm."
+            "The microphone is busy. Close whatever is using it, then tap Start session."
         case .brainUnavailable:
             "Piko can still transcribe, but tidying needs Apple Intelligence turned on for this device."
         case .brainBudgetExceeded:
@@ -83,6 +83,6 @@ extension PikoError {
 
     public static func userMessage(for error: any Error) -> String {
         (error as? PikoError)?.userMessage
-            ?? "Piko could not open the microphone. Tap Arm to try again."
+            ?? "Piko could not open the microphone. Tap Start session to try again."
     }
 }
