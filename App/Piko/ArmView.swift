@@ -4,6 +4,7 @@ import SwiftUI
 import UIKit
 import PikoKit
 import PikoUI
+import PikoBrain
 
 /// App-only presentation state. All capture and persistence still use the existing coordinators.
 @MainActor
@@ -16,7 +17,10 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var skin: Skin = .cute
     @Published private(set) var microphonePermission = "Not requested"
     @Published private(set) var memoryLine: String?
+    @Published private(set) var suggestion: Suggestion?
     let activity = VoiceActivityModel()
+    let agent = PikoAgent(memory: AppComposition.shared.memory)
+    private var suggestionSpoken = false
     private var lastResultID: UUID?
 
     init() {
@@ -46,6 +50,7 @@ final class HomeViewModel: ObservableObject {
     func observe() async {
         refresh()
         await loadMemoryLine()
+        await loadSuggestion()
         let channel = AppComposition.shared.channel
         for await signal in channel.signals {
             guard !Task.isCancelled else { return }
@@ -63,8 +68,28 @@ final class HomeViewModel: ObservableObject {
                 lastResultID = result.id
                 text = result.shipped
                 await loadMemoryLine()
+                await loadSuggestion()
+                suggestionSpoken = false
             }
         }
+    }
+
+    /// The harness's suggest route, surfaced once per launch — quiet by default, never
+    /// during capture. Tapping the card speaks it (if the voice is on) with a soft
+    /// double-tap haptic.
+    func loadSuggestion() async {
+        let packet = await AppComposition.shared.memory.recall(query: "")
+        let hour = Calendar.current.component(.hour, from: .now)
+        suggestion = SuggestionEngine.suggestion(for: packet?.entities ?? [], hour: hour)
+    }
+
+    func suggestionTapped() {
+        guard let suggestion else { return }
+        let haptic = UIImpactFeedbackGenerator(style: .light)
+        haptic.impactOccurred(intensity: 0.7)
+        haptic.impactOccurred()
+        PikoSpeaker.shared.speak(suggestion.text, phase: phase)
+        suggestionSpoken = true
     }
 
     func toggleCapture() async {
@@ -171,6 +196,9 @@ struct ArmView: View {
                         greeting
                         hero
                         statusLine
+                        if let suggestion = model.suggestion, model.phase != .capturing {
+                            suggestionCard(suggestion)
+                        }
                         if model.phase == .capturing {
                             waveStrip
                         }
@@ -464,6 +492,42 @@ struct ArmView: View {
         .padding(18)
         .glassEffect(.regular.tint(Color(red: 0.04, green: 0.07, blue: 0.15).opacity(0.35)),
                      in: RoundedRectangle(cornerRadius: 26))
+    }
+
+    /// The harness's suggestion surface: one gentle line, tap to hear it. Never a list,
+    /// never an exclamation mark, never shown mid-capture.
+    private func suggestionCard(_ suggestion: Suggestion) -> some View {
+        Button {
+            model.suggestionTapped()
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "sparkle")
+                    .font(.body)
+                    .foregroundStyle(model.skin.controlTint)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("A thought")
+                        .font(.caption.weight(.semibold))
+                        .tracking(0.8)
+                        .textCase(.uppercase)
+                        .foregroundStyle(.white.opacity(0.45))
+                    Text(suggestion.text)
+                        .font(.subheadline)
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: PikoSpeaker.shared.isEnabled ? "speaker.wave.2" : "hand.tap")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.35))
+                    .padding(.top, 2)
+            }
+            .padding(16)
+            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 22))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Suggestion: \(suggestion.text)")
+        .accessibilityHint("Double-tap to hear it")
     }
 
     private func errorCard(_ message: String) -> some View {

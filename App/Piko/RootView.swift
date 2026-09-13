@@ -106,6 +106,33 @@ private struct SettingsView: View {
                     }
 
                     Section {
+                        NavigationLink {
+                            MemoryView()
+                        } label: {
+                            Label("What Piko remembers", systemImage: "memorychip")
+                                .foregroundStyle(.white)
+                        }
+                        Toggle(isOn: Binding(
+                            get: { PikoSpeaker.shared.isEnabled },
+                            set: { PikoSpeaker.shared.isEnabled = $0 })) {
+                            Label("Let Piko speak", systemImage: "waveform.badge.magnifyingglass")
+                                .foregroundStyle(.white)
+                        }
+                        Button {
+                            PikoSpeaker.shared.preview()
+                        } label: {
+                            Label("Preview Piko's voice", systemImage: "person.wave.2")
+                                .foregroundStyle(.white)
+                        }
+                    } header: {
+                        Text("Companion")
+                            .foregroundStyle(.white.opacity(0.5))
+                    } footer: {
+                        Text("Piko speaks softly, and never while it is listening. Everything it knows is on this iPhone.")
+                            .foregroundStyle(.white.opacity(0.4))
+                    }
+
+                    Section {
                         Label("Transcribed on this iPhone", systemImage: "iphone")
                             .foregroundStyle(.white.opacity(0.85))
                         Label("No account. No cloud storage.", systemImage: "lock.shield")

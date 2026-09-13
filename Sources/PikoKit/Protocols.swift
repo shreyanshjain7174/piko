@@ -45,6 +45,14 @@ public protocol Memory: Sendable {
     func nearestEdits(to text: String, limit: Int) async -> [EditPair]
     func search(_ query: String, limit: Int) async -> [CaptureResult]
     func delete(_ id: UUID) async
+
+    /// Memory-graph operations (docs/MEMORY-ARCHITECTURE.md). Declared as requirements
+    /// so conformers are dynamically dispatched through `any Memory` — extension-only
+    /// defaults would statically bind to the default body and silently skip overrides.
+    func indexNewResults() async
+    func rememberedEntities(limit: Int) async -> [RememberedEntity]
+    func forget(entity name: String) async
+    func recall(query: String) async -> MemoryPacket?
 }
 
 public enum PikoError: Error, Sendable {

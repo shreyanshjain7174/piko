@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 import SQLite3
 import PikoKit
 
@@ -56,12 +57,42 @@ public actor SQLiteMemory: Memory {
             raw TEXT NOT NULL, shipped TEXT NOT NULL, final TEXT NOT NULL,
             profile TEXT NOT NULL, createdAt REAL NOT NULL
         );
+        -- Schema v2: the derived memory graph (see docs/MEMORY-ARCHITECTURE.md).
+        -- results stays the journal; these tables are a rebuildable projection.
+        CREATE TABLE IF NOT EXISTS entities (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+            kind TEXT NOT NULL,
+            first_seen REAL NOT NULL,
+            last_seen REAL NOT NULL,
+            hit_count INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE TABLE IF NOT EXISTS edges (
+            id INTEGER PRIMARY KEY,
+            src INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+            dst INTEGER NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+            relation TEXT NOT NULL,
+            weight REAL NOT NULL DEFAULT 1,
+            last_seen REAL NOT NULL,
+            UNIQUE(src, dst, relation)
+        );
+        CREATE INDEX IF NOT EXISTS idx_entities_last_seen ON entities(last_seen);
+        CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src);
+        CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges(dst);
+        CREATE TABLE IF NOT EXISTS memory_meta (
+            key TEXT PRIMARY KEY, value TEXT NOT NULL
+        );
         """
         guard sqlite3_exec(handle, schemaSQL, nil, nil, nil) == SQLITE_OK else {
             let message = String(cString: sqlite3_errmsg(handle))
             sqlite3_close(handle)
             throw SQLiteMemoryError.stepFailed(message)
         }
+
+        // MEMORY-ARCHITECTURE.md budgets: WAL for lock-free reads during capture,
+        // a capped 2 MB page cache, and NORMAL sync — durable enough for a derived
+        // projection that the journal can always rebuild.
+        sqlite3_exec(handle, "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=-2000; PRAGMA temp_store=MEMORY;", nil, nil, nil)
     }
 
     deinit {
@@ -257,6 +288,10 @@ public actor SQLiteMemory: Memory {
         return results
     }
 
+    // MARK: - Memory graph (schema v2)
+
+    private static let watermarkKey = "index_watermark"
+
     private func decodeCaptureResult(from stmt: OpaquePointer?) -> CaptureResult? {
         guard let idC = sqlite3_column_text(stmt, 0),
               let rawC = sqlite3_column_text(stmt, 1),
@@ -280,6 +315,293 @@ public actor SQLiteMemory: Memory {
                 brainMS: Int(sqlite3_column_int(stmt, 8))
             )
         )
+    }
+
+    /// Tier-0 extraction over results recorded since the last watermark — the whole
+    /// `remember` operation. One transaction: a crash mid-batch rolls back and retries
+    /// the same rows on the next call. Idempotent by construction.
+    public func indexNewResults() async {
+        guard let hits = unindexedResults(), !hits.isEmpty else { return }
+        do {
+            guard sqlite3_exec(db, "BEGIN IMMEDIATE", nil, nil, nil) == SQLITE_OK else {
+                throw SQLiteMemoryError.stepFailed(String(cString: sqlite3_errmsg(db)))
+            }
+
+            var idsByName: [String: Int64] = [:]
+            var newWatermark: Int64 = 0
+            for (rowid, shipped, createdAt) in hits {
+                let extracted = EntityExtractor.extract(from: shipped)
+                var lastID: Int64?
+                for hit in extracted {
+                    let id = try upsertEntity(hit, at: createdAt, idsByName: &idsByName)
+                    if let previous = lastID, previous != id {
+                        try bumpEdge(from: previous, to: id, at: createdAt)
+                    }
+                    lastID = id
+                }
+                newWatermark = max(newWatermark, rowid)
+            }
+            try setMeta(Self.watermarkKey, "\(newWatermark)")
+            guard sqlite3_exec(db, "COMMIT", nil, nil, nil) == SQLITE_OK else {
+                throw SQLiteMemoryError.stepFailed(String(cString: sqlite3_errmsg(db)))
+            }
+        } catch {
+            sqlite3_exec(db, "ROLLBACK", nil, nil, nil)
+            print("SQLiteMemory: indexNewResults failed: \(error)")
+        }
+    }
+
+    private func unindexedResults() -> [(Int64, String, Date)]? {
+        let watermark = Int64(meta(Self.watermarkKey) ?? "0") ?? 0
+        let sql = "SELECT rowid, shipped, createdAt FROM results WHERE rowid > ? ORDER BY rowid"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, watermark)
+
+        var rows: [(Int64, String, Date)] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let text = sqlite3_column_text(stmt, 1) else { continue }
+            rows.append((sqlite3_column_int64(stmt, 0), String(cString: text),
+                         Date(timeIntervalSince1970: sqlite3_column_double(stmt, 2))))
+        }
+        return rows
+    }
+
+    private func upsertEntity(_ hit: EntityExtractor.Hit, at date: Date,
+                              idsByName: inout [String: Int64]) throws -> Int64 {
+        // Always execute the upsert — the increment IS the frequency signal. Only the
+        // id lookup is cacheable; skipping the upsert for same-batch repeats would
+        // flatten "said it three times" into "said it once".
+        let sql = """
+        INSERT INTO entities (name, kind, first_seen, last_seen, hit_count)
+        VALUES (?,?,?,?,1)
+        ON CONFLICT(name) DO UPDATE SET
+            hit_count = hit_count + 1,
+            last_seen = MAX(last_seen, excluded.last_seen),
+            kind = CASE WHEN excluded.kind != 'topic' THEN excluded.kind ELSE entities.kind END
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw SQLiteMemoryError.prepareFailed(String(cString: sqlite3_errmsg(db)))
+        }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, hit.name, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 2, hit.kind.rawValue, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_double(stmt, 3, date.timeIntervalSince1970)
+        sqlite3_bind_double(stmt, 4, date.timeIntervalSince1970)
+        guard sqlite3_step(stmt) == SQLITE_DONE else {
+            throw SQLiteMemoryError.stepFailed(String(cString: sqlite3_errmsg(db)))
+        }
+
+        if let cached = idsByName[hit.name] { return cached }
+        var lookup: OpaquePointer?
+        let idSQL = "SELECT id FROM entities WHERE name = ? COLLATE NOCASE"
+        guard sqlite3_prepare_v2(db, idSQL, -1, &lookup, nil) == SQLITE_OK else {
+            sqlite3_finalize(lookup)
+            throw SQLiteMemoryError.stepFailed("entity id lookup prepare failed: \(String(cString: sqlite3_errmsg(db)))")
+        }
+        sqlite3_bind_text(lookup, 1, hit.name, -1, SQLITE_TRANSIENT)
+        guard sqlite3_step(lookup) == SQLITE_ROW else {
+            let message = String(cString: sqlite3_errmsg(db))
+            sqlite3_finalize(lookup)
+            throw SQLiteMemoryError.stepFailed("entity id lookup failed for '\(hit.name)': \(message)")
+        }
+        let id = sqlite3_column_int64(lookup, 0)
+        sqlite3_finalize(lookup)
+        idsByName[hit.name] = id
+        return id
+    }
+
+    private func bumpEdge(from src: Int64, to dst: Int64, at date: Date) throws {
+        let sql = """
+        INSERT INTO edges (src, dst, relation, weight, last_seen)
+        VALUES (?, ?, 'co_mentioned', 1, ?)
+        ON CONFLICT(src, dst, relation) DO UPDATE SET
+            weight = weight + 1, last_seen = MAX(last_seen, excluded.last_seen)
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw SQLiteMemoryError.prepareFailed(String(cString: sqlite3_errmsg(db)))
+        }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, src)
+        sqlite3_bind_int64(stmt, 2, dst)
+        sqlite3_bind_double(stmt, 3, date.timeIntervalSince1970)
+        guard sqlite3_step(stmt) == SQLITE_DONE else {
+            throw SQLiteMemoryError.stepFailed(String(cString: sqlite3_errmsg(db)))
+        }
+    }
+
+    private func setMeta(_ key: String, _ value: String) throws {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "INSERT INTO memory_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", -1, &stmt, nil) == SQLITE_OK else {
+            throw SQLiteMemoryError.prepareFailed(String(cString: sqlite3_errmsg(db)))
+        }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 2, value, -1, SQLITE_TRANSIENT)
+        guard sqlite3_step(stmt) == SQLITE_DONE else {
+            throw SQLiteMemoryError.stepFailed(String(cString: sqlite3_errmsg(db)))
+        }
+    }
+
+    private func meta(_ key: String) -> String? {
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT value FROM memory_meta WHERE key = ?", -1, &stmt, nil) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT)
+        guard sqlite3_step(stmt) == SQLITE_ROW, let value = sqlite3_column_text(stmt, 0) else { return nil }
+        return String(cString: value)
+    }
+
+    public func rememberedEntities(limit: Int) async -> [RememberedEntity] {
+        // Frequency over recency: hit_count halved per 14 idle days. Pure SQL, no model.
+        let sql = """
+        SELECT name, kind, hit_count, last_seen FROM entities
+        ORDER BY hit_count / (1 + (julianday('now') - julianday(last_seen, 'unixepoch')) / 14.0) DESC
+        LIMIT ?
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int(stmt, 1, Int32(limit))
+        return collectEntities(stmt)
+    }
+
+    public func forget(entity name: String) async {
+        // ON DELETE CASCADE covers the edges; the explicit deletes keep the intent obvious.
+        sqlite3_exec(db, "PRAGMA foreign_keys=ON", nil, nil, nil)
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "DELETE FROM entities WHERE name = ? COLLATE NOCASE", -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, name, -1, SQLITE_TRANSIENT)
+        if sqlite3_step(stmt) != SQLITE_DONE {
+            print("SQLiteMemory: forget failed: \(String(cString: sqlite3_errmsg(db)))")
+        }
+    }
+
+    /// The `recall` operation, interactive-grade: one prepared statement for the line,
+    /// one for the entities. Query-matched packets filter entities to those actually
+    /// present in the matched text.
+    public func recall(query: String) async -> MemoryPacket? {
+        let lastSaid = await search("", limit: 1).first?.shipped
+        let entities = await rememberedEntities(limit: 200)
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let visible: [RememberedEntity]
+        if trimmed.isEmpty {
+            visible = Array(entities.prefix(8))
+        } else {
+            let matched = await search(trimmed, limit: 20).map { $0.shipped.localizedLowercase }
+            visible = Array(entities.filter { entity in
+                matched.contains { $0.contains(entity.name.localizedLowercase) }
+            }.prefix(8))
+        }
+        return MemoryPacket(lastSaid: lastSaid, entities: visible)
+    }
+
+    /// Drop the projection, keep the journal, re-derive. The recovery path of last
+    /// resort — and how an improved extractor ships safely to existing devices.
+    public func rebuildGraph() async {
+        sqlite3_exec(db, "DELETE FROM edges; DELETE FROM entities; DELETE FROM memory_meta WHERE key = '\(Self.watermarkKey)';", nil, nil, nil)
+        await indexNewResults()
+    }
+
+    private func collectEntities(_ stmt: OpaquePointer?) -> [RememberedEntity] {
+        var entities: [RememberedEntity] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let nameC = sqlite3_column_text(stmt, 0),
+                  let kindC = sqlite3_column_text(stmt, 1),
+                  let kind = RememberedEntity.Kind(rawValue: String(cString: kindC)) else { continue }
+            entities.append(RememberedEntity(
+                name: String(cString: nameC),
+                kind: kind,
+                hitCount: Int(sqlite3_column_int(stmt, 2)),
+                lastSeen: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3))
+            ))
+        }
+        return entities
+    }
+}
+
+/// Tier-0 extractor: on-device `NLTagger` NER for people/places/orgs plus noun
+/// frequency for themes. Milliseconds per result, no model load, no weights — the
+/// "activate only necessary things" tier. Runs identically on macOS for tests.
+struct EntityExtractor {
+    struct Hit: Equatable {
+        let name: String
+        let kind: RememberedEntity.Kind
+    }
+
+    private static let topicStopwords: Set<String> = [
+        "this", "that", "with", "about", "from", "have", "will", "would", "there",
+        "their", "them", "then", "when", "what", "where", "which", "while", "these",
+        "those", "being", "because", "tonight", "today", "tomorrow", "morning",
+        "night", "thing", "things", "stuff", "gonna", "wanna", "maybe", "little",
+        "couple", "minutes", "thanks", "thank", "please", "sorry", "again",
+    ]
+
+    /// Kinship and close-relation words the NER tagger treats as common nouns. For a
+    /// personal assistant these are the highest-value entities in the graph — "call mom"
+    /// must remember Mom even though no tagger on earth labels lowercase "mom" a name.
+    static let kinshipTerms: Set<String> = [
+        "mom", "mum", "mother", "dad", "father", "papa", "sis", "bro", "sister",
+        "brother", "babe", "boss", "aunt", "uncle", "nana", "grandma", "grandpa",
+    ]
+
+    static func extract(from text: String, maxTopics: Int = 3) -> [Hit] {
+        var hits: [Hit] = []
+
+        let tagger = NLTagger(tagSchemes: [.nameType, .lexicalClass])
+        tagger.string = text
+
+        tagger.enumerateTags(in: text.startIndex..<text.endIndex, unit: .word,
+                             scheme: .nameType, options: [.joinNames, .omitWhitespace]) { tag, range in
+            let word = String(text[range]).trimmedName
+            switch tag {
+            case .personalName: hits.append(Hit(name: word, kind: .person))
+            case .placeName: hits.append(Hit(name: word, kind: .place))
+            case .organizationName: hits.append(Hit(name: word, kind: .organization))
+            case .other, .none:
+                if kinshipTerms.contains(word.lowercased()) {
+                    hits.append(Hit(name: word, kind: .person))
+                }
+            default: break
+            }
+            return true
+        }
+
+        var nounCounts: [String: Int] = [:]
+        tagger.enumerateTags(in: text.startIndex..<text.endIndex, unit: .word,
+                             scheme: .lexicalClass, options: [.omitPunctuation, .omitWhitespace]) { tag, range in
+            guard tag == .noun else { return true }
+            let word = text[range].localizedLowercase
+            if kinshipTerms.contains(word) {
+                hits.append(Hit(name: word, kind: .person))
+                return true
+            }
+            guard word.count >= 4, !topicStopwords.contains(word),
+                  !hits.contains(where: { $0.name.localizedCaseInsensitiveCompare(word) == .orderedSame }) else { return true }
+            nounCounts[word, default: 0] += 1
+            return true
+        }
+
+        let topics = nounCounts.sorted { $0.value > $1.value }.prefix(maxTopics)
+            .map { Hit(name: $0.key, kind: .topic) }
+
+        // De-duplicate case-insensitively while keeping first-seen order for edge chaining.
+        var seen: Set<String> = []
+        return (hits + topics).filter { seen.insert($0.name.localizedLowercase).inserted }
+    }
+}
+
+extension String {
+    /// NER ranges can carry leading articles/possessives ("the park", "mom's") — trim to
+    /// the visual name the user would expect to see in Settings.
+    var trimmedName: String {
+        let tokens = split(separator: " ").drop { $0.lowercased() == "the" }
+        let joined = tokens.joined(separator: " ")
+        return joined.split(separator: "'").first.map(String.init) ?? joined
     }
 }
 

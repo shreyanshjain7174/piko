@@ -35,7 +35,8 @@ targets:
       path: Piko/Info.plist
       properties:
         UILaunchScreen: {}                   # without this iOS letterboxes the app into a compatibility window
-        UIBackgroundModes: [audio]           # CONSTRAINTS C3 — keeps the armed session alive
+        UIBackgroundModes: [audio, processing]  # C3 keeps the armed session alive; processing runs memory maintenance
+        BGTaskSchedulerPermittedIdentifiers: [dev.piko.memory.maintenance]
         NSMicrophoneUsageDescription: "Piko turns what you say into text. Audio never leaves this phone."
         NSSpeechRecognitionUsageDescription: "Piko transcribes on this device only."
         NSSupportsLiveActivities: true

@@ -124,6 +124,9 @@ public final class CaptureCoordinator {
             timings: .init(brainMS: brainMS)
         )
         await memory.record(result)
+        // Tier-0 memory indexing rides the settle phase — capture completion is a
+        // naturally debounced moment, and the graph never touches the capture path.
+        await memory.indexNewResults()
         channel.writeResult(result)
         await session.finishTidying()
         isTidying = false
