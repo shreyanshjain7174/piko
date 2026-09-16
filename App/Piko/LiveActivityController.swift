@@ -16,6 +16,15 @@ public final class LiveActivityController {
     private var levels: [Int] = LiveActivityContent.placeholderLevels()
     private var lastLevelPush: Date?
     private var armedAt: Date?
+    private var petAnimated = true
+
+    /// The pet sleeps so the battery doesn't: Low Power Mode or <20% battery swaps the
+    /// looping animation for a single frame until conditions lift.
+    func setPetAnimated(_ animated: Bool) async {
+        guard petAnimated != animated else { return }
+        petAnimated = animated
+        await refreshContent()
+    }
 
     /// WidgetKit renders Live Activities at roughly 1–2 updates per second — pushing every
     /// 20 Hz sample would burn the update budget for no visible difference. One bar update
@@ -108,7 +117,8 @@ public final class LiveActivityController {
             phase: effectivePhase,
             words: currentWords,
             levels: levels,
-            mood: LiveActivityContent.mood(phase: effectivePhase, words: currentWords, armedSeconds: armedSeconds)
+            mood: LiveActivityContent.mood(phase: effectivePhase, words: currentWords, armedSeconds: armedSeconds),
+            animated: petAnimated
         )
         let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(8 * 3600))
         if let activity {

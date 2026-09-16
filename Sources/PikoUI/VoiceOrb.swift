@@ -17,7 +17,11 @@ public struct VoiceOrb: View {
     }
 
     public var body: some View {
-        TimelineView(.animation(minimumInterval: reduceMotion ? 0.1 : 1.0 / 30,
+        // Idle economics: a calm orb redraws at 12fps (imperceptible for a slow breath);
+        // voice energy lifts it to 30fps. The TimelineView pauses entirely when hidden,
+        // inactive, or backgrounded — the armed session never keeps a hidden orb alive.
+        let idle = activity.level() < 0.02
+        TimelineView(.animation(minimumInterval: reduceMotion ? 0.1 : (idle ? 1.0 / 12 : 1.0 / 30),
                                 paused: !isVisible || !activity.isActive || scenePhase == .background)) { _ in
             let uptime = ProcessInfo.processInfo.systemUptime
             let level = activity.level(at: uptime)

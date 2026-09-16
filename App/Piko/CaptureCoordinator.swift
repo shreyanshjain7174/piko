@@ -25,6 +25,17 @@ public final class CaptureCoordinator {
     private var sessionEpoch = 0
     public private(set) var isTidying = false
 
+    /// Heat guard: a capture with no voice energy and no drafts for this long ends
+    /// itself. Walk-away dictation becomes a finished entry instead of a background
+    /// burner; hold-to-talk is unaffected (release stops it long before this).
+    static var silenceTimeout: TimeInterval = 15
+    private var lastStreamActivity = Date()
+    private var watchdogTask: Task<Void, Never>?
+
+    private func touchStreamActivity() {
+        lastStreamActivity = .now
+    }
+
     /// Fires around the post-capture rewrite window: `true` when tidying starts,
     /// `false` once `resultReady` has posted. The only source of a `.tidying`
     /// transition anywhere in this codebase — `SessionPhase` itself never emits it.
@@ -84,7 +95,21 @@ public final class CaptureCoordinator {
         transcriptionTask = Task { [weak self] in
             guard let self else { return }
             for await draft in self.transcriber.hypotheses() {
+                self.touchStreamActivity()
                 self.channel.writeDraft(draft)
+            }
+        }
+
+        // The silence watchdog: runs only while capturing, cancelled on stop.
+        watchdogTask?.cancel()
+        watchdogTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard let self, self.transcriptionTask != nil, !self.isTidying else { return }
+                if Date().timeIntervalSince(self.lastStreamActivity) > Self.silenceTimeout {
+                    await self.stopCapture()
+                    return
+                }
             }
         }
     }
@@ -92,6 +117,8 @@ public final class CaptureCoordinator {
     /// Stop capture: finalize transcription and write result.
     public func stopCapture() async {
         guard transcriptionTask != nil, !isTidying else { return }
+        watchdogTask?.cancel()
+        watchdogTask = nil
         isTidying = true
         onTidyingChange?(true)
         await session.stopCapture()
@@ -152,6 +179,12 @@ public final class CaptureCoordinator {
                 await stopCapture()
             }
             await session.disarm()
+        case .audioLevelUpdated:
+            // Real voice energy keeps the silence watchdog fed; digital silence does not.
+            if let sample = (channel as? any AudioLevelChannel)?.readAudioLevel(),
+               sample.level > 0.02 {
+                touchStreamActivity()
+            }
         default:
             break
         }

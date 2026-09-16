@@ -66,6 +66,34 @@ Rules of the turn:
 Tier 1 (Foundation Models) slots in as *another router implementation behind the same
 `AgentRouter` protocol* — the harness contract does not change when the intelligence does.
 
+## Battery & thermal budget (measured, Simulator, iPhone 17 Pro / iOS 26.5)
+
+Simulator CPU% is directional — device power draw differs — but the *structure* these
+numbers reflect is the deliverable:
+
+| State | Before | After | What changed |
+|---|---|---|---|
+| Foreground, idle | 0.2% avg | **0.0% instantaneous** | orb drops to 12fps when calm (30 while voice is live), pauses entirely when hidden/backgrounded |
+| Armed, background | **5.7%** | **0.6%** | silence watchdog + adaptive loops (below) |
+| Capturing | ~11% | unchanged | real work — mic, transcribe, level channel, live notch |
+
+Intelligent hooks and sleep, concretely:
+
+- **Silence watchdog**: a capture with no voice energy and no drafts for 15 s ends itself
+  (walk-away dictation becomes a finished entry instead of an indefinite background
+  burner — the 5.7% row was exactly this, a zombie capture). Hold-to-talk unaffected.
+- **Stop-request poll**: foreground skips it (Darwin delivery is reliable); background
+  polls 400 ms while capturing (stop latency matters), 3 s while merely armed, and never
+  when idle.
+- **Session heartbeat**: 2 s foreground / 4 s background — half the wakeups, still inside
+  the keyboard's 5 s isLive tolerance.
+- **Engine sleeps while armed-idle**: `stopCapture()` stops the engine and removes the
+  tap; only the cheap audio session stays active. The armed day costs no audio I/O.
+- **The pet sleeps on Low Power Mode / <20% battery**: the Activity swaps the looping
+  animation for a single resting frame until conditions lift (`ContentState.animated`).
+- **Memory work is opportunistic**: tier-0 indexing rides capture settle; tier-1 rolls
+  run in a charging-only BGProcessingTask. Nothing polls, nothing is on a timer.
+
 ## Non-goals
 
 No conversation transcript UI, no multi-turn chat with the pet, no cloud tools, no

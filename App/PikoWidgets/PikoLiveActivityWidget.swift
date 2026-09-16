@@ -145,16 +145,22 @@ private struct LockScreenView: View {
 
 /// The notch pet: numbered PNG frames in the widget bundle, assembled into a looping
 /// animated UIImage. Plays locally on the device at zero update budget; one image swap
-/// per mood change.
+/// per mood change. Low Power / low battery pins it to a single resting frame.
 private struct PetImage: View {
     let mood: PikoMood
+    var animated = true
 
     var body: some View {
-        if let animated = PetFrames.animatedImage(named: "pet-\(mood.rawValue)") {
-            Image(uiImage: animated)
+        if animated, let loop = PetFrames.animatedImage(named: "pet-\(mood.rawValue)") {
+            Image(uiImage: loop)
                 .resizable()
                 .scaledToFit()
                 .accessibilityLabel("Piko is \(mood.rawValue)")
+        } else if let still = PetFrames.frame(named: "pet-\(mood.rawValue)", index: 0) {
+            Image(uiImage: still)
+                .resizable()
+                .scaledToFit()
+                .accessibilityLabel("Piko is \(mood.rawValue), resting")
         } else {
             // The frames are generated and committed, so this is a broken-build marker,
             // not a runtime contingency.
@@ -169,16 +175,20 @@ private struct PetImage: View {
 private enum PetFrames {
     /// `UIImage.animatedImage` loops the frames forever, exactly the pet's idle behavior.
     static func animatedImage(named base: String) -> UIImage? {
-        let bundle = Bundle(for: BundleMarker.self)
         var frames: [UIImage] = []
         var index = 0
-        while let path = bundle.path(forResource: "\(base)\(index)", ofType: "png"),
-              let image = UIImage(contentsOfFile: path) {
+        while let image = frame(named: base, index: index) {
             frames.append(image)
             index += 1
         }
         guard frames.count > 1 else { return nil }
         return UIImage.animatedImage(with: frames, duration: Double(frames.count) * 0.12)
+    }
+
+    static func frame(named base: String, index: Int) -> UIImage? {
+        let bundle = Bundle(for: BundleMarker.self)
+        guard let path = bundle.path(forResource: "\(base)\(index)", ofType: "png") else { return nil }
+        return UIImage(contentsOfFile: path)
     }
 
     private final class BundleMarker {}

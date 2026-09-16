@@ -72,6 +72,19 @@ final class AppComposition {
         )
         self.liveActivityController = LiveActivityController()
 
+        // Battery hooks: the notch pet rests (static frame) on Low Power Mode or under
+        // 20% battery, and resumes when conditions lift.
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        NotificationCenter.default.addObserver(
+            forName: UIDevice.batteryStateDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.pushPetAnimated() }
+        // Raw C constant: the Swift alias moved in the 26.5 SDK.
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("NSProcessInfoPowerStateDidChangeNotification"),
+            object: nil, queue: .main
+        ) { [weak self] _ in self?.pushPetAnimated() }
+        pushPetAnimated()
+
         Task { [weak self] in
             guard let channel = self?.channel else { return }
             for await signal in channel.signals {
@@ -144,13 +157,19 @@ final class AppComposition {
         #endif
 
         // The notch's Stop button is handled by the widget extension while the app is
-        // backgrounded; Darwin delivery is best-effort there, so poll the durable stop
-        // file while a session is live (the armed session keeps this process alive).
+        // backgrounded; Darwin delivery is best-effort there, so a poll is the fallback —
+        // but an ADAPTIVE one: foreground skips it (Darwin is reliable), background
+        // polls fast while capturing (stop latency matters) and slow while merely armed.
         Task { [weak self] in
             guard let store = StopRequestStore() else { return }
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(400))
-                guard let self, self.session.currentPhase != .idle else { continue }
+                guard let self else { return }
+                let background = UIApplication.shared.applicationState != .active
+                let interval: Duration = !background
+                    ? .seconds(5)
+                    : (self.session.currentPhase == .capturing ? .milliseconds(400) : .seconds(3))
+                try? await Task.sleep(for: interval)
+                guard self.session.currentPhase != .idle else { continue }
                 guard store.consumePending() != nil else { continue }
                 if self.session.currentPhase == .capturing {
                     await self.captureCoordinator.stopCapture()
@@ -171,6 +190,21 @@ final class AppComposition {
     func armSession() async throws {
         try await session.arm()
         await liveActivityController.start(skin: channel.readState()?.skin ?? .cute)
+    }
+
+    /// The pet sleeps on Low Power Mode or under 20% battery — the notch stays alive,
+    /// just still. Conditions lifting wakes it back up.
+    private nonisolated func pushPetAnimated() {
+        let device = UIDevice.current
+        let lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+        let lowBattery = device.isBatteryMonitoringEnabled
+            && device.batteryState != .charging
+            && device.batteryLevel >= 0
+            && device.batteryLevel <= 0.2
+        let animated = !lowPower && !lowBattery
+        Task { @MainActor [weak self] in
+            await self?.liveActivityController.setPetAnimated(animated)
+        }
     }
 
     #if DEBUG

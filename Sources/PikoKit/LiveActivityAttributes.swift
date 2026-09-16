@@ -15,25 +15,29 @@ public struct PikoAttributes: ActivityAttributes {
         public var words: Int
         public var levels: [Int]   // 8 buckets, 0...10
         public var mood: PikoMood  // drives the notch pet's looping animation
+        public var animated: Bool  // false = Low Power Mode / low battery: the pet rests
 
-        public init(phase: SessionPhase, words: Int, levels: [Int], mood: PikoMood = .calm) {
+        public init(phase: SessionPhase, words: Int, levels: [Int],
+                    mood: PikoMood = .calm, animated: Bool = true) {
             self.phase = phase
             self.words = words
             self.levels = levels
             self.mood = mood
+            self.animated = animated
         }
 
-        /// Decode-tolerant: activities created before `mood` existed must still decode.
+        /// Decode-tolerant: activities created before `mood`/`animated` existed still decode.
         public init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             phase = try container.decode(SessionPhase.self, forKey: .phase)
             words = try container.decode(Int.self, forKey: .words)
             levels = try container.decode([Int].self, forKey: .levels)
             mood = try container.decodeIfPresent(PikoMood.self, forKey: .mood) ?? .calm
+            animated = try container.decodeIfPresent(Bool.self, forKey: .animated) ?? true
         }
 
         private enum CodingKeys: String, CodingKey {
-            case phase, words, levels, mood
+            case phase, words, levels, mood, animated
         }
     }
 

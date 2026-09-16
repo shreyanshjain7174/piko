@@ -1,0 +1,35 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  modules:
+    runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain versions
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Test modules
+        run: make test
+
+  keyboard-weight:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Keyboard target must stay light
+        # CONSTRAINTS C4. If PikoBrain, PikoAudio, PikoTranscribe or PikoMemory ever appear in
+        # the PikoKeyboard target, fail here rather than on a device with no crash log.
+        run: |
+          python3 - <<'PY'
+          import re, sys
+          spec = open('App/project.yml').read()
+          block = spec.split('PikoKeyboard:')[1].split('PikoWidgets:')[0]
+          banned = ['PikoBrain', 'PikoAudio', 'PikoTranscribe', 'PikoMemory']
+          found = [b for b in banned if b in block]
+          if found:
+              sys.exit(f"Keyboard target links heavy modules: {found} — see docs/CONSTRAINTS.md C4")
+          print("keyboard target is clean")
+          PY
