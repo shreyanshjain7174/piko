@@ -10,3 +10,6 @@ Packages/
 models/
 graphify-out/
 App/build/
+
+# Security-hook local state
+.mimosa/
