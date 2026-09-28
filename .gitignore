@@ -12,4 +12,7 @@ graphify-out/
 App/build/
 
 # Security-hook local state
-.mimosa/
+.mimosa
+
+# Playwright MCP scratch output
+.playwright-mcp/

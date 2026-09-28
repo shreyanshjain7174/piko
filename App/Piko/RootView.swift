@@ -52,6 +52,7 @@ struct RootView: View {
 
 private struct SettingsView: View {
     @ObservedObject var model: HomeViewModel
+    @StateObject private var voiceEngine = VoiceEngineSettingsModel()
     @State private var showSetup = false
 
     var body: some View {
@@ -82,6 +83,8 @@ private struct SettingsView: View {
                         Text("Keyboard Full Access is managed in iPhone Settings.")
                             .foregroundStyle(.white.opacity(0.4))
                     }
+
+                    VoiceEngineSection(model: voiceEngine)
 
                     Section("Make it yours") {
                         VStack(alignment: .leading, spacing: 14) {
@@ -133,8 +136,13 @@ private struct SettingsView: View {
                     }
 
                     Section {
-                        Label("Transcribed on this iPhone", systemImage: "iphone")
-                            .foregroundStyle(.white.opacity(0.85))
+                        if voiceEngine.backend == .sarvamCloud {
+                            Label("Audio goes to Sarvam while cloud is selected", systemImage: "waveform")
+                                .foregroundStyle(.white.opacity(0.85))
+                        } else {
+                            Label("Transcribed on this iPhone", systemImage: "iphone")
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
                         Label("No account. No cloud storage.", systemImage: "lock.shield")
                             .foregroundStyle(.white.opacity(0.85))
                     } header: {

@@ -48,6 +48,7 @@ let package = Package(
                 "MemoryMaintenance.swift",
                 "PikoShortcuts.swift",
                 "ArmSessionIntent.swift",
+                "VoiceEngineSection.swift",
                 "Info.plist",
                 "Piko.entitlements",
             ]

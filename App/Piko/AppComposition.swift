@@ -17,6 +17,7 @@ final class AppComposition {
     let channel: any SessionChannel
     let session: SessionCoordinator
     public let captureCoordinator: CaptureCoordinator
+    public let askCoordinator: AskCoordinator
     public let liveActivityController: LiveActivityController
     public let memory: any Memory
     private let captureLaunchRequestStore: CaptureLaunchRequestStore?
@@ -32,21 +33,44 @@ final class AppComposition {
 
         let transcriber: any Transcriber
         #if targetEnvironment(simulator)
-        // The Simulator ships no speech models, so the default is the scripted mock.
-        // `-pikoRealSpeech` opts a Simulator run into the real engine — the voice-agent
-        // verification path (Mac microphone → Simulator → SpeechTranscriberEngine).
         if ProcessInfo.processInfo.arguments.contains("-pikoRealSpeech") {
             transcriber = SpeechTranscriberEngine()
+        } else if ProcessInfo.processInfo.arguments.contains("-pikoSarvam") {
+            // Simulator-only test hook: the key can come from environment for
+            // scripted runs (never a real device path). Falls back to on-device
+            // when the env var is missing, so a broken flag never yields a broken engine.
+            let envKey = ProcessInfo.processInfo.environment["SARVAM_API_KEY"]
+                .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+            if let envKey {
+                let sarvamLang = ProcessInfo.processInfo.environment["SARVAM_LANGUAGE"] ?? "unknown"
+                transcriber = SarvamTranscriberEngine(apiKey: envKey, languageCode: sarvamLang)
+            } else {
+                transcriber = SpeechTranscriberEngine()
+            }
         } else {
             transcriber = MockTranscriber()
         }
         #else
-        transcriber = SpeechTranscriberEngine()
+        // Production path: backend choice lives in App Group settings; the key
+        // lives in the App Group Keychain. If the user picked Sarvam but never
+        // stored a key, degrade to on-device rather than construct a broken engine —
+        // the Settings UI is the place where a missing key becomes visible.
+        switch CaptureModeStore.readBackend() {
+        case .sarvamCloud:
+            if let key = SarvamKeyStore.read() {
+                transcriber = SarvamTranscriberEngine(apiKey: key, languageCode: "unknown")
+            } else {
+                transcriber = SpeechTranscriberEngine()
+            }
+        case .onDevice:
+            transcriber = SpeechTranscriberEngine()
+        }
         #endif
 
         let brain: any Brain
         #if targetEnvironment(simulator)
-        if ProcessInfo.processInfo.arguments.contains("-pikoRealSpeech") {
+        if ProcessInfo.processInfo.arguments.contains("-pikoRealSpeech")
+            || ProcessInfo.processInfo.arguments.contains("-pikoSarvam") {
             brain = SystemBrain()
         } else {
             brain = MockBrain()
@@ -69,6 +93,12 @@ final class AppComposition {
             transcriber: transcriber,
             brain: brain,
             memory: memory
+        )
+        self.askCoordinator = AskCoordinator(
+            agent: PikoAgent(memory: memory),
+            memory: memory,
+            brain: brain,
+            channel: channel
         )
         self.liveActivityController = LiveActivityController()
 

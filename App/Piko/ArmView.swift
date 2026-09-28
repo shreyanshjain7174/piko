@@ -18,6 +18,9 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var microphonePermission = "Not requested"
     @Published private(set) var memoryLine: String?
     @Published private(set) var suggestion: Suggestion?
+    @Published var askInput: String = ""
+    @Published private(set) var askAnswer: AgentTurn?
+    @Published private(set) var isAsking = false
     let activity = VoiceActivityModel()
     let agent = PikoAgent(memory: AppComposition.shared.memory)
     private var suggestionSpoken = false
@@ -148,6 +151,29 @@ final class HomeViewModel: ObservableObject {
         self.skin = skin
     }
 
+    /// Submit a typed ask through the same harness the microphone would hit.
+    /// Recall and suggest come back inline as an `AgentTurn` under the field;
+    /// write-route input becomes a real dictation result and lands in the
+    /// transcript card, so the two entry points share one destination.
+    func submitAsk() async {
+        let query = askInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty, !isAsking else { return }
+        isAsking = true
+        defer { isAsking = false }
+        let turn = await AppComposition.shared.askCoordinator.handle(query)
+        if turn != nil { askAnswer = turn }
+        askInput = ""
+    }
+
+    func tapAskChip(_ label: String) async {
+        let turn = await AppComposition.shared.askCoordinator.chip(label)
+        if let turn { askAnswer = turn }
+    }
+
+    func dismissAskAnswer() {
+        askAnswer = nil
+    }
+
     /// One personal line, straight from the on-device index. Empty history gets the promise
     /// instead — never a fake memory.
     func loadMemoryLine() async {
@@ -206,6 +232,7 @@ struct ArmView: View {
                         if model.hasText || model.phase == .capturing || model.phase == .tidying {
                             transcriptCard
                         }
+                        askBar
                         sessionStrip
                     }
                     .padding(.horizontal, 22)
@@ -216,7 +243,9 @@ struct ArmView: View {
                 .safeAreaInset(edge: .bottom) {
                     // A fixed footer, not scroll content: the privacy promise is always
                     // fully visible, never half-swallowed by the floating tab bar.
-                    Label("On-device. Nothing ever leaves this iPhone.", systemImage: "lock.shield")
+                    // Copy reflects the currently selected engine — silence would be
+                    // less honest than saying "on this iPhone" when it's true.
+                    Label(privacyFooterText, systemImage: "lock.shield")
                         .font(.caption)
                         .foregroundStyle(.white.opacity(0.55))
                         .frame(maxWidth: .infinity)
@@ -242,6 +271,98 @@ struct ArmView: View {
             .sheet(isPresented: $showSetup) { OnboardingView(isPresented: $showSetup) }
             .onChange(of: model.text) { _, _ in copiedText = nil }
             .preferredColorScheme(.dark)
+        }
+    }
+
+    /// The typed side of the harness: recall, suggest, and write questions go through
+    /// the same router the microphone hits. Quiet by default — a single-line field
+    /// with a soft glass background. An answer unfolds inline; write-route input has
+    /// no answer here, because its answer is the transcript that just landed.
+    private var askBar: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: "text.bubble")
+                    .font(.body)
+                    .foregroundStyle(.white.opacity(0.55))
+                    .accessibilityHidden(true)
+                TextField("Ask Piko, or write instead", text: $model.askInput)
+                    .textFieldStyle(.plain)
+                    .font(.subheadline)
+                    .foregroundStyle(.white)
+                    .tint(.cyan)
+                    .submitLabel(.send)
+                    .onSubmit { Task { await model.submitAsk() } }
+                    .accessibilityIdentifier("home.ask.input")
+                    .accessibilityLabel("Ask Piko")
+                if !model.askInput.isEmpty {
+                    Button {
+                        Task { await model.submitAsk() }
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(model.isAsking ? .white.opacity(0.3) : .cyan)
+                    }
+                    .disabled(model.isAsking)
+                    .accessibilityLabel("Send")
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 18))
+
+            if let turn = model.askAnswer {
+                askAnswerCard(turn)
+            }
+        }
+    }
+
+    private func askAnswerCard(_ turn: AgentTurn) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                PikoFace(phase: .idle, skin: model.skin)
+                    .frame(width: 38, height: 40)
+                    .accessibilityHidden(true)
+                Text(turn.line)
+                    .font(.subheadline)
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+                Button {
+                    model.dismissAskAnswer()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.white.opacity(0.35))
+                }
+                .accessibilityLabel("Dismiss answer")
+            }
+            if !turn.chips.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(turn.chips, id: \.self) { chip in
+                        Button {
+                            Task { await model.tapAskChip(chip) }
+                        } label: {
+                            Text(chip)
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(.white.opacity(0.09), in: Capsule())
+                                .foregroundStyle(.white)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("home.ask.chip")
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 22))
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    private var privacyFooterText: String {
+        switch CaptureModeStore.readBackend() {
+        case .onDevice: "On-device. Nothing ever leaves this iPhone."
+        case .sarvamCloud: "Cloud voice engine is on. Audio goes to Sarvam."
         }
     }
 

@@ -48,6 +48,21 @@ final class TextInsertionController {
         return lastCommitted.raw != lastCommitted.shipped
     }
 
+    /// True when the trailing text in the field still matches what we last inserted —
+    /// i.e. the most recent change came from our own `apply(_:)` / `commit(_:)`, not
+    /// a user keystroke. Used by the auto-capture textDidChange guard to avoid
+    /// killing capture on our own streaming inserts.
+    var currentContextIsOurs: Bool {
+        if insertedChars > 0, let last = lastApplied?.text {
+            return proxy.documentContextBeforeInput?.hasSuffix(last) ?? false
+        }
+        if committedChars > 0, let last = lastCommitted?.shipped {
+            return proxy.documentContextBeforeInput?.hasSuffix(last) ?? false
+        }
+        // Nothing outstanding to protect: any change is by definition not ours.
+        return false
+    }
+
     init(proxy: any TextProxy) {
         self.proxy = proxy
     }

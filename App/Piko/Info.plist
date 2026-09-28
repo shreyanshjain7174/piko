@@ -34,9 +34,9 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Piko turns what you say into text. Audio never leaves this phone.</string>
+	<string>Piko turns what you say into text. On-device by default; cloud transcription is opt-in and only sends audio when you turn it on in Settings.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Piko transcribes on this device only.</string>
+	<string>Piko uses on-device speech recognition to stream words as you speak.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UIBackgroundModes</key>

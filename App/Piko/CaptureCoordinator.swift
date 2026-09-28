@@ -9,6 +9,7 @@ import PikoKit
 import PikoBridge
 import PikoAudio
 import PikoTranscribe
+import PikoBrain
 import AVFAudio
 
 /// Orchestrates capture: buffers → transcriber → drafts → channel.
@@ -25,10 +26,9 @@ public final class CaptureCoordinator {
     private var sessionEpoch = 0
     public private(set) var isTidying = false
 
-    /// Heat guard: a capture with no voice energy and no drafts for this long ends
-    /// itself. Walk-away dictation becomes a finished entry instead of a background
-    /// burner; hold-to-talk is unaffected (release stops it long before this).
-    static var silenceTimeout: TimeInterval = 15
+    static var silenceTimeout: TimeInterval = {
+        CaptureModeStore.read().silenceTimeout
+    }()
     private var lastStreamActivity = Date()
     private var watchdogTask: Task<Void, Never>?
 
@@ -74,7 +74,11 @@ public final class CaptureCoordinator {
         // SpeechTranscriberEngine.configure(buffers:sessionEpoch:) is the real
         // 05-02 entrypoint (no AnalyzerInputConverter). MockTranscriber ignores
         // PCM and plays a script from hypotheses(), so configure is engine-only.
+        // SarvamTranscriberEngine needs the same wiring — it streams Apple partials
+        // for live display, then batches the recorded audio to Sarvam on finish().
         if let engine = transcriber as? SpeechTranscriberEngine {
+            await engine.configure(buffers: session.buffers, sessionEpoch: sessionEpoch)
+        } else if let engine = transcriber as? SarvamTranscriberEngine {
             await engine.configure(buffers: session.buffers, sessionEpoch: sessionEpoch)
         }
 
@@ -126,13 +130,23 @@ public final class CaptureCoordinator {
         transcriptionTask = nil
         await task?.value
 
-        let finalText = await transcriber.finish()
+        let rawText = await transcriber.finish()
+        guard !rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            await session.finishTidying()
+            isTidying = false
+            onTidyingChange?(false)
+            return
+        }
+
+        let correctionResult = CorrectionDetector.process(rawText)
+        let finalText = correctionResult.text
         guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             await session.finishTidying()
             isTidying = false
             onTidyingChange?(false)
             return
         }
+
         let profile = channel.readState()?.profile ?? .message
         let route = await brain.route(finalText)
 
@@ -144,7 +158,7 @@ public final class CaptureCoordinator {
                           + elapsed.components.attoseconds / 1_000_000_000_000_000)
 
         let result = CaptureResult(
-            raw: finalText,
+            raw: rawText,
             shipped: shipped,
             route: route,
             profile: profile,

@@ -190,3 +190,98 @@ public enum Profile: String, Codable, Sendable, CaseIterable {
 public enum Skin: String, Codable, Sendable, CaseIterable, Hashable {
     case cute, cool, hero, sparkle
 }
+
+/// How the keyboard starts capture when it becomes visible with an armed session.
+/// `tapToTalk` is the default and the promise the product was built around; `auto`
+/// is opt-in for people who arm the session and want it to fire the moment they
+/// open any text field.
+public enum CaptureMode: String, Codable, Sendable, CaseIterable {
+    case tapToTalk
+    case auto
+
+    /// The silence watchdog is longer in tap-to-talk (walk-away dictation is
+    /// intentional there) and much shorter in auto (a field that opened but no
+    /// speech arrived should not leave the microphone hot).
+    public var silenceTimeout: TimeInterval {
+        switch self {
+        case .tapToTalk: 15
+        case .auto: 2.5
+        }
+    }
+
+    public var displayName: String {
+        switch self {
+        case .tapToTalk: "Hold to talk"
+        case .auto: "Auto"
+        }
+    }
+
+    public var explainer: String {
+        switch self {
+        case .tapToTalk: "Press the mic to start, release to finish."
+        case .auto: "Dictation starts the moment a text field opens."
+        }
+    }
+}
+
+/// Which transcriber the container app spins up. `onDevice` is the default and
+/// stays true to the "Audio never leaves this phone" promise; `sarvamCloud` is
+/// opt-in and requires the user to paste a key in Settings.
+public enum TranscriberBackend: String, Codable, Sendable, CaseIterable {
+    case onDevice
+    case sarvamCloud
+
+    public var displayName: String {
+        switch self {
+        case .onDevice: "On this iPhone"
+        case .sarvamCloud: "Sarvam Cloud"
+        }
+    }
+
+    public var explainer: String {
+        switch self {
+        case .onDevice: "Uses Apple’s on-device speech recognition. Nothing leaves your iPhone."
+        case .sarvamCloud: "Sends recorded audio to Sarvam over HTTPS. Faster on some languages; requires an API key."
+        }
+    }
+
+    public var leavesDevice: Bool { self == .sarvamCloud }
+}
+
+/// Cross-process settings backed by the App Group's shared UserDefaults so the
+/// keyboard extension can read the current capture mode without a bridge round trip.
+public enum CaptureModeStore {
+    private static let modeKey = "dev.piko.captureMode"
+    private static let backendKey = "dev.piko.transcriberBackend"
+
+    /// Suite is the App Group by default; tests inject an isolated UserDefaults
+    /// so persistence round-trips can be asserted without leaking into other tests.
+    nonisolated(unsafe) private static var _defaults: UserDefaults? = UserDefaults(suiteName: AppGroup.identifier)
+
+    /// Test hook. Pass `nil` to reset to the App Group suite. Not for production use.
+    public static func _setDefaults(_ defaults: UserDefaults?) {
+        _defaults = defaults ?? UserDefaults(suiteName: AppGroup.identifier)
+    }
+
+    private static var defaults: UserDefaults? { _defaults }
+
+    public static func read() -> CaptureMode {
+        guard let raw = defaults?.string(forKey: modeKey),
+              let mode = CaptureMode(rawValue: raw) else { return .tapToTalk }
+        return mode
+    }
+
+    public static func write(_ mode: CaptureMode) {
+        defaults?.set(mode.rawValue, forKey: modeKey)
+    }
+
+    public static func readBackend() -> TranscriberBackend {
+        guard let raw = defaults?.string(forKey: backendKey),
+              let backend = TranscriberBackend(rawValue: raw) else { return .onDevice }
+        return backend
+    }
+
+    public static func writeBackend(_ backend: TranscriberBackend) {
+        defaults?.set(backend.rawValue, forKey: backendKey)
+    }
+}

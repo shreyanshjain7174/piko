@@ -37,8 +37,8 @@ targets:
         UILaunchScreen: {}                   # without this iOS letterboxes the app into a compatibility window
         UIBackgroundModes: [audio, processing]  # C3 keeps the armed session alive; processing runs memory maintenance
         BGTaskSchedulerPermittedIdentifiers: [dev.piko.memory.maintenance]
-        NSMicrophoneUsageDescription: "Piko turns what you say into text. Audio never leaves this phone."
-        NSSpeechRecognitionUsageDescription: "Piko transcribes on this device only."
+        NSMicrophoneUsageDescription: "Piko turns what you say into text. On-device by default; cloud transcription is opt-in and only sends audio when you turn it on in Settings."
+        NSSpeechRecognitionUsageDescription: "Piko uses on-device speech recognition to stream words as you speak."
         NSSupportsLiveActivities: true
         CFBundleURLTypes:
           - CFBundleURLName: dev.piko.debug
