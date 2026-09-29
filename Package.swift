@@ -1,9 +1,9 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 6.4
 import PackageDescription
 
 let package = Package(
     name: "Piko",
-    platforms: [.iOS(.v27), .macOS(.v15)],
+    platforms: [.iOS(.v18), .macOS(.v15)],
     products: [
         .library(name: "PikoKit", targets: ["PikoKit"]),
         .library(name: "PikoBridge", targets: ["PikoBridge"]),
@@ -67,3 +67,4 @@ let package = Package(
         .testTarget(name: "PikoBrainTests", dependencies: ["PikoBrain", "PikoKit"]),
     ]
 )
+
