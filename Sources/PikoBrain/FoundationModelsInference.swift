@@ -3,7 +3,7 @@ import Foundation
 import FoundationModels
 import PikoKit
 
-@available(iOS 26.0, *)
+@available(iOS 27.0, *)
 enum FoundationModelsInference {
     static func run(instructions: String, prompt: String) async throws -> String {
         let model = SystemLanguageModel.default
@@ -25,7 +25,7 @@ enum FoundationModelsInference {
         do {
             // Fresh local session per call. Not retained after return or timeout.
             let session = LanguageModelSession(instructions: instructions)
-            let options = GenerationOptions(sampling: .greedy)
+            let options = GenerationOptions(samplingMode: .greedy)
             let response = try await session.respond(to: prompt, options: options)
             return response.content.trimmingCharacters(in: .whitespacesAndNewlines)
         } catch let error as LanguageModelSession.GenerationError {

@@ -4,7 +4,7 @@ Three tiers. Ship tier 1, make tier 2 an opt-in download, keep tier 3 honest abo
 
 ## Tier 1 — what ships in v0.1
 
-**Apple Foundation Models, on-device.** 8,192-token context (`model.contextSize` from iOS 26.4),
+**Apple Foundation Models, on-device.** 8,192-token context (`model.contextSize` on iOS 27),
 free, no download, no RAM budget of our own, vision in iOS 27, rebuilt tool-calling. It is not
 the best model available — it is the only one that costs nothing to ship and nothing to run.
 

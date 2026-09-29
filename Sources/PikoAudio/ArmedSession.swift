@@ -5,7 +5,7 @@ import PikoKit
 /// AVFAudio does not mark `AVAudioPCMBuffer` Sendable. The engine tap yields each
 /// buffer across the render thread via `AsyncStream`; callers treat it as an
 /// immutable snapshot and must not mutate it after yield.
-extension AVAudioPCMBuffer: @unchecked Sendable {}
+extension AVAudioPCMBuffer: @unchecked @retroactive Sendable {}
 
 /// Owns the microphone. The one object allowed to touch AVAudioSession.
 ///

@@ -44,7 +44,7 @@ explains the armed session; `docs/CONSTRAINTS.md` is the sourced list of walls.
 
 ## Build
 
-- Xcode 26.3+, iOS 26 target, Swift 6 strict concurrency.
+- Xcode 27.0+, iOS 26 target, Swift 6 strict concurrency.
 - `make project` regenerates `App/Piko.xcodeproj` from `App/project.yml` (XcodeGen).
   Never hand-edit the `.xcodeproj`; it is generated.
 - `make test` runs SPM module tests — no simulator needed.
@@ -70,8 +70,9 @@ Full version in `docs/WORKING-AGREEMENT.md`. The compressed form:
   often is.
 - **Suggest unprompted.** A better API, a fitting skill, a cheaper data model, a launch angle —
   say it in one line even if nobody asked.
-- **Search before assuming.** iOS 26/27 APIs moved; training data lies about them. Use the
-  `apple-docs` MCP server rather than guessing a signature.
+- **Search before assuming.** iOS 27 APIs moved (and iOS 26 reshuffled the same surfaces just
+  before); training data lies about them. Use the `apple-docs` MCP server rather than guessing a
+  signature.
 - **Report honestly.** Unverified claims get labelled as unverified in the same sentence.
 
 ## Reach for tooling before hand-rolling
@@ -80,7 +81,7 @@ Full version in `docs/WORKING-AGREEMENT.md`. The compressed form:
 
 | Need | Use |
 |---|---|
-| Build, run, read compiler errors, run tests | `xcode` MCP (`xcrun mcpbridge`, Xcode 26.3+) |
+| Build, run, read compiler errors, run tests | `xcode` MCP (`xcrun mcpbridge`, Xcode 27+) |
 | Boot a simulator, install to device, drive the UI | `xcodebuild` MCP (XcodeBuildMCP) |
 | Any Apple API question | `apple-docs` MCP — before writing the call, not after it fails |
 | SpeechAnalyzer, Foundation Models, ActivityKit, App Intents, Bluetooth, background modes | `swift-ios-skills` plugin skills |

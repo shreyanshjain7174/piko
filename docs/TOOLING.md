@@ -5,7 +5,7 @@ compiler errors, and look up Apple documentation without you copy-pasting anythi
 
 ## 1. Xcode's own MCP server — start here
 
-Xcode 26.3 and later ship an MCP server. It is the shortest path and needs no Node.
+Xcode 27 ships an MCP server (as did Xcode 26.3). It is the shortest path and needs no Node.
 
 Enable it: **Xcode → Settings (⌘,) → Intelligence → "Enable Model Context Protocol"**.
 
@@ -63,7 +63,7 @@ Install as plugins in Claude Code:
 /plugin install all-ios-skills@swift-ios-skills
 ```
 
-That marketplace carries 84 skills for iOS 26+ and Swift 6.3. The ones that matter for Piko:
+That marketplace carries 84 skills for iOS 27+ and Swift 6.3. The ones that matter for Piko:
 
 | Skill | Why we need it |
 |---|---|

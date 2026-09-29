@@ -21,7 +21,7 @@ building features. Any one of them failing changes the product, not just the pla
 
 ## Requirements
 
-- macOS 15+, Xcode 26.3 or later (26.3 ships the built-in MCP server used by the agent setup)
+- macOS 15+, Xcode 27.0 or later (ships the built-in MCP server used by the agent setup)
 - iOS 26 minimum deployment target
 - A physical iPhone. The Simulator does not reproduce keyboard-extension memory limits,
   background audio behaviour, or Live Activity throttling. Do not trust green Simulator runs.

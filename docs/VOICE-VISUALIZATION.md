@@ -1,6 +1,6 @@
 # Keyboard voice visualization
 
-The iOS 26 keyboard remains a SwiftUI view inside `UIInputViewController`. The app's
+The iOS 27 keyboard remains a SwiftUI view inside `UIInputViewController`. The app's
 existing `SessionCoordinator` owns AVAudioSession / AVAudioEngine; `CaptureCoordinator`
 and `SpeechTranscriberEngine` retain their existing transcription path. No new package
 dependency or audio import is added to the keyboard target.
