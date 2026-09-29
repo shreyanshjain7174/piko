@@ -230,3 +230,54 @@ used instead, achieving the same Simulator build-and-test outcome the MCP tools 
 wrapped. Flagging this honestly rather than claiming MCP tool usage that did not happen.
 
 *Addendum by: GitHub Copilot (Claude Sonnet 5), 2026-08-29*
+
+## Addendum 3 — 2026-09-29 re-run under Xcode 27
+
+Ran `xcodebuild test -workspace .swiftpm/xcode/package.xcworkspace -scheme Piko-Package
+-destination 'platform=iOS Simulator,id=3E8987AE-F49B-4AAB-ABC4-24C35BEDBF2F'` under
+**Xcode 27.0 / iOS 27 Simulator SDK / Swift 6.4**.
+
+### What passed (real evidence)
+
+| Suite | Tests | Result |
+|---|---|---|
+| AVAudioSessionInterruptionSource notification translation | 3 | ✅ all pass |
+| SessionCoordinator interruption (routeChanged, etc. — the ones not using arm()) | subset | ✅ pass |
+| PikoBridgeTests | 33 | ✅ all pass |
+| PikoKitTests | 10 | ✅ all pass |
+| RewriteBudget / SystemBrain / RoutePrefilter | 17 | ✅ all pass |
+
+### What failed (regressed vs. 2026-08-29 addendum)
+
+25 PikoAudioTests + PikoTranscribeTests → **14 failed with `.microphoneDenied`**. Every
+failure is:
+```
+[access] Created Error: Error Domain=kTCCErrorDomain Code=2
+"server error: Unable to construct an identity to kTCCServiceMicrophone,
+Resp:{TCCDProcess: identifier=com.apple.xctest, ...}"
+```
+
+**Root cause:** Xcode 27's Simulator TCC daemon refuses to construct an identity for
+standalone `xctest` when it requests microphone authorization. `simctl privacy … grant
+microphone com.apple.dt.xctest.tool` does not help because the identity construction fails
+before the grant is consulted. The Aug-29 addendum ran under Xcode 26.3 where TCC was
+permissive for the same host.
+
+**Not a phase regression.** The `SessionCoordinator` FSM code is unchanged. The tests
+themselves compile and link; they fail at `AVAudioSession.setActive(true)` because iOS
+Simulator refuses to grant mic to a standalone xctest process.
+
+**Path to recover coverage:** wire the test bundles into an app-hosted target
+(`TEST_HOST` = `$(BUILT_PRODUCTS_DIR)/Piko.app/Piko`) so xctest runs inside `Piko.app`'s
+process, inheriting its mic entitlement. That is a project.yml change unrelated to Phase 3
+itself; captured as a separate follow-up. Non-mic tests continue to pass on iOS 27 Simulator
+unchanged, so the AVAudioSessionInterruptionSource notification round-trip verification
+established in Addendum 2 remains valid.
+
+### Gaps still open, unchanged
+
+- Back Tap / Action Button (SESS-02/03) — device only
+- 45-minute soak (SESS-05) — device only, keyboard extension jetsam ceiling
+- Wall-clock "within 1 second" on real device
+
+*Addendum 3 by: opencode / auto-best-coding, 2026-09-29*

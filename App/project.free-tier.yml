@@ -1,0 +1,55 @@
+# Free-tier signing overlay for on-device verification without a paid Developer Program.
+#
+# What it does:
+#   - Unique bundle prefix (dev.shreyansh.Piko) so the ID isn't already registered elsewhere.
+#   - Drops the keyboard extension (com.apple.keyboard-service requires paid provisioning).
+#   - Drops the widget extension for the same reason.
+#   - Drops NSSupportsLiveActivities (ActivityKit requires paid).
+#   - Drops UIBackgroundModes: audio (background modes require paid).
+#   - Drops the App Group entitlement (App Groups require paid).
+#
+# What still works on free tier:
+#   - App boot, main UI, settings, history (in-app SQLite, no App Group)
+#   - Foreground microphone + SpeechTranscriberEngine transcription
+#   - FoundationModels rewrite (iOS 27+, works on-device)
+#   - SwiftUI perf profiling, memory sampling, jetsam of the app itself
+#
+# Regenerate the xcodeproj from this file with:  make free-tier-project
+name: Piko
+options:
+  bundleIdPrefix: dev.shreyansh
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+
+packages:
+  Piko:
+    path: ..
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    DEVELOPMENT_TEAM: "C7524YZPLL"
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  Piko:
+    type: application
+    platform: iOS
+    sources: [Piko, SharedIntents, Assets.xcassets]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.shreyansh.Piko
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: FREE_TIER_BUILD
+    dependencies:
+      - package: Piko
+        products: [PikoKit, PikoBridge, PikoAudio, PikoTranscribe, PikoBrain, PikoMemory, PikoUI]
+    info:
+      path: Piko/Info.plist
+      properties:
+        UILaunchScreen: {}
+        NSMicrophoneUsageDescription: "Piko turns what you say into text. Audio never leaves this phone."
+        NSSpeechRecognitionUsageDescription: "Piko transcribes on this device only."

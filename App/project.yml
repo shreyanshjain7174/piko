@@ -13,7 +13,7 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
-    DEVELOPMENT_TEAM: ""   # fill in before device builds
+    DEVELOPMENT_TEAM: "C7524YZPLL"   # Shreyansh Sancheti (Personal Team) — free-tier signing
 
 targets:
   Piko:

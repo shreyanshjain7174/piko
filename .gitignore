@@ -10,3 +10,7 @@ Packages/
 models/
 graphify-out/
 App/build/
+
+# Local scratch dirs
+.mimosa/
+.playwright-mcp/

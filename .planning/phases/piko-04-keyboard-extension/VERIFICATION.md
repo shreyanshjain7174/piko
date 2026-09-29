@@ -152,3 +152,27 @@ Tests re-run by verifier (not trusting executor self-reports):
 
 _Verified: 2026-08-29T16:22:00Z_
 _Verifier: Claude (gsd-verifier)_
+
+## Addendum 2 — 2026-09-29 re-run under Xcode 27, free-tier signing
+
+- `swift test --filter PikoKeyboardTests` → **34 tests, 0 failed** (macOS host, unchanged coverage).
+- `xcodebuild test -workspace .swiftpm/xcode/package.xcworkspace -scheme Piko-Package
+  -only-testing:PikoKeyboardTests -destination 'platform=iOS Simulator,id=…'` under Xcode 27 →
+  **33 tests, all pass**.
+- Algorithm-level coverage of Truths #1/#2/#3 remains verified.
+
+### Device-only rows still blocked
+
+The three human_needed rows (keyboard enable + Full Access flow, real Darwin round-trip,
+Instruments memory profile) all require the `PikoKeyboard` app extension to be installed
+on a physical device. On the current free-tier signing profile
+(`DEVELOPMENT_TEAM=C7524YZPLL`, Personal Team) Apple refuses to provision
+`com.apple.keyboard-service` extensions, and refuses to grant App Group entitlements.
+Paid Apple Developer Program membership is a hard prerequisite — no code change can
+work around this.
+
+**Status:** Algorithm-level truths verified on Xcode 27 iOS 27 Simulator.
+Device-only human items **deferred to paid-tier signing** and marked as boilerplate-only
+in the current build overlay (`App/project.free-tier.yml`).
+
+*Addendum 2 by: opencode / auto-best-coding, 2026-09-29*

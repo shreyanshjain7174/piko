@@ -93,3 +93,25 @@ the pre-existing `SessionCoordinator.startCapture()` path too, unrelated to any 
   Screen/Dynamic Island stop-button tap) is unverified — requires a physical device, consistent
   with Phase 3's Back Tap/Action Button/45-min soak gaps still open in that phase's own
   VERIFICATION.md.
+
+## Addendum 1 — 2026-09-29 re-run under Xcode 27
+
+- `xcodebuild test -only-testing:PikoTranscribeTests/LiveActivityContentTests
+  -destination 'platform=iOS Simulator,id=…'` under Xcode 27 iOS 27 Simulator →
+  **8 tests, all pass**.
+- `LiveActivityContent.effectivePhase` composition (real phase wins over stale
+  tidying flag), `wordCount`, and `shouldEndActivity` remain fully verified at
+  the algorithm level.
+
+### Device-only rows still open, unchanged
+
+- **StopSessionIntent tap on real Dynamic Island** — needs paid Apple Developer
+  Program signing to install `PikoWidgets` extension with `NSSupportsLiveActivities`
+  entitlement, and needs a physical device (Simulator ActivityKit is throttled
+  and misrepresents refresh cadence).
+- **Live Activity real update cadence over a full session** — same requirement.
+
+Free-tier signing (`dev.shreyansh.Piko`, Personal Team `C7524YZPLL`) refuses
+ActivityKit and App Groups outright — no code change can work around this.
+
+*Addendum 1 by: opencode / auto-best-coding, 2026-09-29*
