@@ -44,7 +44,7 @@ explains the armed session; `docs/CONSTRAINTS.md` is the sourced list of walls.
 
 ## Build
 
-- Xcode 27.0+, iOS 27 target, Swift 6 strict concurrency.
+- Xcode 27.0+, iOS 26 target, Swift 6 strict concurrency.
 - `make project` regenerates `App/Piko.xcodeproj` from `App/project.yml` (XcodeGen).
   Never hand-edit the `.xcodeproj`; it is generated.
 - `make test` runs SPM module tests — no simulator needed.
