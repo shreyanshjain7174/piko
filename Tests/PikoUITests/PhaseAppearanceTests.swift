@@ -57,10 +57,12 @@ struct PhaseAppearanceShapeTests {
         #expect(Set(symbols).count == symbols.count)
     }
 
-    @Test("each phase has a distinct display name and a spoken status")
+    @Test("each phase has a distinct debug name and a spoken status")
     func namesAreDistinct() {
-        let names = SessionPhase.allCases.map(\.displayName)
+        let names = SessionPhase.allCases.map(\.debugName)
         #expect(Set(names).count == names.count)
+        let calm = SessionPhase.allCases.map(\.calmStatus)
+        #expect(Set(calm).count == calm.count)
         for phase in SessionPhase.allCases {
             #expect(!phase.spokenStatus.isEmpty)
             #expect(!phase.spokenStatus.contains("…"))

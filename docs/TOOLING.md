@@ -98,6 +98,64 @@ device — VS Code is for writing, Xcode is for shipping.
 things it must never do (put weight in the keyboard target, add a network call to the core
 loop). Keep it short enough that it is read every session.
 
+## 7. ZCode
+
+ZCode does not read `.mcp.json` — it reads `mcp.servers` from `.zcode/config.json` (workspace) or
+`~/.zcode/cli/config.json` (user). This repo carries `.zcode/config.json` with the same three
+servers (`xcode`, `xcodebuild`, `apple-docs`); if you add a server, add it to both files and keep
+the commands identical.
+
+Notes from setup (2026-09-13):
+
+- `xcodebuild` (XcodeBuildMCP 2.7.0) and `apple-docs` connect on session start on their own.
+- `xcode` (`xcrun mcpbridge`) fails with "no running Xcode processes found" until Xcode 26.3+ is
+  open. Open Xcode first, then reconnect in Settings → MCP.
+- The official ZCode `ios-simulator` plugin ships simulator automation MCP plus its own skills;
+  it overlaps with the `ios-simulator` skill from `swift-ios-skills`, so only the plugin is
+  installed here.
+- Agent skills live in `~/.agents/skills/` (user scope, all projects) — the UI/UX and iOS
+  framework set installed there is listed in `CLAUDE.md`'s tooling table, and the
+  Piko-specific design rules live in the repo-scoped skill `.agents/skills/piko-ui-craft/`.
+
+## 8. Simulator demo hooks
+
+The Simulator has no speech engine and a silent microphone, so development builds carry
+DEBUG-only hooks that make the capture pipeline observable. None of them compile into release.
+
+| Hook | What it does |
+|---|---|
+| `-pikoDemoLevels` | Synthesizes speech energy through the real audio-level channel so the orb, wave and notch animate. |
+| `-pikoAutoStart` | Arms and starts capture shortly after launch (polls until the app is active — `arm()` refuses earlier). |
+| `piko://arm` `piko://start` `piko://stop` `piko://disarm` | Deep-link steering; note that `simctl openurl` on a custom scheme shows a confirmation dialog, so prefer the launch flags or XCUITest's `XCUIDevice.shared.system.open`. |
+| `PikoUITests` (`xcodebuild test -scheme Piko -only-testing:PikoUITests`) | Drives hold-to-talk end to end and the Dynamic Island (compact, expanded via long-press, Stop intent), saving screenshots to `/tmp/piko_ui_*.png`. |
+
+`CaptureCoordinator` feeds `MockTranscriber` a slow canned script on the Simulator
+(`simulatorDemoTranscript`), so dictation visibly streams and lands a tidied result.
+
+### 8.1 Real microphone + real speech on Simulator (`-pikoRealSpeech`)
+
+`-pikoRealSpeech` routes the Simulator through `SpeechTranscriberEngine` instead of the mock,
+with a structured log at every startup gate (`subsystem "dev.piko", category "transcribe"`).
+What we learned, so nobody re-derives it:
+
+- `SpeechTranscriber.isAvailable` is **false** on Simulator — iOS 26 dictation assets are not
+  shipped for simulator runtimes.
+- `SFSpeechRecognizer` with `requiresOnDeviceRecognition` then fails with
+  `kLSRErrorDomain 300` — the sim runtime's local recognizer asset fails to initialize.
+- A server-based recognizer would work but is forbidden here (nothing leaves the machine).
+
+So on Simulator, `-pikoRealSpeech` proves the **audio path** (mic → engine → level channel →
+orb/wave/notch), and `testRealMicCaptureStarts` exercises arming through the real engine.
+Real transcription correctness is a **physical-iPhone** check, matching README's device rule.
+One host-side prerequisite: macOS must grant **Simulator** microphone access (System Settings →
+Privacy & Security → Microphone) — unauthorized access returns pure digital silence, which
+reads as "the mic is broken" but is only a permission. If the built-in mic still returns
+silence with permission granted (lid closed, hardware state), a loopback device (BlackHole)
+fed by the system output is the deterministic harness — switch defaults, reboot the sim so it
+re-latches the device, speak, then restore defaults.
+
+Key visual states are committed under `docs/screenshots/`.
+
 ## Sources
 
 - Apple — [Xcode 26.3 unlocks the power of agentic coding](https://www.apple.com/newsroom/2026/02/xcode-26-point-3-unlocks-the-power-of-agentic-coding/)

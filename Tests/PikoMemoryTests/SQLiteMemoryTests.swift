@@ -36,7 +36,9 @@ func schemaObjectsExist() throws {
     _ = try SQLiteMemory(path: path)
 
     var db: OpaquePointer?
-    #expect(sqlite3_open_v2(path.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK)
+    // Read-write: the database is in WAL mode, and read-only connections cannot read
+    // WAL databases without their -shm sidecar.
+    #expect(sqlite3_open_v2(path.path, &db, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK)
     defer { sqlite3_close(db) }
 
     var stmt: OpaquePointer?
@@ -63,7 +65,9 @@ func recordPersistsRow() async throws {
     await memory.record(CaptureResult(raw: "let's grab lunch", shipped: "Let's grab lunch tomorrow"))
 
     var db: OpaquePointer?
-    #expect(sqlite3_open_v2(path.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK)
+    // Read-write: the database is in WAL mode, and read-only connections cannot read
+    // WAL databases without their -shm sidecar.
+    #expect(sqlite3_open_v2(path.path, &db, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK)
     defer { sqlite3_close(db) }
 
     var stmt: OpaquePointer?
@@ -80,7 +84,9 @@ func recordEditPersistsRow() async throws {
     await memory.recordEdit(EditPair(raw: "hey", shipped: "Hey", final: "Hey!"))
 
     var db: OpaquePointer?
-    #expect(sqlite3_open_v2(path.path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK)
+    // Read-write: the database is in WAL mode, and read-only connections cannot read
+    // WAL databases without their -shm sidecar.
+    #expect(sqlite3_open_v2(path.path, &db, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK)
     defer { sqlite3_close(db) }
 
     var stmt: OpaquePointer?

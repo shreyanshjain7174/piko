@@ -10,3 +10,9 @@ Packages/
 models/
 graphify-out/
 App/build/
+
+# Security-hook local state
+.mimosa
+
+# Playwright MCP scratch output
+.playwright-mcp/

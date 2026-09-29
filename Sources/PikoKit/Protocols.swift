@@ -45,6 +45,14 @@ public protocol Memory: Sendable {
     func nearestEdits(to text: String, limit: Int) async -> [EditPair]
     func search(_ query: String, limit: Int) async -> [CaptureResult]
     func delete(_ id: UUID) async
+
+    /// Memory-graph operations (docs/MEMORY-ARCHITECTURE.md). Declared as requirements
+    /// so conformers are dynamically dispatched through `any Memory` — extension-only
+    /// defaults would statically bind to the default body and silently skip overrides.
+    func indexNewResults() async
+    func rememberedEntities(limit: Int) async -> [RememberedEntity]
+    func forget(entity name: String) async
+    func recall(query: String) async -> MemoryPacket?
 }
 
 public enum PikoError: Error, Sendable {
@@ -65,15 +73,15 @@ extension PikoError {
     public var userMessage: String {
         switch self {
         case .notForeground:
-            "Piko can only arm while it is on screen. Open Piko and tap Arm."
+            "Piko can only arm while it is on screen. Open Piko and tap Start session."
         case .notArmed:
-            "Piko is not armed yet. Tap Arm first."
+            "Piko is not set up yet. Tap Start session on Home first."
         case .sessionInterrupted:
-            "Something else took over the microphone. Tap Arm to start again."
+            "Something else took over the microphone. Tap Start session to try again."
         case .microphoneDenied:
             "Piko needs the microphone to hear you. Turn it on in Settings › Piko › Microphone."
         case .audioUnavailable:
-            "The microphone is busy. Close whatever is using it, then tap Arm."
+            "The microphone is busy. Close whatever is using it, then tap Start session."
         case .brainUnavailable:
             "Piko can still transcribe, but tidying needs Apple Intelligence turned on for this device."
         case .brainBudgetExceeded:
@@ -83,6 +91,6 @@ extension PikoError {
 
     public static func userMessage(for error: any Error) -> String {
         (error as? PikoError)?.userMessage
-            ?? "Piko could not open the microphone. Tap Arm to try again."
+            ?? "Piko could not open the microphone. Tap Start session to try again."
     }
 }

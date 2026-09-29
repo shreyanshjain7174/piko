@@ -1,63 +1,78 @@
 import SwiftUI
 import UIKit
 import PikoKit
+import PikoUI
 
 struct HistoryView: View {
     @State private var searchText = ""
     @State private var results: [CaptureResult] = []
     @State private var hasLoaded = false
     @State private var copiedID: UUID?
+    private var skin: Skin { AppComposition.shared.channel.readState()?.skin ?? .cute }
 
     var body: some View {
-        List {
-            if !results.isEmpty {
-                Section {
-                    ForEach(results) { result in
-                        NavigationLink {
-                            DictationDetailView(result: result)
-                        } label: {
-                            row(result)
-                        }
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                Task { await delete(result) }
+        ZStack {
+            AuroraBackground(phase: .idle, tint: skin.controlTint)
+                .ignoresSafeArea()
+            List {
+                if !results.isEmpty {
+                    Section {
+                        ForEach(results) { result in
+                            NavigationLink {
+                                DictationDetailView(result: result)
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                row(result)
                             }
-                        }
-                        .swipeActions(edge: .leading) {
-                            Button {
-                                UIPasteboard.general.string = result.shipped
-                                copiedID = result.id
-                            } label: {
-                                Label("Copy", systemImage: "doc.on.doc")
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    Task { await delete(result) }
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
                             }
-                            .tint(.indigo)
+                            .swipeActions(edge: .leading) {
+                                Button {
+                                    UIPasteboard.general.string = result.shipped
+                                    copiedID = result.id
+                                } label: {
+                                    Label("Copy", systemImage: "doc.on.doc")
+                                }
+                                .tint(skin.controlTint)
+                            }
+                            .listRowBackground(
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .fill(.white.opacity(0.07)))
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                         }
-                        .listRowBackground(Color(.secondarySystemGroupedBackground))
+                    } header: {
+                        Text(searchText.isEmpty ? "Recent dictations" : "Search results")
+                            .foregroundStyle(.white.opacity(0.5))
+                    } footer: {
+                        Text("Saved on this iPhone. Swipe right to copy, left to delete.")
+                            .foregroundStyle(.white.opacity(0.4))
                     }
-                } header: {
-                    Text(searchText.isEmpty ? "Recent dictations" : "Search results")
-                } footer: {
-                    Text("Saved on this iPhone. Swipe right to copy, left to delete.")
                 }
             }
-        }
-        .listStyle(.insetGrouped)
-        .overlay {
-            if hasLoaded && results.isEmpty {
-                ContentUnavailableView {
-                    Label(searchText.isEmpty ? "Your words, all here." : "No matching dictations",
-                          systemImage: searchText.isEmpty ? "text.bubble" : "magnifyingglass")
-                } description: {
-                    Text(searchText.isEmpty
-                         ? "Your first dictation will appear here.\nStart one from Home or the Piko keyboard."
-                         : "Try a different word or phrase.")
+            .scrollContentBackground(.hidden)
+            .listStyle(.insetGrouped)
+            .overlay {
+                if hasLoaded && results.isEmpty {
+                    ContentUnavailableView {
+                        Label(searchText.isEmpty ? "Your words, all here." : "No matching dictations",
+                              systemImage: searchText.isEmpty ? "text.bubble" : "magnifyingglass")
+                    } description: {
+                        Text(searchText.isEmpty
+                             ? "Your first dictation will appear here.\nStart one from Home or the Piko keyboard."
+                             : "Try a different word or phrase.")
+                    }
+                    .foregroundStyle(.white.opacity(0.55))
                 }
             }
+            .searchable(text: $searchText, prompt: "Search your words")
         }
-        .searchable(text: $searchText, prompt: "Search your words")
         .navigationTitle("History")
+        .preferredColorScheme(.dark)
         .refreshable { await reload() }
         .task(id: searchText) {
             if !searchText.isEmpty {
@@ -81,15 +96,15 @@ struct HistoryView: View {
                 if copiedID == result.id {
                     Label("Copied", systemImage: "checkmark")
                 } else {
-                    Text(result.profile.rawValue.capitalized)
+                    Text(result.profile.displayName)
                 }
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.white.opacity(0.5))
 
             Text(result.shipped.isEmpty ? "Empty dictation" : result.shipped)
                 .font(.body)
-                .foregroundStyle(.primary)
+                .foregroundStyle(.white)
                 .lineLimit(3)
         }
         .padding(.vertical, 10)
@@ -118,66 +133,79 @@ private struct DictationDetailView: View {
     @State private var savedCorrection = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                HStack {
-                    Text(result.createdAt.formatted(date: .abbreviated, time: .shortened))
-                    Spacer()
-                    Text(result.profile.rawValue.capitalized)
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        let skinTint = AppComposition.shared.channel.readState()?.skin.controlTint ?? Color.cyan
+        return ZStack {
+            AuroraBackground(phase: .idle, tint: skinTint)
+                .ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    HStack {
+                        Text(result.createdAt.formatted(date: .abbreviated, time: .shortened))
+                        Spacer()
+                        Text(result.profile.displayName)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.5))
 
-                Text(result.shipped)
-                    .font(.system(size: 23, weight: .regular))
-                    .lineSpacing(6)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(22)
-                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
+                    Text(result.shipped)
+                        .font(.system(size: 23, weight: .regular))
+                        .lineSpacing(6)
+                        .textSelection(.enabled)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(22)
+                        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 24))
 
-                HStack(spacing: 16) {
+                    HStack(spacing: 16) {
+                        Button {
+                            UIPasteboard.general.string = result.shipped
+                            copied = true
+                        } label: {
+                            Label(copied ? "Copied" : "Copy text", systemImage: copied ? "checkmark" : "doc.on.doc")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(skinTint)
+                        .foregroundStyle(.black.opacity(0.85))
+                        ShareLink(item: result.shipped) {
+                            Image(systemName: "square.and.arrow.up")
+                                .frame(width: 44, height: 44)
+                        }
+                        .foregroundStyle(.white)
+                        .accessibilityLabel("Share dictation")
+                    }
+
+                    if result.raw != result.shipped {
+                        DisclosureGroup("Original transcript") {
+                            Text(result.raw)
+                                .font(.body)
+                                .foregroundStyle(.white.opacity(0.6))
+                                .textSelection(.enabled)
+                                .padding(.top, 12)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.white.opacity(0.7))
+                        .tint(.white)
+                    }
+
                     Button {
-                        UIPasteboard.general.string = result.shipped
-                        copied = true
+                        showCorrection = true
                     } label: {
-                        Label(copied ? "Copied" : "Copy text", systemImage: copied ? "checkmark" : "doc.on.doc")
-                            .frame(maxWidth: .infinity, minHeight: 44)
+                        Label(savedCorrection ? "Correction saved" : "Suggest a correction",
+                              systemImage: savedCorrection ? "checkmark.circle" : "square.and.pencil")
+                            .font(.subheadline)
+                            .frame(minHeight: 44)
                     }
-                    .buttonStyle(.borderedProminent)
-                    ShareLink(item: result.shipped) {
-                        Image(systemName: "square.and.arrow.up")
-                            .frame(width: 44, height: 44)
-                    }
-                    .accessibilityLabel("Share dictation")
+                    .foregroundStyle(savedCorrection ? .green : .white.opacity(0.8))
                 }
-
-                if result.raw != result.shipped {
-                    DisclosureGroup("Original transcript") {
-                        Text(result.raw)
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                            .padding(.top, 12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .font(.subheadline.weight(.medium))
-                }
-
-                Button {
-                    showCorrection = true
-                } label: {
-                    Label(savedCorrection ? "Correction saved" : "Suggest a correction",
-                          systemImage: savedCorrection ? "checkmark.circle" : "square.and.pencil")
-                        .font(.subheadline)
-                        .frame(minHeight: 44)
-                }
+                .padding(22)
             }
-            .padding(22)
+            .scrollIndicators(.hidden)
         }
-        .background(Color(.systemGroupedBackground))
         .navigationTitle("Dictation")
         .navigationBarTitleDisplayMode(.inline)
+        .preferredColorScheme(.dark)
         .sheet(isPresented: $showCorrection) {
             CorrectionView(result: result) { corrected in
                 Task {
@@ -220,6 +248,7 @@ struct CorrectionView: View {
             }
             .navigationTitle("Suggest a correction")
             .navigationBarTitleDisplayMode(.inline)
+            .preferredColorScheme(.dark)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

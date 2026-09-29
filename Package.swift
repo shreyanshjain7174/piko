@@ -43,8 +43,12 @@ let package = Package(
                 "ArmView.swift",
                 "OnboardingView.swift",
                 "HistoryView.swift",
+                "MemoryView.swift",
+                "PikoSpeaker.swift",
+                "MemoryMaintenance.swift",
                 "PikoShortcuts.swift",
                 "ArmSessionIntent.swift",
+                "VoiceEngineSection.swift",
                 "Info.plist",
                 "Piko.entitlements",
             ]

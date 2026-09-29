@@ -21,6 +21,7 @@ final class KeyboardViewController: UIInputViewController {
     private var observationTask: Task<Void, Never>?
     private var freshnessTask: Task<Void, Never>?
     private var isKeyboardVisible = false
+    private var hasFiredFirstWordHaptic = false
 
     @Published private var sessionPhase: SessionPhase? = nil
     @Published private var setupPrompt: KeyboardSetupPrompt? = .armSession
@@ -95,6 +96,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         insertionController = TextInsertionController(proxy: textDocumentProxy)
         refreshRevertAvailability()
+        maybeAutoStartCapture()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -103,6 +105,33 @@ final class KeyboardViewController: UIInputViewController {
         freshnessTask?.cancel()
         freshnessTask = nil
         voiceActivity.setActive(false)
+    }
+
+    /// The text-field-focus signal we actually get on iOS: the keyboard becoming visible.
+    /// If the session is armed and auto-capture is on, dictation starts with zero taps.
+    private func maybeAutoStartCapture() {
+        guard hasFullAccess,
+              CaptureModeStore.read() == .auto,
+              let state = channel?.readState(),
+              state.isLive(),
+              state.phase == .armed else { return }
+        hasFiredFirstWordHaptic = false
+        channel?.post(.captureStart)
+        haptic(.start)
+    }
+
+    /// The user switching from voice to typing is an implicit "I'm done dictating" —
+    /// stop capture immediately so the keystroke and the in-flight draft never collide.
+    /// Critically: our own streaming `insertText` calls also fire this notification.
+    /// Distinguish by checking whether the trailing text still matches the last draft
+    /// we applied. If it does, this is our own write; ignore it. If it doesn't, the
+    /// user typed (or cleared the field), and we back off.
+    override func textDidChange(_ textInput: UITextInput?) {
+        super.textDidChange(textInput)
+        guard sessionPhase == .capturing else { return }
+        if insertionController?.currentContextIsOurs == true { return }
+        channel?.post(.captureStop)
+        haptic(.stop)
     }
 
     private func updatePreferredHeight() {
@@ -152,6 +181,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func apply(_ state: SessionState?) {
+        let previousPhase = sessionPhase
         sessionState = state
         sessionPhase = state?.phase
         if let profile = state?.profile {
@@ -162,6 +192,11 @@ final class KeyboardViewController: UIInputViewController {
         }
         setupPrompt = KeyboardSetupPrompt.resolve(hasFullAccess: hasFullAccess, isLive: state?.isLive() ?? false)
         if setupPrompt != nil { sessionPhase = .idle }
+        // First-word haptic is a per-capture affordance — reset whenever we
+        // enter or leave capture so a second dictation gets its own tap.
+        if previousPhase != .capturing && sessionPhase == .capturing {
+            hasFiredFirstWordHaptic = false
+        }
         voiceActivity.setActive(isKeyboardVisible && setupPrompt == nil && state?.phase == .capturing)
         refreshAudioLevel()
         refreshRootView()
@@ -238,6 +273,10 @@ final class KeyboardViewController: UIInputViewController {
     /// thrashes — that is the failure mode spike 3 exists to prevent.
     private func applyDraft() {
         guard let draft = channel?.readDraft() else { return }
+        if !hasFiredFirstWordHaptic, !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            hasFiredFirstWordHaptic = true
+            haptic(.selection)
+        }
         insertionController?.apply(draft)
         refreshRevertAvailability()
     }

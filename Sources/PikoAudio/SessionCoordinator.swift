@@ -1,5 +1,6 @@
 #if os(iOS)
 import AVFAudio
+import UIKit
 import Foundation
 import PikoKit
 
@@ -103,7 +104,11 @@ public final class SessionCoordinator: ArmedSession {
         heartbeatTask?.cancel()
         heartbeatTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
+                // Adaptive: 2s in the foreground (keyboard responsiveness), 4s in the
+                // background — half the wakeups, still inside the 5s isLive tolerance
+                // the keyboard's "tap to arm" fallback depends on.
+                let background = UIApplication.shared.applicationState != .active
+                try? await Task.sleep(for: background ? .seconds(4) : .seconds(2))
                 guard !Task.isCancelled, let self else { return }
                 self.writeChannelState(phase: self.currentPhase)
             }

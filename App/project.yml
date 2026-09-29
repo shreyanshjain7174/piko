@@ -35,10 +35,14 @@ targets:
       path: Piko/Info.plist
       properties:
         UILaunchScreen: {}                   # without this iOS letterboxes the app into a compatibility window
-        UIBackgroundModes: [audio]           # CONSTRAINTS C3 — keeps the armed session alive
-        NSMicrophoneUsageDescription: "Piko turns what you say into text. Audio never leaves this phone."
-        NSSpeechRecognitionUsageDescription: "Piko transcribes on this device only."
+        UIBackgroundModes: [audio, processing]  # C3 keeps the armed session alive; processing runs memory maintenance
+        BGTaskSchedulerPermittedIdentifiers: [dev.piko.memory.maintenance]
+        NSMicrophoneUsageDescription: "Piko turns what you say into text. On-device by default; cloud transcription is opt-in and only sends audio when you turn it on in Settings."
+        NSSpeechRecognitionUsageDescription: "Piko uses on-device speech recognition to stream words as you speak."
         NSSupportsLiveActivities: true
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.piko.debug
+            CFBundleURLSchemes: [piko]
     entitlements:
       path: Piko/Piko.entitlements
       properties:
@@ -75,7 +79,7 @@ targets:
   PikoWidgets:
     type: app-extension
     platform: iOS
-    sources: [PikoWidgets, SharedIntents]
+    sources: [PikoWidgets, SharedIntents, PikoWidgets/PetFrames]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.piko.Piko.PikoWidgets
@@ -92,3 +96,37 @@ targets:
       path: PikoWidgets/PikoWidgets.entitlements
       properties:
         com.apple.security.application-groups: [group.dev.piko.shared]
+
+  PikoUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.piko.Piko.PikoUITests
+        TEST_TARGET_NAME: Piko
+    dependencies:
+      - target: Piko
+    info:
+      path: UITests/Info.plist
+      properties: {}
+
+schemes:
+  Piko:
+    build:
+      targets:
+        Piko: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - PikoUITests
+  PikoKeyboard:
+    build:
+      targets:
+        PikoKeyboard: all
+  PikoWidgets:
+    build:
+      targets:
+        PikoWidgets: all

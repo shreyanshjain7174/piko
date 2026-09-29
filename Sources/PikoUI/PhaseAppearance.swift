@@ -6,11 +6,24 @@ public enum PikoColor {
 }
 
 extension SessionPhase {
-    public var displayName: String {
+    /// Engineering name, for logs and debug UI only — never user-visible. The shippable
+    /// vocabulary is `calmStatus`; keep it that way (UX review 2026-09-13).
+    public var debugName: String {
         switch self {
         case .idle:      "Idle"
         case .armed:     "Armed"
         case .capturing: "Recording…"
+        case .tidying:   "Tidying…"
+        }
+    }
+
+    /// The human status, in the same words Home uses — the notch and the app speak one
+    /// language. Short by design: these surface in the compact Island too.
+    public var calmStatus: String {
+        switch self {
+        case .idle:      "Ready"
+        case .armed:     "Session live"
+        case .capturing: "Listening"
         case .tidying:   "Tidying…"
         }
     }
@@ -81,7 +94,7 @@ public struct PhaseBadge: View {
 
     public var body: some View {
         Label {
-            Text(phase.displayName)
+            Text(phase.calmStatus)
                 .foregroundStyle(.primary)
         } icon: {
             Image(systemName: phase.symbolName)
