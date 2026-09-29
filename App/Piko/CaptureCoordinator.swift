@@ -94,7 +94,7 @@ public final class CaptureCoordinator {
 
         let finalText = await transcriber.finish()
         guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            await session.finishTidying()
+            session.finishTidying()
             isTidying = false
             onTidyingChange?(false)
             return
@@ -118,7 +118,7 @@ public final class CaptureCoordinator {
         )
         await memory.record(result)
         channel.writeResult(result)
-        await session.finishTidying()
+        session.finishTidying()
         isTidying = false
         onTidyingChange?(false)
     }
