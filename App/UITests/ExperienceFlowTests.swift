@@ -7,7 +7,7 @@ final class ExperienceFlowTests: XCTestCase {
 
     private func launchPiko() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-pikoDemoLevels", "-pikoSkipOnboarding"]
+        app.launchArguments += ["-pikoDemoLevels", "-pikoSkipOnboarding", "-pikoMockTranscript", "-pikoMockBrain"]
         app.launch()
         return app
     }
@@ -113,7 +113,7 @@ final class ExperienceFlowTests: XCTestCase {
     @MainActor
     func testFirstRunPresentsOnboarding() throws {
         let app = XCUIApplication()
-        app.launchArguments += ["-pikoDemoLevels", "-pikoForceOnboarding"]
+        app.launchArguments += ["-pikoDemoLevels", "-pikoForceOnboarding", "-pikoMockTranscript", "-pikoMockBrain"]
         app.launch()
 
         XCTAssertTrue(app.navigationBars["Get Piko working"].waitForExistence(timeout: 8),
@@ -157,16 +157,15 @@ final class ExperienceFlowTests: XCTestCase {
         XCUIDevice.shared.system.open(URL(string: "piko://disarm")!)
     }
 
-    /// The real-speech smoke test. Real transcription cannot run on Simulator — neither
-    /// SpeechTranscriber (no dictation assets) nor SFSpeechRecognizer on-device
-    /// (kLSRErrorDomain 300: the sim's local recognizer asset fails to initialize), and a
-    /// server recognizer would break the nothing-leaves-the-machine rule. What the
-    /// Simulator CAN prove is that the real-mic capture path arms, starts, and streams
-    /// audio levels; transcription correctness is a physical-iPhone check.
+    /// The real-speech smoke test. On Simulator, `SpeechTranscriberEngine` falls back
+    /// to `SFSpeechRecognizer` which drives off the host Mac's microphone — you can
+    /// speak into your Mac and see live transcription. This test proves the pipeline
+    /// arms, starts, and produces the transcript view even without a spoken sentence;
+    /// transcription accuracy across languages is a manual QA path on a physical device.
     @MainActor
     func testRealMicCaptureStarts() throws {
         let app = XCUIApplication()
-        app.launchArguments += ["-pikoRealSpeech", "-pikoAutoStart"]
+        app.launchArguments += ["-pikoAutoStart"]
         app.launch()
 
         // First real-speech run shows the system speech-recognition prompt; answer it.

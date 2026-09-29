@@ -33,8 +33,13 @@ final class AppComposition {
 
         let transcriber: any Transcriber
         #if targetEnvironment(simulator)
-        if ProcessInfo.processInfo.arguments.contains("-pikoRealSpeech") {
-            transcriber = SpeechTranscriberEngine()
+        // Simulator default is real live transcription off the host Mac's microphone
+        // via SFSpeechRecognizer (SpeechTranscriberEngine falls back to it when
+        // iOS 26 dictation assets aren't installed, which is always in Simulator).
+        // The scripted MockTranscriber path is opt-in via `-pikoMockTranscript` and
+        // exists only for UI screenshot tests that need a deterministic string.
+        if ProcessInfo.processInfo.arguments.contains("-pikoMockTranscript") {
+            transcriber = MockTranscriber()
         } else if ProcessInfo.processInfo.arguments.contains("-pikoSarvam") {
             // Simulator-only test hook: the key can come from environment for
             // scripted runs (never a real device path). Falls back to on-device
@@ -48,7 +53,7 @@ final class AppComposition {
                 transcriber = SpeechTranscriberEngine()
             }
         } else {
-            transcriber = MockTranscriber()
+            transcriber = SpeechTranscriberEngine()
         }
         #else
         // Production path: backend choice lives in App Group settings; the key
@@ -69,11 +74,13 @@ final class AppComposition {
 
         let brain: any Brain
         #if targetEnvironment(simulator)
-        if ProcessInfo.processInfo.arguments.contains("-pikoRealSpeech")
-            || ProcessInfo.processInfo.arguments.contains("-pikoSarvam") {
-            brain = SystemBrain()
-        } else {
+        // Simulator default is the real on-device brain, so what you see cleaned
+        // reflects what a device build would produce. Opt into MockBrain only for
+        // deterministic screenshot tests.
+        if ProcessInfo.processInfo.arguments.contains("-pikoMockBrain") {
             brain = MockBrain()
+        } else {
+            brain = SystemBrain()
         }
         #else
         brain = SystemBrain()

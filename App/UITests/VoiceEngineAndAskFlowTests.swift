@@ -7,7 +7,7 @@ final class VoiceEngineAndAskFlowTests: XCTestCase {
 
     private func launchPiko() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-pikoSkipOnboarding", "-pikoDemoLevels"]
+        app.launchArguments += ["-pikoSkipOnboarding", "-pikoDemoLevels", "-pikoMockTranscript", "-pikoMockBrain"]
         app.launch()
         return app
     }

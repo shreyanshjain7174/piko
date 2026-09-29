@@ -54,8 +54,12 @@ public final class CaptureCoordinator {
     }
 
     #if targetEnvironment(simulator)
-    static let simulatorDemoTranscript =
-        "um so like can you send me the deck when you get a chance"
+    // Screenshot/UI-test-only. The Simulator default is a real live transcription
+    // pipeline; the mock script is opt-in through `-pikoMockTranscript`. This
+    // sentence stays here so tests have a fixed target — it never runs during
+    // a normal simulator session.
+    static let mockTranscript =
+        "hello from piko this is a scripted line only used by ui tests"
     #endif
 
     /// Start capture: begin audio recording and transcription pipeline.
@@ -84,11 +88,12 @@ public final class CaptureCoordinator {
 
         #if targetEnvironment(simulator)
         if let mock = transcriber as? MockTranscriber {
-            // Deliberately slow: keeps the Simulator's capturing state alive long enough
-            // to observe the orb, the wave and the notch reacting to demo speech energy.
+            // The mock path is only reached under `-pikoMockTranscript` (UI screenshot
+            // tests). Real simulator sessions use SpeechTranscriberEngine and the host
+            // Mac microphone — you speak, you see your own words.
             await mock.setDefaultScript(MockTranscriber.Script(
                 drafts: MockTranscriber.Script.progressive(
-                    Self.simulatorDemoTranscript,
+                    Self.mockTranscript,
                     chunkSize: 3,
                     sessionEpoch: sessionEpoch
                 ).drafts,
