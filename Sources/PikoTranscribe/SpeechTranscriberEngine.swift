@@ -12,8 +12,8 @@ private final class ConverterOnce: @unchecked Sendable {
 
 /// Apple's on-device speech stack behind the `Transcriber` protocol.
 ///
-/// Uses iOS 26 `SpeechAnalyzer` + `SpeechTranscriber`. The plan named
-/// `AnalyzerInputConverter`; that type is not in the iOS 26.0 Speech
+/// Uses iOS 27 `SpeechAnalyzer` + `SpeechTranscriber`. The plan named
+/// `AnalyzerInputConverter`; that type is not in the shipping Speech
 /// swiftinterface. Buffers are converted with `AVAudioConverter` and wrapped
 /// as `AnalyzerInput` (the SDK type `SpeechAnalyzer.start` actually accepts).
 ///

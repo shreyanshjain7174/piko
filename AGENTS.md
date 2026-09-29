@@ -12,7 +12,8 @@ The three things most likely to go wrong if you skip it:
 2. Calling `AVAudioSession.setActive(true)` or `Activity.request` from background code. Both are
    blocked by iOS. The armed session exists to work around exactly this.
 3. Inventing an API signature for SpeechAnalyzer, Foundation Models or ActivityKit. These changed
-   in iOS 26 and 27. Look them up through the `apple-docs` MCP server.
+   in iOS 27 (and iOS 26 reshuffled the same surfaces just before it). Look them up through the
+   `apple-docs` MCP server.
 
 House habits, in one line each: offer two or three options before executing, at least one
 non-obvious; suggest improvements unprompted; label anything you could not verify; a Simulator

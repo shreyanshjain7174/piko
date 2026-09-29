@@ -3,9 +3,9 @@ on: [push, pull_request]
 
 jobs:
   modules:
-    runs-on: macos-15
+    runs-on: macos-16
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
       - name: Show toolchain versions

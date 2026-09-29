@@ -20,11 +20,11 @@ public struct SystemBrain: Brain {
 
     private static let defaultInference: Inference = { instructions, prompt in
         #if os(iOS)
-        if #available(iOS 26.0, *) {
+        if #available(iOS 27.0, *) {
             return try await FoundationModelsInference.run(instructions: instructions, prompt: prompt)
         }
         #endif
-        throw PikoError.brainUnavailable("Foundation Models requires iOS 26")
+        throw PikoError.brainUnavailable("Foundation Models requires iOS 27")
     }
 
     // MARK: routing

@@ -18,9 +18,9 @@ obvious approach were forbidden?*
 
 ## 2. Search before assuming
 
-iOS 26 and 27 moved fast and training data lies about these APIs. Before writing against any
-Apple framework, check the `apple-docs` MCP server or current documentation. An invented method
-signature costs more time than the lookup.
+iOS 27 moved fast and iOS 26 reshuffled the same surfaces just before it — training data lies
+about both. Before writing against any Apple framework, check the `apple-docs` MCP server or
+current documentation. An invented method signature costs more time than the lookup.
 
 Same for constraints: `docs/CONSTRAINTS.md` is sourced. If you believe an entry is wrong, prove
 it on a device and update the row with your evidence. Don't route around it on a hunch.

@@ -3,7 +3,7 @@ import Foundation
 import FoundationModels
 import PikoKit
 
-@available(iOS 26.0, *)
+@available(iOS 27.0, *)
 enum FoundationModelsInference {
     static func run(instructions: String, prompt: String) async throws -> String {
         let model = SystemLanguageModel.default
