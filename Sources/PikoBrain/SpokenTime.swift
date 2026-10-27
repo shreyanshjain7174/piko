@@ -172,7 +172,28 @@ public enum SpokenDate {
             return !matches(dayWords, in: String(text[range])).isEmpty
         }
         guard let match = found.last, let date = RuleOrganizer.resolve(match, now: now) else { return nil }
+        // The detector reads a weekday against the real clock, so shifting its answer onto
+        // `now` can land on the wrong weekday. A bare weekday is the next one on or after `now`.
+        if let range = Range(match.range, in: text), let weekday = bareWeekday(String(text[range])) {
+            let calendar = Calendar.current
+            let today = calendar.startOfDay(for: now)
+            let shift = (weekday - calendar.component(.weekday, from: today) + 7) % 7
+            return calendar.date(byAdding: .day, value: shift, to: today)
+        }
         return Calendar.current.startOfDay(for: date)
+    }
+
+    private static let weekdayName = try! NSRegularExpression(
+        pattern: #"^(sun|mon|tues?|wed(?:nes)?|thu(?:rs)?|fri|sat(?:ur)?)(?:day)?$"#, options: .caseInsensitive)
+
+    /// Calendar weekday (1 = Sunday) when the only day `text` names is a weekday ("Friday at 4 p.m.",
+    /// "Sunday morning"). Nil for "next Friday", "Friday the 23rd" or "tomorrow".
+    private static func bareWeekday(_ text: String) -> Int? {
+        guard !text.lowercased().contains("next") else { return nil }
+        let days = matches(dayWords, in: text).map { String(text[$0]) }
+        guard days.count == 1, let day = days.first,
+              weekdayName.firstMatch(in: day, range: NSRange(day.startIndex..., in: day)) != nil else { return nil }
+        return ["sun": 1, "mon": 2, "tue": 3, "wed": 4, "thu": 5, "fri": 6, "sat": 7][String(day.lowercased().prefix(3))]
     }
 
     private static func timeNear(_ phrase: String, in context: String) -> (Int, Int)? {
