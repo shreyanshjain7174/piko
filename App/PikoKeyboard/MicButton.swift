@@ -12,24 +12,27 @@ struct MicButton: View {
     let action: () -> Void
 
     @ScaledMetric(relativeTo: .largeTitle) private var diameter: CGFloat = 72
+    @Environment(\.colorScheme) private var scheme
+
+    private var theme: PikoTheme { skin.theme(for: scheme) }
 
     var body: some View {
         Button(action: action) {
             if isCapturing {
                 HStack(spacing: 14) {
-                    VoiceWave(activity: voiceActivity, tint: skin.controlTint)
+                    VoiceWave(activity: voiceActivity, tint: theme.accent)
                         .frame(maxWidth: .infinity)
                         .frame(height: diameter)
 
                     Image(systemName: "stop.fill")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(theme.onPiko)
                         .frame(width: 48, height: 48)
-                        .background(skin.controlTint, in: Circle())
+                        .background(theme.piko, in: Circle())
                 }
                 .padding(.horizontal, 16)
                 .frame(height: diameter * 1.3)
-                .background(Color(.secondarySystemGroupedBackground).opacity(0.75),
+                .background(theme.card,
                             in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             } else {
@@ -37,14 +40,11 @@ struct MicButton: View {
                     Circle()
                         .fill(background)
                         .frame(width: diameter, height: diameter)
-                        .overlay(
-                            Circle().strokeBorder(Color(.separator), lineWidth: isDisabled ? 1 : 0)
-                        )
 
                     if phase == .tidying {
                         ProgressView()
                             .progressViewStyle(.circular)
-                            .tint(Color(.secondaryLabel))
+                            .tint(theme.ink2)
                     } else {
                         Image(systemName: symbolName)
                             .font(.system(size: diameter * 0.4, weight: .semibold))
@@ -77,14 +77,12 @@ struct MicButton: View {
     }
 
     private var foreground: Color {
-        switch phase {
-        case .armed, .capturing: .white
-        default:                 Color(.secondaryLabel)
-        }
+        phase == .armed && setupPrompt == nil ? theme.onPiko : theme.ink3
     }
 
+    /// Ready is Piko's own colour; anything else is a quiet step up from the keyboard's ground.
     private var background: Color {
-        (phase ?? .idle).filledControlBackground(skin: skin)
+        phase == .armed && setupPrompt == nil ? theme.piko : theme.cardRaised
     }
 
     private var accessibilityLabel: String {

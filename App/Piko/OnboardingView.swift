@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import PikoUI
 
 /// Apple gives no API to detect whether a custom keyboard is installed/enabled (privacy —
 /// a host app enumerating keyboards would be a fingerprinting vector), and no deep link
@@ -8,11 +9,20 @@ import UIKit
 /// each step is self-reported by the user, not detected.
 struct OnboardingView: View {
     @Binding var isPresented: Bool
+    @Environment(\.pikoTheme) private var theme
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
+                    HStack(alignment: .center, spacing: 14) {
+                        PikoFace(phase: .armed, skin: theme.skin)
+                            .frame(width: 64, height: 68)
+                        Text("Four steps and I’m in every app.")
+                            .font(.title2.weight(.semibold))
+                            .foregroundStyle(theme.ink)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     privacyNote
 
                     VStack(alignment: .leading, spacing: 20) {
@@ -30,7 +40,8 @@ struct OnboardingView: View {
                 }
                 .padding(20)
             }
-            .background(Color(.systemGroupedBackground))
+            .background(theme.ground)
+            .toolbarBackground(theme.ground, for: .navigationBar)
             .navigationTitle("Get Piko working")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -43,21 +54,22 @@ struct OnboardingView: View {
 
     private var privacyNote: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "lock.iphone")
+            Image(systemName: "lock.fill")
                 .font(.title3)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(theme.accent)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Dictation stays on this phone")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(theme.ink)
                 Text("Piko processes your voice locally. Language or model setup may need an initial download; after setup, dictation works offline. Copying or sharing text is your choice.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.ink2)
             }
         }
-        .padding(14)
+        .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+        .background(theme.card, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
     private var settingsShortcut: some View {
@@ -68,15 +80,13 @@ struct OnboardingView: View {
                 }
             } label: {
                 Label("Open Piko in Settings", systemImage: "gear")
-                    .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.large)
+            .buttonStyle(.piko)
 
             Text("For keyboard access, go to Settings › General › Keyboard › Keyboards › Piko.")
                 .font(.footnote)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(theme.ink2)
         }
         .padding(.top, 4)
     }
@@ -85,13 +95,13 @@ struct OnboardingView: View {
         HStack(alignment: .top, spacing: 14) {
             Text("\(number)")
                 .font(.headline)
-                .foregroundStyle(.white)
-                .frame(width: 28, height: 28)
-                .background(Circle().fill(Color.accentColor))
+                .foregroundStyle(theme.onPiko)
+                .frame(width: 32, height: 32)
+                .background(Circle().fill(theme.piko))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.headline)
-                Text(detail).font(.subheadline).foregroundStyle(.secondary)
+                Text(title).font(.headline).foregroundStyle(theme.ink)
+                Text(detail).font(.subheadline).foregroundStyle(theme.ink2)
             }
         }
         .accessibilityElement(children: .combine)

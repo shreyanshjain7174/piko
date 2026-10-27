@@ -1,9 +1,11 @@
 import SwiftUI
 import UIKit
 import PikoKit
+import PikoUI
 
 struct HistoryView: View {
     let app: AppComposition
+    @Environment(\.pikoTheme) private var theme
     @State private var searchText = ""
     @State private var results: [CaptureResult] = []
     @State private var hasLoaded = false
@@ -33,9 +35,9 @@ struct HistoryView: View {
                             } label: {
                                 Label("Copy", systemImage: "doc.on.doc")
                             }
-                            .tint(.indigo)
+                            .tint(theme.accent)
                         }
-                        .listRowBackground(Color(.secondarySystemGroupedBackground))
+                        .listRowBackground(theme.card)
                     }
                 } header: {
                     Text(searchText.isEmpty ? "Recent dictations" : "Search results")
@@ -45,16 +47,13 @@ struct HistoryView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .pikoForm()
         .overlay {
             if hasLoaded && results.isEmpty {
-                ContentUnavailableView {
-                    Label(searchText.isEmpty ? "Your words, all here." : "No matching dictations",
-                          systemImage: searchText.isEmpty ? "text.bubble" : "magnifyingglass")
-                } description: {
-                    Text(searchText.isEmpty
-                         ? "Your first dictation will appear here.\nStart one from Home or the Piko keyboard."
-                         : "Try a different word or phrase.")
-                }
+                PikoEmptyState(searchText.isEmpty ? "Your words, all here" : "Nothing matches that",
+                               message: searchText.isEmpty
+                                   ? "Everything you tell Piko lands here, newest first."
+                                   : "Try a different word or phrase.")
             }
         }
         .searchable(text: $searchText, prompt: "Search your words")
@@ -76,22 +75,21 @@ struct HistoryView: View {
 
     private func row(_ result: CaptureResult) -> some View {
         VStack(alignment: .leading, spacing: 10) {
+            Text(result.shipped.isEmpty ? "Empty dictation" : result.shipped)
+                .font(.body)
+                .foregroundStyle(theme.ink)
+                .lineLimit(3)
+
             HStack {
-                Text(result.createdAt.formatted(date: .abbreviated, time: .shortened))
+                Text(result.createdAt.formatted(.relative(presentation: .named)))
                 Spacer()
                 if copiedID == result.id {
                     Label("Copied", systemImage: "checkmark")
-                } else {
-                    Text(result.profile.rawValue.capitalized)
+                        .foregroundStyle(theme.accent)
                 }
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-
-            Text(result.shipped.isEmpty ? "Empty dictation" : result.shipped)
-                .font(.body)
-                .foregroundStyle(.primary)
-                .lineLimit(3)
+            .font(.subheadline)
+            .foregroundStyle(theme.ink2)
         }
         .padding(.vertical, 10)
         .accessibilityElement(children: .combine)
@@ -115,6 +113,7 @@ struct HistoryView: View {
 private struct DictationDetailView: View {
     let result: CaptureResult
     let app: AppComposition
+    @Environment(\.pikoTheme) private var theme
     @State private var showCorrection = false
     @State private var copied = false
     @State private var savedCorrection = false
@@ -122,35 +121,30 @@ private struct DictationDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                HStack {
-                    Text(result.createdAt.formatted(date: .abbreviated, time: .shortened))
-                    Spacer()
-                    Text(result.profile.rawValue.capitalized)
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                Text(result.createdAt.formatted(date: .complete, time: .shortened))
+                    .font(.subheadline)
+                    .foregroundStyle(theme.ink2)
 
                 Text(result.shipped)
-                    .font(.system(size: 23, weight: .regular))
+                    .font(.system(size: 24, weight: .regular, design: .rounded))
+                    .foregroundStyle(theme.ink)
                     .lineSpacing(6)
                     .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(22)
-                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 22))
+                    .bubble(from: .you, fill: theme.wash)
 
-                HStack(spacing: 16) {
+                HStack(spacing: 10) {
                     Button {
                         UIPasteboard.general.string = result.shipped
                         copied = true
                     } label: {
                         Label(copied ? "Copied" : "Copy text", systemImage: copied ? "checkmark" : "doc.on.doc")
-                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.piko)
                     ShareLink(item: result.shipped) {
                         Image(systemName: "square.and.arrow.up")
-                            .frame(width: 44, height: 44)
                     }
+                    .buttonStyle(.pikoQuiet)
                     .accessibilityLabel("Share dictation")
                 }
 
@@ -158,12 +152,13 @@ private struct DictationDetailView: View {
                     DisclosureGroup("Original transcript") {
                         Text(result.raw)
                             .font(.body)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.ink2)
                             .textSelection(.enabled)
                             .padding(.top, 12)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .font(.subheadline.weight(.medium))
+                    .foregroundStyle(theme.ink)
                 }
 
                 Button {
@@ -175,9 +170,10 @@ private struct DictationDetailView: View {
                         .frame(minHeight: 44)
                 }
             }
-            .padding(22)
+            .padding(20)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(theme.ground)
+        .toolbarBackground(theme.ground, for: .navigationBar)
         .navigationTitle("Dictation")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showCorrection) {
@@ -220,6 +216,7 @@ struct CorrectionView: View {
                     Text(result.raw).foregroundStyle(.secondary)
                 }
             }
+            .pikoForm()
             .navigationTitle("Suggest a correction")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

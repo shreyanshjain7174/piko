@@ -49,7 +49,7 @@ private struct PikoRootContent: View {
                 SettingsView(model: model)
             }
         }
-        .tint(Color(red: 0.24, green: 0.33, blue: 0.92))
+        .pikoThemed(model.skin)
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
             await model.observe()
@@ -61,6 +61,7 @@ private struct PikoRootContent: View {
 private struct SettingsView: View {
     @ObservedObject var model: HomeViewModel
     @State private var showSetup = false
+    @Environment(\.pikoTheme) private var theme
     @AppStorage(KeyboardPreferences.autoListenKey, store: UserDefaults(suiteName: AppGroup.identifier))
     private var autoListen = true
 
@@ -68,7 +69,23 @@ private struct SettingsView: View {
         NavigationStack {
             Form {
                 Section {
-                    LabeledContent("Brain-dumps this week", value: "\(model.weeklyDumps)")
+                    SkinPicker(selection: model.skin, phase: model.phase) { model.selectSkin($0) }
+                        .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
+                } header: {
+                    Text("Pick your Piko")
+                } footer: {
+                    Text("Piko’s look colours the whole app and the Piko keyboard.")
+                }
+
+                Section {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("\(model.weeklyDumps)")
+                            .font(.system(size: 44, weight: .bold, design: .rounded))
+                            .foregroundStyle(theme.ink)
+                            .contentTransition(.numericText())
+                        Text(model.weeklyDumps == 1 ? "brain-dump in the last 7 days" : "brain-dumps in the last 7 days")
+                            .foregroundStyle(theme.ink2)
+                    }
                 } header: {
                     Text("Your week")
                 } footer: {
@@ -81,7 +98,7 @@ private struct SettingsView: View {
                     }
                     Toggle("Listen when the Piko keyboard opens", isOn: $autoListen)
                 } header: {
-                    Text("Optional: type into other apps")
+                    Text("Type into other apps")
                 }
 
                 Section {
@@ -94,33 +111,14 @@ private struct SettingsView: View {
                         Label("App permissions", systemImage: "arrow.up.forward.app")
                     }
                 } header: {
-                    Text("Get connected")
+                    Text("Permissions")
                 } footer: {
                     Text("While Piko is ready, the microphone stays active and idle audio is discarded. Piko switches itself off after 5 quiet minutes.")
                 }
 
-                Section("Make it yours") {
-                    HStack(spacing: 16) {
-                        PikoFace(phase: model.phase, skin: model.skin)
-                            .frame(width: 64, height: 70)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(model.skin.displayName).font(.headline)
-                            Text("Your character and keyboard accent")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.vertical, 8)
-                    Picker("Appearance", selection: Binding(get: { model.skin }, set: { model.selectSkin($0) })) {
-                        ForEach(Skin.allCases, id: \.self) { skin in
-                            Text(skin.displayName).tag(skin)
-                        }
-                    }
-                }
-
                 Section {
                     Label("Listening and sorting happen on this iPhone", systemImage: "iphone")
-                    Label("No account. No cloud.", systemImage: "lock.shield")
+                    Label("No account. No cloud.", systemImage: "lock.fill")
                 } header: {
                     Text("Private by design")
                 } footer: {
@@ -138,8 +136,62 @@ private struct SettingsView: View {
                     }
                 }
             }
+            .pikoForm()
             .navigationTitle("Settings")
             .sheet(isPresented: $showSetup) { OnboardingView(isPresented: $showSetup) }
         }
+    }
+}
+
+/// Four Pikos side by side; the chosen one sits on Piko's own colour. Choosing repaints the app.
+private struct SkinPicker: View {
+    let selection: Skin
+    let phase: SessionPhase
+    let onSelect: (Skin) -> Void
+    @Environment(\.pikoTheme) private var theme
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(Skin.allCases, id: \.self) { skin in
+                let chosen = skin == selection
+                Button {
+                    withAnimation(.easeInOut(duration: 0.35)) { onSelect(skin) }
+                } label: {
+                    VStack(spacing: 8) {
+                        PikoFace(phase: chosen ? .armed : .idle, skin: skin)
+                            .frame(height: 58)
+                        Text(skin.displayName)
+                            .font(.subheadline.weight(chosen ? .bold : .medium))
+                            .foregroundStyle(chosen ? theme.onPiko : theme.ink2)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(chosen ? theme.piko : theme.cardRaised,
+                                in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(skin.displayName): \(skin.tagline)")
+                .accessibilityAddTraits(chosen ? .isSelected : [])
+            }
+        }
+        .sensoryFeedback(.selection, trigger: selection)
+    }
+}
+
+extension View {
+    /// A grouped Form or List set in the skin's room instead of system grey.
+    func pikoForm() -> some View {
+        modifier(PikoFormStyle())
+    }
+}
+
+private struct PikoFormStyle: ViewModifier {
+    @Environment(\.pikoTheme) private var theme
+
+    func body(content: Content) -> some View {
+        content
+            .scrollContentBackground(.hidden)
+            .background(theme.ground)
+            .toolbarBackground(theme.ground, for: .navigationBar)
     }
 }

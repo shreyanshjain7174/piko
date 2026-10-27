@@ -350,296 +350,368 @@ enum AssistantState: Equatable {
     case done([ToolOutcome])
 }
 
+/// Home is a conversation with Piko: Piko asks, you answer, Piko files it. The room wears the
+/// chosen skin; the one filled control is the Talk button, painted in Piko's own body colour.
 struct ArmView: View {
     @ObservedObject var model: HomeViewModel
     @State private var showSetup = false
     @State private var copiedText: String?
     @FocusState private var isEditing: Bool
-
-    private let ink = Color(red: 0.08, green: 0.12, blue: 0.22)
-    private let accent = Color(red: 0.24, green: 0.33, blue: 0.92)
+    @Environment(\.pikoTheme) private var theme
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    heading
+                VStack(alignment: .leading, spacing: 16) {
                     #if DEBUG
                     if UserDefaults.standard.string(forKey: "PikoBenchmarkCaptureFixture") != nil {
                         Text("Developer fixture replay. Microphone input is discarded.")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.ink2)
                     }
                     #endif
-                    recordingCard
-                    if let assistant = model.assistant { assistantCard(assistant) }
-                    if let error = model.error { errorCard(error) }
-                    if model.needsSpeechDownload {
-                        Button("Download speech language pack") {
-                            Task { await model.downloadSpeechAssets() }
+                    HStack {
+                        Text("piko")
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .tracking(-0.8)
+                            .foregroundStyle(theme.ink)
+                            .accessibilityAddTraits(.isHeader)
+                        Spacer()
+                        Button { showSetup = true } label: {
+                            Image(systemName: "questionmark.circle")
+                                .font(.title3)
+                                .foregroundStyle(theme.ink2)
+                                .frame(width: 44, height: 44)
                         }
-                        .disabled(model.isBusy)
+                        .accessibilityLabel("How to use Piko")
                     }
-                    if let notice = model.notice {
-                        Text(notice).font(.footnote).foregroundStyle(.secondary)
-                    }
+                    PikoFace(phase: model.phase, skin: model.skin)
+                        .frame(width: 112, height: 118)
+                        .padding(.leading, 4)
+                        .accessibilityHidden(true)
+                    pikoBubble
                     if model.hasText || model.phase == .capturing || model.phase == .tidying {
-                        transcriptCard
+                        yourBubble
                     }
-                    Label("On-device transcription. Your words stay yours.", systemImage: "lock.shield")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.bottom, 16)
+                    if let assistant = model.assistant { assistantBubble(assistant) }
+                    if let error = model.error { errorBubble(error) }
+                    if let notice = model.notice {
+                        Text(notice)
+                            .font(.subheadline)
+                            .foregroundStyle(theme.ink2)
+                            .padding(.horizontal, 6)
+                    }
                 }
-                .padding(.horizontal, 22)
-                .padding(.top, 12)
+                .padding(.horizontal, 20)
+                .padding(.top, 4)
+                .padding(.bottom, 24)
+                .animation(.spring(duration: 0.4), value: model.phase)
+                .animation(.spring(duration: 0.4), value: model.assistant)
             }
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("piko")
-            .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
+            .background(theme.ground)
+            .safeAreaInset(edge: .bottom) { talkBar }
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { showSetup = true } label: {
-                        Image(systemName: "questionmark.circle")
-                    }
-                    .accessibilityLabel("Keyboard setup")
-                }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Done") { isEditing = false }
                 }
             }
+            .toolbarVisibility(.hidden, for: .navigationBar)
             .sheet(isPresented: $showSetup) { OnboardingView(isPresented: $showSetup) }
             .onChange(of: model.text) { _, _ in copiedText = nil }
         }
     }
 
-    private var heading: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Hi, I’m Piko.")
-                .font(.system(size: 32, weight: .semibold, design: .rounded))
-                .tracking(-1)
+    // MARK: Piko speaks
+
+    private var pikoBubble: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(pikoLine)
+                .font(.system(size: 30, weight: .semibold, design: .rounded))
+                .tracking(-0.6)
+                .foregroundStyle(theme.ink)
                 .fixedSize(horizontal: false, vertical: true)
-            Text("Talk it out. I’ll sort it out, privately.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var recordingCard: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack {
-                Label(recordingStatus, systemImage: model.phase == .capturing ? "record.circle" : "waveform")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.8))
-                Spacer()
-                Text("PIKO")
-                    .font(.system(size: 10, weight: .semibold))
-                    .tracking(1.8)
-                    .foregroundStyle(.white.opacity(0.5))
-            }
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(model.phase == .capturing ? "Go ahead.\nI’m listening." : "What’s on\nyour mind?")
-                    .font(.system(size: 28, weight: .medium))
-                    .tracking(-0.6)
+                .contentTransition(.opacity)
+            if model.phase == .capturing {
+                VoiceWave(activity: model.activity, tint: theme.accent)
+                    .frame(height: 44)
+            } else {
+                Text(pikoHint)
+                    .font(.body)
+                    .foregroundStyle(theme.ink2)
                     .fixedSize(horizontal: false, vertical: true)
-                    .foregroundStyle(.white)
-
-                if model.phase == .capturing {
-                    VoiceWave(activity: model.activity, tint: .cyan)
-                        .frame(height: 48)
-                } else {
-                    Text(model.phase == .tidying ? "Piko is thinking…" : "Reminders, ideas, feelings, or “what did I say about…?”")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.6))
-                        .padding(.top, 8)
-                }
             }
-            .frame(minHeight: 110, alignment: .topLeading)
-
-            Button {
-                isEditing = false
-                Task { await model.toggleCapture() }
-            } label: {
-                HStack(spacing: 10) {
-                    if model.isBusy || model.phase == .tidying {
-                        ProgressView().tint(ink)
-                    } else {
-                        Image(systemName: model.phase == .capturing ? "stop.fill" : "mic.fill")
-                    }
-                    Text(model.phase == .capturing ? "Listening… tap to finish" : model.phase == .tidying ? "Thinking…" : "Talk to Piko")
-                        .font(.subheadline.weight(.semibold))
-                    Spacer()
-                    Image(systemName: "arrow.up.right").font(.subheadline.weight(.medium))
+            if model.needsSpeechDownload {
+                Button("Download the speech pack") {
+                    Task { await model.downloadSpeechAssets() }
                 }
-                .foregroundStyle(ink)
-                .padding(.horizontal, 18)
-                .frame(minHeight: 54)
-                .background(.white, in: RoundedRectangle(cornerRadius: 16))
+                .buttonStyle(.pikoQuiet)
+                .disabled(model.isBusy)
+                .padding(.top, 4)
             }
-            .buttonStyle(.plain)
-            .disabled(model.isBusy || model.phase == .tidying)
-            .accessibilityIdentifier("home.dictate")
         }
-        .padding(24)
-        .background(
-            LinearGradient(colors: [ink, Color(red: 0.15, green: 0.2, blue: 0.4)],
-                           startPoint: .topLeading, endPoint: .bottomTrailing),
-            in: RoundedRectangle(cornerRadius: 28))
+        .bubble(from: .piko, fill: theme.card)
+        .accessibilityElement(children: .combine)
     }
 
-    private var recordingStatus: String {
+    private var pikoLine: String {
         switch model.phase {
-        case .capturing: "Listening"
-        case .tidying: "Thinking"
-        case .armed, .idle: "Ready when you are"
+        case .capturing: "I’m listening."
+        case .tidying: "Thinking it over…"
+        case .armed, .idle: "What’s on your mind?"
         }
     }
 
-    @ViewBuilder
-    private func assistantCard(_ state: AssistantState) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            switch state {
-            case .thinking:
-                HStack(spacing: 12) {
-                    PikoFace(phase: .tidying, skin: model.skin).frame(width: 40, height: 44)
-                    Text("Sorting that out…").font(.headline)
-                    Spacer()
-                    ProgressView()
-                }
-            case .proposed(let plan, let prompt, let canConfirm):
-                Text(prompt).font(.headline).fixedSize(horizontal: false, vertical: true)
-                ForEach(plan) { call in
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: AssistantTools.symbol(for: call.tool))
-                            .foregroundStyle(accent)
-                            .frame(width: 24)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(call.text).font(.subheadline)
-                            if let when = call.when {
-                                Text(when.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityLabel("\(call.tool): \(call.text)")
-                }
-                HStack(spacing: 12) {
-                    if canConfirm {
-                        Button { Task { await model.runPlan() } } label: {
-                            Text("Do it").font(.subheadline.weight(.semibold))
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                                .background(accent, in: RoundedRectangle(cornerRadius: 12))
-                                .foregroundStyle(.white)
-                        }
-                        .accessibilityIdentifier("assistant.save")
-                    } else {
-                        Label("Just say it", systemImage: "waveform")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                    }
-                    Button("Discard") { model.dismissAssistant() }
-                        .font(.subheadline.weight(.medium))
-                        .frame(minHeight: 44)
-                }
-            case .answer(let answer):
-                HStack(alignment: .top, spacing: 12) {
-                    PikoFace(phase: .armed, skin: model.skin).frame(width: 40, height: 44)
-                    Text(answer).font(.subheadline).fixedSize(horizontal: false, vertical: true)
-                }
-                Button("Done") { model.dismissAssistant() }.font(.subheadline.weight(.medium))
-            case .done(let outcomes):
-                ForEach(outcomes, id: \.call.id) { outcome in
-                    switch outcome.status {
-                    case .done(let message):
-                        Label(message, systemImage: "checkmark.circle.fill").foregroundStyle(accent)
-                    case .skipped(let reason), .failed(let reason):
-                        Label("\(outcome.call.text): \(reason)", systemImage: "exclamationmark.circle")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .font(.subheadline)
-                Button("Done") { model.dismissAssistant() }.font(.subheadline.weight(.medium))
-            }
+    private var pikoHint: String {
+        switch model.phase {
+        case .tidying: "Sorting what you said into the right place."
+        default: "A reminder, an idea, how today felt — or ask “what did I say about…?”"
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("assistant.card")
     }
 
-    private var transcriptCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text(model.canEdit ? "Your words" : "Live transcript")
-                    .font(.headline)
-                Spacer()
-                if model.canEdit {
-                    Button {
-                        model.text = ""
-                        isEditing = false
-                    } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
-                    }
-                    .accessibilityLabel("Clear text from Home")
-                }
-            }
+    // MARK: You speak
+
+    private var yourBubble: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(model.canEdit ? "You said" : "Hearing you…")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.ink2)
 
             TextEditor(text: $model.text)
-                .font(.body)
+                .font(.title3)
+                .foregroundStyle(theme.ink)
                 .scrollContentBackground(.hidden)
-                .frame(minHeight: 110, maxHeight: 180)
+                .frame(minHeight: 72, maxHeight: 180)
                 .focused($isEditing)
                 .disabled(!model.canEdit)
                 .accessibilityLabel("Dictation text")
                 .accessibilityIdentifier("home.transcript")
 
-            HStack(spacing: 12) {
-                Button {
-                    UIPasteboard.general.string = model.text
-                    copiedText = model.text
-                } label: {
-                    Label(copiedText == model.text ? "Copied" : "Copy text",
-                          systemImage: copiedText == model.text ? "checkmark" : "doc.on.doc")
-                        .font(.subheadline.weight(.medium))
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+            if model.canEdit && model.hasText {
+                HStack(spacing: 10) {
+                    Button {
+                        UIPasteboard.general.string = model.text
+                        copiedText = model.text
+                    } label: {
+                        Label(copiedText == model.text ? "Copied" : "Copy",
+                              systemImage: copiedText == model.text ? "checkmark" : "doc.on.doc")
+                    }
+                    .buttonStyle(.pikoQuiet)
+                    ShareLink(item: model.text) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                    }
+                    .buttonStyle(.pikoQuiet)
+                    Spacer(minLength: 0)
+                    Button {
+                        model.text = ""
+                        isEditing = false
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(theme.ink2)
+                            .frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("Clear text from Home")
                 }
-                ShareLink(item: model.text) {
-                    Image(systemName: "square.and.arrow.up")
-                        .frame(width: 44, height: 44)
-                        .background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 12))
-                }
-                .accessibilityLabel("Share text")
             }
-            .disabled(!model.canEdit || !model.hasText)
-            .buttonStyle(.plain)
-            .foregroundStyle(accent)
         }
-        .padding(20)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 24))
+        .bubble(from: .you, fill: theme.wash)
     }
 
-    private func errorCard(_ message: String) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label(message, systemImage: "exclamationmark.circle")
-                .font(.subheadline)
-            if model.needsMicrophoneSettings {
-                Button("Open Settings") {
-                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+    // MARK: Piko answers
+
+    @ViewBuilder
+    private func assistantBubble(_ state: AssistantState) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            PikoFace(phase: state == .thinking ? .tidying : .armed, skin: model.skin)
+                .frame(width: 34, height: 36)
+                .padding(.top, 2)
+            VStack(alignment: .leading, spacing: 14) {
+                switch state {
+                case .thinking:
+                    HStack(spacing: 10) {
+                        Text("Sorting that out…").font(.headline).foregroundStyle(theme.ink)
+                        ProgressView().tint(theme.accent)
+                    }
+                case .proposed(let plan, let prompt, let canConfirm):
+                    Text(prompt)
+                        .font(.headline)
+                        .foregroundStyle(theme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 12) {
+                        ForEach(plan) { call in planRow(call) }
+                    }
+                    HStack(spacing: 10) {
+                        if canConfirm {
+                            Button { Task { await model.runPlan() } } label: {
+                                Text("Do it").frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.piko)
+                            .accessibilityIdentifier("assistant.save")
+                        } else {
+                            Label("Just say it", systemImage: "waveform")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(theme.ink2)
+                                .frame(maxWidth: .infinity, minHeight: 50)
+                        }
+                        Button("Not now") { model.dismissAssistant() }
+                            .buttonStyle(.pikoQuiet)
+                    }
+                case .answer(let answer):
+                    Text(answer)
+                        .font(.body)
+                        .foregroundStyle(theme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Thanks, Piko") { model.dismissAssistant() }
+                        .buttonStyle(.pikoQuiet)
+                case .done(let outcomes):
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(outcomes, id: \.call.id) { outcome in
+                            switch outcome.status {
+                            case .done(let message):
+                                Label(message, systemImage: "checkmark.circle.fill")
+                                    .foregroundStyle(theme.ink)
+                                    .labelIconTint(theme.accent)
+                            case .skipped(let reason), .failed(let reason):
+                                Label("\(outcome.call.text): \(reason)", systemImage: "exclamationmark.circle")
+                                    .foregroundStyle(theme.ink2)
+                            }
+                        }
+                    }
+                    .font(.body)
+                    Button("All good") { model.dismissAssistant() }
+                        .buttonStyle(.pikoQuiet)
                 }
-                .font(.subheadline.weight(.semibold))
             }
-            Button("Dismiss") { model.error = nil }.font(.caption)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(18)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 18))
+        .bubble(from: .piko, fill: theme.card)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("assistant.card")
+    }
+
+    private func planRow(_ call: ToolCall) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Image(systemName: AssistantTools.symbol(for: call.tool))
+                .foregroundStyle(theme.accent)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(call.text).font(.body).foregroundStyle(theme.ink)
+                if let when = call.when {
+                    Text(when.formatted(date: .abbreviated, time: .shortened))
+                        .font(.subheadline)
+                        .foregroundStyle(theme.ink2)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(call.tool): \(call.text)")
+    }
+
+    private func errorBubble(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(message)
+                .font(.body)
+                .foregroundStyle(theme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                if model.needsMicrophoneSettings {
+                    Button("Open Settings") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                    }
+                    .buttonStyle(.piko)
+                }
+                Button("OK") { model.error = nil }
+                    .buttonStyle(.pikoQuiet)
+            }
+        }
+        .bubble(from: .piko, fill: theme.blush.opacity(0.18))
+    }
+
+    // MARK: The one thing to do
+
+    private var talkBar: some View {
+        VStack(spacing: 10) {
+            Button {
+                isEditing = false
+                Task { await model.toggleCapture() }
+            } label: {
+                HStack(spacing: 12) {
+                    if model.isBusy || model.phase == .tidying {
+                        ProgressView().tint(theme.onPiko)
+                    } else {
+                        Image(systemName: model.phase == .capturing ? "stop.fill" : "mic.fill")
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                    Text(talkTitle)
+                }
+                .font(.title3.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 64)
+            }
+            .buttonStyle(.piko)
+            .disabled(model.isBusy || model.phase == .tidying)
+            .accessibilityIdentifier("home.dictate")
+            .sensoryFeedback(.impact(weight: .medium), trigger: model.phase == .capturing)
+
+            Label("Heard and kept on this iPhone", systemImage: "lock.fill")
+                .font(.footnote)
+                .foregroundStyle(theme.ink2)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+        .background(theme.ground)
+    }
+
+    private var talkTitle: String {
+        switch model.phase {
+        case .capturing: "I’m done"
+        case .tidying: "Thinking…"
+        case .armed, .idle: "Talk to Piko"
+        }
+    }
+}
+
+/// Who is speaking decides which top corner of a bubble is pinched toward them.
+enum BubbleSide { case piko, you }
+
+private struct Bubble: ViewModifier {
+    let from: BubbleSide
+    let fill: Color
+
+    func body(content: Content) -> some View {
+        content
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(fill, in: UnevenRoundedRectangle(
+                topLeadingRadius: from == .piko ? 6 : 26,
+                bottomLeadingRadius: 26,
+                bottomTrailingRadius: 26,
+                topTrailingRadius: from == .you ? 6 : 26,
+                style: .continuous))
+            .padding(from == .you ? .leading : .trailing, 28)
+    }
+}
+
+extension View {
+    func bubble(from speaker: BubbleSide, fill: Color) -> some View {
+        modifier(Bubble(from: speaker, fill: fill))
+    }
+
+    /// Tints only a Label's icon, keeping its title in the surrounding ink.
+    func labelIconTint(_ color: Color) -> some View {
+        labelStyle(TintedIconLabelStyle(tint: color))
+    }
+}
+
+private struct TintedIconLabelStyle: LabelStyle {
+    let tint: Color
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            configuration.icon.foregroundStyle(tint)
+            configuration.title
+        }
     }
 }

@@ -8,7 +8,7 @@ struct PikoLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: PikoAttributes.self) { context in
             LockScreenView(state: context.state, skin: context.attributes.skin)
-                .activityBackgroundTint(Color(white: 0.09))
+                .activityBackgroundTint(context.attributes.skin.theme(for: .dark).ground)
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             let phase = context.state.phase
@@ -103,8 +103,10 @@ private struct StopButton: View {
         Button(intent: StopSessionIntent()) {
             Label("Stop", systemImage: "stop.fill")
                 .font(.subheadline.weight(.semibold))
+                .fontDesign(.rounded)
         }
         .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
         .tint(.white)
         .accessibilityLabel("Stop the Piko session")
     }
