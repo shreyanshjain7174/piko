@@ -59,6 +59,12 @@ public enum PikoError: Error, Sendable {
     case brainBudgetExceeded(milliseconds: Int)
     case microphoneDenied
     case audioUnavailable
+    case speechUnavailable(String)
+    case speechAssetsMissing
+    case transcriptionFailed
+    case sharedContainerUnavailable
+    case storageUnavailable
+    case benchmarkInProgress
 }
 
 extension PikoError {
@@ -74,6 +80,18 @@ extension PikoError {
             "Piko needs the microphone to hear you. Turn it on in Settings › Piko › Microphone."
         case .audioUnavailable:
             "The microphone is busy. Close whatever is using it, then tap Arm."
+        case .speechUnavailable(let locale):
+            "On-device speech is unavailable for \(locale) on this iPhone."
+        case .speechAssetsMissing:
+            "The speech language pack is not ready. Connect once and download it before dictating offline."
+        case .transcriptionFailed:
+            "Piko could not finish this dictation. Your visible text has been left unchanged. Please re-arm and try again."
+        case .sharedContainerUnavailable:
+            "Piko cannot open its shared container. Check App Group signing and keyboard Full Access, then reopen Piko."
+        case .storageUnavailable:
+            "Piko could not open local history. Reopen Piko; do not delete the app if you need to keep saved dictations."
+        case .benchmarkInProgress:
+            "A developer audio-file benchmark is running. Voice capture is disabled until Piko is relaunched normally."
         case .brainUnavailable:
             "Piko can still transcribe, but tidying needs Apple Intelligence turned on for this device."
         case .brainBudgetExceeded:

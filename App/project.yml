@@ -1,8 +1,8 @@
 name: Piko
 options:
-  bundleIdPrefix: dev.piko
+  bundleIdPrefix: dev.shreyansh
   deploymentTarget:
-    iOS: "26.0"
+    iOS: "27.0"
   createIntermediateGroups: true
 
 packages:
@@ -13,17 +13,32 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
-    DEVELOPMENT_TEAM: "C7524YZPLL"   # Shreyansh Sancheti (Personal Team) — free-tier signing
+    DEVELOPMENT_TEAM: "C7524YZPLL"
+    CODE_SIGN_STYLE: Automatic
+    TARGETED_DEVICE_FAMILY: "1"
+    MARKETING_VERSION: "1.0"
+    CURRENT_PROJECT_VERSION: "1"
 
 targets:
   Piko:
     type: application
     platform: iOS
     sources: [Piko, SharedIntents, Assets.xcassets]
+    preBuildScripts:
+      - name: Stage verified Whisper benchmark assets
+        basedOnDependencyAnalysis: false
+        script: |
+          set -eu
+          if [ "$CONFIGURATION" = Debug ] && [ -n "${PIKO_WHISPER_MODEL_DIR:-}" ]; then
+            python3 "$SRCROOT/../scripts/prepare-whisper-model.py" "$PIKO_WHISPER_MODEL_DIR"
+            /usr/bin/ditto "$PIKO_WHISPER_MODEL_DIR" "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/Whisper"
+          fi
     settings:
       base:
+        TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) PIKO_APP"
     dependencies:
       - package: Piko
         products: [PikoKit, PikoBridge, PikoAudio, PikoTranscribe, PikoBrain, PikoMemory, PikoUI]
@@ -34,10 +49,13 @@ targets:
     info:
       path: Piko/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}                   # without this iOS letterboxes the app into a compatibility window
         UIBackgroundModes: [audio]           # CONSTRAINTS C3 — keeps the armed session alive
         NSMicrophoneUsageDescription: "Piko turns what you say into text. Audio never leaves this phone."
-        NSSpeechRecognitionUsageDescription: "Piko transcribes on this device only."
+        NSCalendarsFullAccessUsageDescription: "Piko checks your calendar for clashes and adds events only after you say yes."
+        NSRemindersFullAccessUsageDescription: "Piko saves the reminders you tell it about to Reminders, only when you tap Save."
         NSSupportsLiveActivities: true
     entitlements:
       path: Piko/Piko.entitlements
@@ -50,7 +68,8 @@ targets:
     sources: [PikoKeyboard]
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.piko.Piko.PikoKeyboard
+        TARGETED_DEVICE_FAMILY: "1"
+        PRODUCT_BUNDLE_IDENTIFIER: dev.shreyansh.Piko.PikoKeyboard
     # Deliberately short. CONSTRAINTS C4 — this list is the ~60 MB ceiling in build form.
     dependencies:
       - package: Piko
@@ -58,6 +77,8 @@ targets:
     info:
       path: PikoKeyboard/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Piko
         NSExtension:
           NSExtensionPointIdentifier: com.apple.keyboard-service
@@ -75,16 +96,22 @@ targets:
   PikoWidgets:
     type: app-extension
     platform: iOS
-    sources: [PikoWidgets, SharedIntents]
+    sources:
+      - PikoWidgets
+      - SharedIntents
+      - path: Piko/ArmSessionIntent.swift
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.piko.Piko.PikoWidgets
+        TARGETED_DEVICE_FAMILY: "1"
+        PRODUCT_BUNDLE_IDENTIFIER: dev.shreyansh.Piko.PikoWidgets
     dependencies:
       - package: Piko
         products: [PikoKit, PikoBridge, PikoUI]
     info:
       path: PikoWidgets/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Piko
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension

@@ -2,23 +2,52 @@
 
 ## What This Is
 
-Hold a button anywhere on iOS, speak, and cleaned-up text appears in the field you were already
-in — no network involved. A container app plus a custom keyboard extension, built around the
-"armed session" pattern that works around iOS's hard rule that keyboard extensions cannot open
-the microphone.
+Piko is a cute, private personal-intelligence companion for iPhone. Press the Action Button
+(or the Control Center / Lock Screen control), talk naturally, and Piko files what you said:
+reminders into Apple Reminders, notes and journal entries into Piko. Later, ask "what did I
+say about…?" and Piko answers from your own history. Free tiers run entirely on-device;
+premium cloud features are opt-in and paid (deferred until tester validation).
+
+The custom keyboard remains an optional extra for typing into other apps, not the product.
 
 ## Core Value
 
-Dictation that starts instantly from wherever you are and inserts clean text into whatever field
-you're already in, entirely on-device. If arm-and-speak-and-see-clean-text stops working, nothing
-else about this product matters.
+Press, ramble, and your thoughts are organised and remembered — privately. If
+press-talk-filed stops working, nothing else about this product matters.
+
+## Pivot (2026-10-21)
+
+Plain dictation is a commodity: Apple's keyboard mic is free, built in, on-device and good.
+The product is the assistant, not another mic.
+
+| Tier | Who | What |
+|------|-----|------|
+| Free basic | Every iOS 27 iPhone | Capture via Action Button/Control Center, on-device speech, rule-based filing, searchable history |
+| Free smart | Apple Intelligence devices | Foundation Models filing into reminder/note/journal and recall answers over local history |
+| Premium cloud (later) | Paid, opt-in | Chosen from tester demand only; StoreKit subscription (App Review 3.1.1) |
+
+### Decision journal (founder-ceo-advisor, Protocol 3)
+
+- **Decision:** Pivot Piko from keyboard dictation to a press-to-talk personal assistant whose
+  first job is brain-dump filing plus recall. Free on-device first; paid cloud after testers.
+- **Reversibility:** two-way door (code and TestFlight are cheap to undo). Cloud data handling
+  and App Store pricing are one-way doors and stay deferred.
+- **Sharpest counter-question:** Is brain-dump filing a painkiller or a vitamin? No behavioural
+  evidence exists yet; Siri and Apple Intelligence are free incumbents.
+- **Answer so far:** Unproven. The MVP must measure repeat use, not opinions.
+- **Confidence:** Medium-low on demand, high on technical feasibility (pieces already built).
+- **Kill criterion:** If, three weeks after the first TestFlight build reaches 10 testers,
+  fewer than 4 testers have done at least 3 brain-dumps in the third week (self-reported
+  from Piko's on-device weekly count), stop and re-scope the core job before building any
+  cloud feature.
 
 ## Requirements
 
 ### Validated
 
-(None yet — nothing shipped. Module skeletons exist (`PikoKit`, `PikoBridge`, `PikoAudio`,
-`PikoTranscribe`, `PikoBrain`, `PikoMemory`, `PikoUI`) but contain no working feature.)
+The original modules are implemented and have deterministic test coverage. Physical beta
+acceptance, the measured Apple/Whisper decision, and publishing are still pending. See
+`STATE.md` for current evidence; the bootstrap context below is historical, not readiness proof.
 
 ### Active
 
@@ -80,6 +109,8 @@ See `.planning/REQUIREMENTS.md` for the full checklist. Summary — v0.1 ("the l
 |----------|-----------|---------|
 | Armed-session architecture (foreground arm, background continue) | Only way around C1/C2 keyboard-mic and background-start blocks | — Pending (design decided, unimplemented) |
 | SystemBrain (Apple Foundation Models) as default rewrite engine | Zero download, zero RAM budget, free | — Pending |
+| Pivot to press-to-talk assistant (brain-dump filing + recall) | Dictation alone is a commodity vs. Apple's keyboard mic | — Active (2026-10-21) |
+| Free on-device first; premium cloud only after 10-tester validation | Unknown which premium feature anyone pays for | — Active (2026-10-21) |
 | GSD phase breakdown follows module boundaries, not feature slices | Matches the fixed module contracts in SPEC.md; keeps each phase's blast radius to one module | — Pending |
 
 ---

@@ -17,13 +17,13 @@ struct OnboardingView: View {
 
                     VStack(alignment: .leading, spacing: 20) {
                         step(1, "Start a session",
-                             "On Home, tap Start session in the keyboard card. To dictate directly in Piko, tap Start dictating instead.")
+                             "Add Arm Piko to Control Center or the Action Button. One press gets the keyboard mic ready. To dictate directly in Piko, tap Start dictating instead.")
                         step(2, "Add the Piko keyboard",
                              "In Settings, go to General › Keyboard › Keyboards › Add New Keyboard and pick Piko. Then tap Piko in that list and turn on Allow Full Access.")
-                        step(3, "Switch to Piko in any text field",
-                             "Touch and hold the globe key on the keyboard, then choose Piko.")
-                        step(4, "Speak",
-                             "Tap the mic button, say what you want, tap again to stop. The tidied text lands in the field you were already in.")
+                        step(3, "Switch to Piko in your text field",
+                             "Touch and hold the globe key, then choose Piko. Secure fields and apps that block custom keyboards use Apple's keyboard instead.")
+                        step(4, "Speak directly into the field",
+                             "Tap Piko's large microphone, speak, then tap Stop. Text lands where you were typing, without opening Siri or another composer. Apple's separate dictation button still belongs to iOS.")
                     }
 
                     settingsShortcut
@@ -48,9 +48,9 @@ struct OnboardingView: View {
                 .foregroundStyle(Color.accentColor)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
-                Text("Everything stays on this phone")
+                Text("Dictation stays on this phone")
                     .font(.subheadline.weight(.semibold))
-                Text("Your voice and your text are never sent anywhere. Turn on airplane mode and Piko works exactly the same.")
+                Text("Piko processes your voice locally. Language or model setup may need an initial download; after setup, dictation works offline. Copying or sharing text is your choice.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }

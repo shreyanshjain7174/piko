@@ -9,6 +9,7 @@ final class MockTextDocumentProxy: NSObject, TextProxy {
     var insertedText: [String] = []
     var deleteCount: Int = 0
     var text = ""
+    var documentIdentifier: UUID? = UUID()
     var documentContextBeforeInput: String? { text }
 
     func insertText(_ text: String) {
@@ -28,8 +29,65 @@ final class MockTextDocumentProxy: NSObject, TextProxy {
 }
 
 @MainActor
+private final class ContextPrimingProxy: TextProxy {
+    var text = ""
+    private let attachedIdentifier = UUID()
+    private var identifier: UUID?
+    var documentIdentifier: UUID? { identifier }
+    var documentContextBeforeInput: String? {
+        identifier = attachedIdentifier
+        return text
+    }
+    func insertText(_ text: String) { self.text += text }
+    func deleteBackward() { text = String(text.dropLast()) }
+}
+
+@MainActor
 @Suite("TextInsertionController stablePrefix diffing")
 struct TextInsertionControllerTests {
+    @Test("capture reads host context before anchoring a lazily supplied document ID")
+    func contextRefreshCanAttachDocumentBeforeCapture() {
+        let proxy = ContextPrimingProxy()
+        let controller = TextInsertionController(proxy: proxy)
+        controller.beginCapture()
+        controller.apply(draft(sequence: 1, text: "Hello", stablePrefix: 0))
+        #expect(proxy.text == "Hello")
+    }
+
+    @Test("a different document with identical text is never replaced")
+    func switchingToIdenticalTextInAnotherDocumentDoesNotCommit() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+        controller.apply(draft(sequence: 1, text: "Hello", stablePrefix: 0))
+        mock.documentIdentifier = UUID()
+        controller.commit(result(raw: "Hello", shipped: "Hello there."))
+        #expect(mock.text == "Hello")
+        #expect(mock.deleteCount == 0)
+    }
+
+    @Test("a changed host context with the same suffix is not replaced")
+    func editedContextWithSameSuffixDoesNotCommit() {
+        let mock = MockTextDocumentProxy()
+        mock.text = "Before: "
+        let controller = TextInsertionController(proxy: mock)
+        controller.apply(draft(sequence: 1, text: "Hello", stablePrefix: 0))
+        mock.text = "Different: Hello"
+        controller.commit(result(raw: "Hello", shipped: "Hello there."))
+        #expect(mock.text == "Different: Hello")
+        #expect(mock.deleteCount == 0)
+    }
+
+    @Test("starting a fresh capture anchors the new document")
+    func freshCaptureUsesNewDocumentWithoutDeletingExistingText() {
+        let mock = MockTextDocumentProxy()
+        let controller = TextInsertionController(proxy: mock)
+        mock.documentIdentifier = UUID()
+        mock.text = "Existing: "
+        controller.beginCapture()
+        controller.apply(draft(epoch: 2, sequence: 1, text: "Hello", stablePrefix: 0))
+        controller.commit(result(raw: "Hello", shipped: "Hello there."))
+        #expect(mock.text == "Existing: Hello there.")
+    }
 
     private func draft(
         epoch: Int = 1,
@@ -75,7 +133,7 @@ struct TextInsertionControllerTests {
         #expect(controller.insertedChars == 8)
     }
 
-    @Test("revised unstable tail deletes old tail and inserts the new one")
+    @Test("extended unstable tail types only the new characters")
     func revisedUnstableTailDeletesAndInserts() {
         let mock = MockTextDocumentProxy()
         let controller = TextInsertionController(proxy: mock)
@@ -86,9 +144,10 @@ struct TextInsertionControllerTests {
 
         controller.apply(draft(sequence: 2, text: "Hello world", stablePrefix: 6))
 
-        #expect(mock.deleteCount == 2)
-        #expect(mock.insertedText == ["world"])
+        #expect(mock.deleteCount == 0)
+        #expect(mock.insertedText == ["rld"])
         #expect(controller.insertedChars == 11)
+        #expect(mock.text == "Hello world")
     }
 
     @Test("a newly stable character is replaced when it differs from the prior draft")
@@ -437,4 +496,3 @@ struct TextInsertionControllerTests {
         #expect(controller.lastCommitted == nil)
     }
 }
-

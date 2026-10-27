@@ -63,6 +63,20 @@ struct AVAudioSessionInterruptionSourceTests {
     }
 
     @Test
+    func ownCategoryChangeDoesNotDisarmTheSession() async throws {
+        let result = try await firstEvent(from: AVAudioSessionInterruptionSource().events) {
+            NotificationCenter.default.post(
+                name: AVAudioSession.routeChangeNotification,
+                object: nil,
+                userInfo: [AVAudioSessionRouteChangeReasonKey: AVAudioSession.RouteChangeReason.categoryChange.rawValue])
+        }
+        guard case .timedOut = result else {
+            Issue.record("Changing our category during arming must not disarm the session")
+            return
+        }
+    }
+
+    @Test
     func routeChangeTranslatesToRouteChangedEvent() async throws {
         let source = AVAudioSessionInterruptionSource()
         let stream = source.events

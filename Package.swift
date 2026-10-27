@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Piko",
-    platforms: [.iOS(.v26), .macOS(.v15)],
+    platforms: [.iOS("27.0"), .macOS(.v15)],
     products: [
         .library(name: "PikoKit", targets: ["PikoKit"]),
         .library(name: "PikoBridge", targets: ["PikoBridge"]),
@@ -16,11 +16,17 @@ let package = Package(
         // it is the build-time expression of the ~60 MB ceiling (see docs/CONSTRAINTS.md C4).
         .library(name: "PikoKeyboardKit", targets: ["PikoKit", "PikoBridge", "PikoUI"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", exact: "1.1.1"),
+    ],
     targets: [
         .target(name: "PikoKit"),
         .target(name: "PikoBridge", dependencies: ["PikoKit"]),
         .target(name: "PikoAudio", dependencies: ["PikoKit"]),
-        .target(name: "PikoTranscribe", dependencies: ["PikoKit"]),
+        .target(name: "PikoTranscribe", dependencies: [
+            "PikoKit",
+            .product(name: "WhisperKit", package: "argmax-oss-swift", condition: .when(platforms: [.iOS])),
+        ]),
         .target(name: "PikoMemory", dependencies: ["PikoKit"]),
         .target(name: "PikoBrain", dependencies: ["PikoKit", "PikoMemory"]),
         .target(name: "PikoUI", dependencies: ["PikoKit"], resources: [.process("Resources")]),
@@ -45,6 +51,11 @@ let package = Package(
                 "HistoryView.swift",
                 "PikoShortcuts.swift",
                 "ArmSessionIntent.swift",
+                "ReminderWriter.swift",
+                "AssistantTools.swift",
+                "PlanProbe.swift",
+                "Voice.swift",
+                "FiledView.swift",
                 "Info.plist",
                 "Piko.entitlements",
             ]

@@ -26,10 +26,10 @@ whatever field you're already in, entirely on-device.
 
 - [x] **BRDG-01**: Keyboard extension's mic button drives the armed session through
   `SessionChannel`
-- [x] **BRDG-02**: A round-trip event from keyboard to app and back completes in under 120ms on
+- [ ] **BRDG-02**: A round-trip event from keyboard to app and back completes in under 120ms on
   device
-- [x] **BRDG-03**: The bridge survives twenty consecutive app switches without losing state
-- [x] **BRDG-04**: The bridge never delivers a stale sequence number to the keyboard
+- [ ] **BRDG-03**: The bridge survives twenty consecutive app switches without losing state
+- [ ] **BRDG-04**: The bridge never delivers a stale sequence number to the keyboard
 
 ### Capture & Transcription
 

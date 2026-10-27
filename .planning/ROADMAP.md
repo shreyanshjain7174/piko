@@ -13,6 +13,10 @@ as future milestones, not broken into phases yet — see `docs/ROADMAP.md` for t
 
 ## Phases
 
+The phase checkmarks below describe original code completion, not beta acceptance. The
+approved iOS 27+ beta execution, current test evidence, and still-open physical/engine/release
+gates are recorded in `STATE.md`. Do not close those gates using Simulator mocks.
+
 - [x] **Phase 1: Shared Contracts** - `PikoKit` types, App Group, notification constants — no platform code (completed 2026-08-27)
 - [x] **Phase 2: Cross-Process Bridge** - `PikoBridge` session channel with the acceptance-tested round trip (completed 2026-08-27)
 - [x] **Phase 3: Armed Session** - `PikoAudio` arm/disarm/capture with interruption recovery — merged to master 2026-08-29. All 11 PikoAudioTests verified passing on iOS Simulator. VERIFICATION.md verdict PARTIALLY DONE stands: Back Tap/Action Button device binding (SESS-02/03) and 45-min soak (SESS-05) remain open, both requiring physical iPhone hardware with no Simulator/CI equivalent.

@@ -1,25 +1,18 @@
-# Free-tier signing overlay for on-device verification without a paid Developer Program.
+# Legacy compile-only overlay; not the paid beta signing configuration.
 #
-# What it does:
-#   - Unique bundle prefix (dev.shreyansh.Piko) so the ID isn't already registered elsewhere.
-#   - Drops the keyboard extension (com.apple.keyboard-service requires paid provisioning).
-#   - Drops the widget extension for the same reason.
-#   - Drops NSSupportsLiveActivities (ActivityKit requires paid).
-#   - Drops UIBackgroundModes: audio (background modes require paid).
-#   - Drops the App Group entitlement (App Groups require paid).
+# Omits the keyboard/widget targets, Live Activity declaration, background audio,
+# and App Group entitlement. It does not validate those capabilities.
 #
-# What still works on free tier:
-#   - App boot, main UI, settings, history (in-app SQLite, no App Group)
-#   - Foreground microphone + SpeechTranscriberEngine transcription
-#   - FoundationModels rewrite (iOS 27+, works on-device)
-#   - SwiftUI perf profiling, memory sampling, jetsam of the app itself
+# Current startup explicitly reports unavailable shared storage without the App Group.
+# This overlay cannot verify the dictation loop, keyboard, or background session.
+# Use project.yml with the confirmed paid team for beta and physical acceptance.
 #
-# Regenerate the xcodeproj from this file with:  make free-tier-project
+# Regenerate explicitly with: xcodegen generate --spec project.free-tier.yml
 name: Piko
 options:
   bundleIdPrefix: dev.shreyansh
   deploymentTarget:
-    iOS: "26.0"
+    iOS: "27.0"
   createIntermediateGroups: true
 
 packages:
@@ -52,4 +45,3 @@ targets:
       properties:
         UILaunchScreen: {}
         NSMicrophoneUsageDescription: "Piko turns what you say into text. Audio never leaves this phone."
-        NSSpeechRecognitionUsageDescription: "Piko transcribes on this device only."

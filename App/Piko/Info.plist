@@ -15,13 +15,15 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Piko checks your calendar for clashes and adds events only after you say yes.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Piko turns what you say into text. Audio never leaves this phone.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Piko transcribes on this device only.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Piko saves the reminders you tell it about to Reminders, only when you tap Save.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>UIBackgroundModes</key>

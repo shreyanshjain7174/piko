@@ -100,10 +100,10 @@ struct MicButton: View {
     private var accessibilityHint: String {
         if let setupPrompt { return setupPrompt.message }
         return switch phase {
-        case .armed:     "Piko listens until you tap again."
+        case .armed:     "Dictates into this text field without opening Siri. Tap again to stop."
         case .capturing: "Stops recording and tidies what you said."
         case .tidying:   "Piko is tidying what you said. This takes a moment."
-        case .idle, nil: "Open the Piko app and tap Arm first."
+        case .idle, nil: "Arm Piko from Control Center or the Action Button first."
         }
     }
 }

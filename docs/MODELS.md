@@ -4,14 +4,35 @@ Three tiers. Ship tier 1, make tier 2 an opt-in download, keep tier 3 honest abo
 
 ## Tier 1 — what ships in v0.1
 
-**Apple Foundation Models, on-device.** 8,192-token context (`model.contextSize` from iOS 26.4),
-free, no download, no RAM budget of our own, vision in iOS 27, rebuilt tool-calling. It is not
-the best model available — it is the only one that costs nothing to ship and nothing to run.
+**Apple Foundation Models, on-device.** The beta uses the system model only when available
+on the verified device. Eligibility, user settings, language/region, and downloaded system
+assets affect availability. There is no separately bundled rewrite model, but inference is
+not free of memory/latency cost. The existing 600ms budget remains; on failure Piko preserves
+the original transcript and explains the bypass.
 
-Escalation for long rewrites: Private Cloud Compute, 32k context with real reasoning levels,
-free below 2M first-time downloads. **Off by default.** It leaves the device, which contradicts
-the product's only defensible claim, so it must be an explicit per-profile opt-in and must
-appear in the UI while it is on.
+There is no cloud escalation in this beta. Any future cloud feature is a separate product
+decision with explicit consent, not a way to pass offline acceptance.
+
+## Tool harness (2026-10-21)
+
+Planners propose; `ToolHarness` (PikoBrain) decides. Every planner emits the same step shape
+`ToolCall {tool, text, when}`, so Apple Foundation Models, an open SLM, or a future opt-in
+cloud model are interchangeable behind `Planner`. The harness runs only registered tools, caps
+plans at five steps, and runs `.external` tools (Reminders, Calendar, Shortcuts) only after
+user approval. `ModelPlanner` drops unknown tools, unspoken content and unspoken dates, and
+falls back to the free rule planner. Apple's built-in `Tool` calling loop (present in the
+iOS 27 SDK) is not used for execution because it would bypass this approval gate.
+
+Tools (all public iOS APIs): reminder.create (EventKit), calendar.create (EventKit
+write-only), note.save / journal.save (local SQLite), checkin.schedule (UserNotifications),
+shortcut.run (`shortcuts://run-shortcut`, the bridge to other apps' actions), memory.search
+(local history). iOS gives third-party apps no way to see or drive other apps' UI, so
+"computer use" is replaced by "app use" through these APIs and Shortcuts.
+
+Next: an on-device eval (20 real requests) of Apple Foundation Models vs Qwen3.5-2B 4-bit via
+MLX Swift on iPhone 17, scored on tool choice, argument accuracy and latency. A third-party
+benchmark reports ~61 tok/s and ~1.3 GB for Qwen3.5-2B on iPhone 17 Pro (unverified by us).
+Ship the SLM only if it clearly wins.
 
 ## Tier 2 — open weights, opt-in
 
@@ -79,8 +100,23 @@ Same tiered structure as `Brain` above, applied to speech-to-text instead of rew
 
 ### Tier 1 — what ships in v0.1
 
-Apple's SpeechAnalyzer/SpeechTranscriber, unchanged from `docs/SPEC.md`. Zero download, zero new
-dependency, zero memory budget of our own — same reasoning as `SystemBrain`.
+Apple's SpeechAnalyzer/SpeechTranscriber is the existing baseline. Language assets may need
+an explicit initial installation and can later be reclaimed by the system. Readiness must
+be checked before capture; recognition then runs locally. Measure runtime memory and latency
+on the phone rather than treating a system-managed model as zero-cost.
+
+### Current beta comparison
+
+Compare Apple against exactly one native Swift/Core ML Whisper challenger: WhisperKit 1.1.1
+with compressed large-v3-turbo `openai_whisper-large-v3-v20240930_626MB`. The model and tokenizer
+are separately revision/checksum pinned; see the developer commands in `../README.md`.
+Rust, diarisation, and additional model tiers below are not part of this comparison.
+
+Use the same consented English/Indian-English corpus and real background-app-to-keyboard
+path on the user's iPhone 17. Require at most 10% normalized WER, no silence hallucinations
+or data loss, and the existing latency/lifecycle gates. Whisper must additionally reduce
+Apple's WER by at least 20% relative to justify its complexity; ties favor Apple. This is a
+selection rule, not a measured result. Neither qualifying blocks beta distribution.
 
 The "ultra-low-latency, self-correcting via punctuation" want is a **stable-prefix commit
 policy**, not a model choice — it decides which characters of an already-streaming hypothesis are

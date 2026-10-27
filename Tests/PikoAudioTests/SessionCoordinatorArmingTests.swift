@@ -6,6 +6,25 @@ import Testing
 
 @Suite("SessionCoordinator arming", .serialized)
 struct SessionCoordinatorArmingTests {
+    @Test @MainActor
+    func deniedPermissionCannotPublishArmedState() async {
+        let channel = MockSessionChannel()
+        let coordinator = SessionCoordinator(
+            channel: channel,
+            interruptions: MockInterruptionSource(),
+            audioSession: .init(activate: { throw PikoError.microphoneDenied }, deactivate: {}),
+            isForeground: { true })
+        do {
+            try await coordinator.arm()
+            Issue.record("Denied permission must not arm")
+        } catch PikoError.microphoneDenied {
+        } catch {
+            Issue.record("Unexpected permission error: \(error)")
+        }
+        #expect(coordinator.currentPhase == .idle)
+        #expect(channel.readState()?.phase != .armed)
+    }
+
 
     @Test @MainActor
     func armTransitionsIdleToArmed() async throws {
@@ -13,6 +32,7 @@ struct SessionCoordinatorArmingTests {
             let coordinator = SessionCoordinator(
                 channel: MockSessionChannel(),
                 interruptions: MockInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true })
 
             var iterator = coordinator.phase.makeAsyncIterator()
@@ -34,6 +54,7 @@ struct SessionCoordinatorArmingTests {
             let coordinator = SessionCoordinator(
                 channel: MockSessionChannel(),
                 interruptions: MockInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true })
 
             var firstSubscriber = coordinator.phase.makeAsyncIterator()
@@ -58,6 +79,7 @@ struct SessionCoordinatorArmingTests {
         let coordinator = SessionCoordinator(
             channel: MockSessionChannel(),
             interruptions: MockInterruptionSource(),
+            audioSession: .init(activate: {}, deactivate: {}),
             isForeground: { false })
 
         do {
@@ -75,6 +97,7 @@ struct SessionCoordinatorArmingTests {
         let coordinator = SessionCoordinator(
             channel: MockSessionChannel(),
             interruptions: MockInterruptionSource(),
+            audioSession: .init(activate: {}, deactivate: {}),
             isForeground: { true })
 
         do {
@@ -93,6 +116,7 @@ struct SessionCoordinatorArmingTests {
             let coordinator = SessionCoordinator(
                 channel: MockSessionChannel(),
                 interruptions: MockInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true })
 
             var iterator = coordinator.phase.makeAsyncIterator()
@@ -125,6 +149,7 @@ struct SessionCoordinatorArmingTests {
             let coordinator = SessionCoordinator(
                 channel: channel,
                 interruptions: MockInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true })
 
             try await coordinator.arm()
@@ -154,6 +179,7 @@ struct SessionCoordinatorArmingTests {
             let coordinator = SessionCoordinator(
                 channel: channel,
                 interruptions: MockInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true })
 
             try await coordinator.arm()

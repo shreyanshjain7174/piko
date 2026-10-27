@@ -3,6 +3,9 @@ import UIKit
 import PikoKit
 import PikoBridge
 import PikoUI
+#if DEBUG
+import OSLog
+#endif
 
 /// A remote control and a text sink. Nothing else lives here.
 ///
@@ -13,14 +16,23 @@ import PikoUI
 final class KeyboardViewController: UIInputViewController {
 
     private var channel: DarwinChannel?
-    private var insertionController: TextInsertionController?
+    private var insertionController: TextInsertionController? { KeyboardProcessState.insertion }
     private var hostingController: UIHostingController<KeyboardView>?
     private var sessionState: SessionState?
     private var heightConstraint: NSLayoutConstraint?
     private let voiceActivity = VoiceActivityModel()
     private var observationTask: Task<Void, Never>?
     private var freshnessTask: Task<Void, Never>?
-    private var isKeyboardVisible = false
+    private var captureStartTask: Task<Void, Never>?
+    private var delivery: KeyboardCaptureDelivery {
+        get { KeyboardProcessState.delivery }
+        set { KeyboardProcessState.delivery = newValue }
+    }
+    private var isCurrentHost: Bool { KeyboardProcessState.host === self }
+    #if DEBUG
+    private var lastLoggedInsertionEpoch: Int?
+    private let insertionLogger = Logger(subsystem: "dev.shreyansh.Piko.benchmark", category: "insertion")
+    #endif
 
     @Published private var sessionPhase: SessionPhase? = nil
     @Published private var setupPrompt: KeyboardSetupPrompt? = .armSession
@@ -31,7 +43,7 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         channel = DarwinChannel()
-        insertionController = TextInsertionController(proxy: textDocumentProxy)
+        KeyboardProcessState.host = self
         apply(channel?.readState())
 
         let hosting = UIHostingController(rootView: makeKeyboardView())
@@ -67,6 +79,7 @@ final class KeyboardViewController: UIInputViewController {
     deinit {
         observationTask?.cancel()
         freshnessTask?.cancel()
+        captureStartTask?.cancel()
     }
 
     override func viewWillLayoutSubviews() {
@@ -76,7 +89,8 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        isKeyboardVisible = true
+        KeyboardProcessState.host = self
+        delivery.isVisible = true
         apply(channel?.readState())
         freshnessTask?.cancel()
         freshnessTask = Task { [weak self] in
@@ -91,15 +105,40 @@ final class KeyboardViewController: UIInputViewController {
                 }
                 // Recover from coalesced/missed Darwin notifications while visible.
                 self.refreshAudioLevel()
+                if self.delivery.isActive {
+                    self.applyDraft()
+                    self.applyResult()
+                }
             }
         }
-        insertionController = TextInsertionController(proxy: textDocumentProxy)
         refreshRevertAvailability()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Like system dictation: an armed Piko starts listening when its keyboard appears.
+        guard hasFullAccess else { return }
+        let autoListen = KeyboardPreferences.autoListen(in: UserDefaults(suiteName: AppGroup.identifier))
+        guard autoListen || delivery.isActive else { return }
+        startCaptureWhenHostReady(warnIfHostMissing: false, landPendingResult: true, start: autoListen)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Text typed during the hide transition can be dropped by the host, which would leave
+        // insertion bookkeeping out of sync. Stop delivering and listening as soon as hiding starts.
+        guard isCurrentHost else { return }
+        if delivery.isActive, channel?.readState()?.phase == .capturing {
+            channel?.post(.captureStop)
+        }
+        delivery.isVisible = false
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        isKeyboardVisible = false
+        if isCurrentHost { delivery.isVisible = false }
+        captureStartTask?.cancel()
+        captureStartTask = nil
         freshnessTask?.cancel()
         freshnessTask = nil
         voiceActivity.setActive(false)
@@ -162,7 +201,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         setupPrompt = KeyboardSetupPrompt.resolve(hasFullAccess: hasFullAccess, isLive: state?.isLive() ?? false)
         if setupPrompt != nil { sessionPhase = .idle }
-        voiceActivity.setActive(isKeyboardVisible && setupPrompt == nil && state?.phase == .capturing)
+        voiceActivity.setActive(delivery.isVisible && setupPrompt == nil && state?.phase == .capturing)
         refreshAudioLevel()
         refreshRootView()
     }
@@ -193,7 +232,10 @@ final class KeyboardViewController: UIInputViewController {
             if let state = channel.readState() {
                 apply(state)
                 if state.phase == .idle {
-                    insertionController?.reset()
+                    applyResult()
+                    if !delivery.isActive, insertionController?.lastCommitted == nil {
+                        insertionController?.reset()
+                    }
                     refreshRevertAvailability()
                 }
             }
@@ -217,8 +259,7 @@ final class KeyboardViewController: UIInputViewController {
         sessionState = state
         switch state.phase {
         case .armed:
-            channel?.post(.captureStart)
-            haptic(.start)
+            startCaptureWhenHostReady(warnIfHostMissing: true)
         case .capturing:
             channel?.post(.captureStop)
             haptic(.stop)
@@ -226,6 +267,39 @@ final class KeyboardViewController: UIInputViewController {
             break
         }
         refreshRootView()
+    }
+
+    private func startCaptureWhenHostReady(
+        warnIfHostMissing: Bool, landPendingResult: Bool = false, start: Bool = true
+    ) {
+        guard captureStartTask == nil else { return }
+        captureStartTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.captureStartTask = nil }
+            // The host proxy is attached asynchronously, including after viewWillAppear.
+            for _ in 0..<15 {
+                guard !Task.isCancelled, self.delivery.isVisible else { return }
+                if self.insertionController?.hostIsReady == true {
+                    // Land a result that finished while hidden before a new capture resets insertion.
+                    if landPendingResult, self.delivery.isActive { self.applyResult() }
+                    guard start, let state = self.channel?.readState(), state.isLive(), state.phase == .armed else {
+                        return
+                    }
+                    self.apply(state)
+                    self.insertionController?.beginCapture()
+                    self.delivery.begin(after: self.channel?.readDraft(), result: self.channel?.readResult())
+                    self.channel?.post(.captureStart)
+                    self.haptic(.start)
+                    return
+                }
+                do { try await Task.sleep(for: .milliseconds(20)) }
+                catch { return }
+            }
+            if warnIfHostMissing { self.haptic(.warning) }
+            #if DEBUG
+            self.insertionLogger.error("PIKO_INSERTION_BLOCKED host_not_attached")
+            #endif
+        }
     }
 
     private func revertTapped() {
@@ -237,13 +311,26 @@ final class KeyboardViewController: UIInputViewController {
     /// Insert only what is new. Ignore anything older than what we already typed, or the field
     /// thrashes — that is the failure mode spike 3 exists to prevent.
     private func applyDraft() {
-        guard let draft = channel?.readDraft() else { return }
+        // Before the host proxy attaches, field checks fail and would abandon the capture; retry later.
+        guard isCurrentHost, insertionController?.hostIsReady == true,
+              let draft = channel?.readDraft(), delivery.accepts(draft) else { return }
         insertionController?.apply(draft)
+        #if DEBUG
+        if insertionController?.lastApplied?.sequence == draft.sequence,
+           insertionController?.lastApplied?.sessionEpoch == draft.sessionEpoch,
+           !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           lastLoggedInsertionEpoch != draft.sessionEpoch {
+            lastLoggedInsertionEpoch = draft.sessionEpoch
+            insertionLogger.notice("PIKO_DEBUG_INSERTION epoch=\(draft.sessionEpoch, privacy: .public) uptime=\(ProcessInfo.processInfo.systemUptime, privacy: .public)")
+        }
+        #endif
         refreshRevertAvailability()
     }
 
     private func applyResult() {
-        guard let result = channel?.readResult() else { return }
+        guard isCurrentHost, insertionController?.hostIsReady == true,
+              let result = channel?.readResult(), delivery.accepts(result) else { return }
+        delivery.finish()
         insertionController?.commit(result)
         haptic(.landed)
         refreshRevertAvailability()
@@ -268,4 +355,14 @@ private extension KeyboardViewController {
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
         }
     }
+}
+
+/// iOS can replace the keyboard's view controller when the user switches keyboards and back.
+/// Capture ownership and insertion bookkeeping live per keyboard process, routed to whichever
+/// controller is on screen, so a capture that ended while hidden still lands its final text.
+@MainActor
+private enum KeyboardProcessState {
+    static weak var host: KeyboardViewController?
+    static var delivery = KeyboardCaptureDelivery()
+    static let insertion = TextInsertionController(proxyProvider: { host?.textDocumentProxy })
 }

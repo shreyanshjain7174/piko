@@ -9,11 +9,11 @@ was assembled from documentation and developer-forum evidence, not from our own 
 | C1 | A keyboard extension cannot open the microphone | **Blocked** | Runtime refuses: `was NOT allowed to start recording because it is an extension and doesn't have entitlements to record audio`. Apple's keyboard docs have said "no access to the device microphone, so dictation input is not possible" since iOS 8. Full Access does not unlock it. |
 | C2 | Nothing may *start* a recording session from the background | **Blocked** | Apple DTS: only CallKit, LiveCommunicationKit and PushToTalk may activate a recording session in the background, and those are for communication apps. A Bluetooth button buys no exception. |
 | C3 | A session activated in the foreground *continues* in the background | **Allowed** | With the `audio` background mode. This asymmetry is the entire product. |
-| C4 | Keyboard extension memory ceiling ≈ 60 MB | **Hard** | Exceed it and jetsam kills the keyboard with no crash log. No model, no audio buffers, no index in that process. |
+| C4 | Keyboard extension project budget ≈ 60 MB | **Device-dependent** | Keep this guardrail and measure real memory pressure; it is not a universal OS limit. Jetsam can kill the keyboard. No model, audio buffers, or index in that process. |
 | C5 | `Activity.request()` requires the foreground | **Conditional** | Background start throws `ActivityAuthorizationError.visibility` / "Target is not foreground". Exceptions: an intent the user fired from a widget, Shortcut or Siri, and APNs push-to-start. |
 | C6 | Live Activity lifetime: 8 h active + 4 h stale | **Fixed** | Longer than a working day. Start it at arm time. |
 | C7 | A keyboard cannot learn which app hosts it | **Blocked** | No host bundle ID. Per-app tone must come from field traits plus an explicit user choice. |
-| C8 | Secure and numeric fields exclude third-party keyboards | **Fixed** | Password, phone, decimal and email-address fields fall back to the system keyboard. Do not promise "every field". |
+| C8 | Secure fields, phone-pad fields, and apps that reject custom keyboards exclude third-party keyboards | **Fixed** | Secure entry and `phonePad`/`namePhonePad` use the system keyboard; a host app can reject custom keyboards entirely. Do not promise "every field" or assume all decimal/email fields are excluded. |
 | C9 | No cross-app actuation | **Blocked** | Siri is the only orchestrator of other apps' App Intents. There is no public API for one app to run another's intents. "Do" mode means system frameworks plus our own network tools, nothing more. |
 | C10 | No persistent background agent | **Fixed** | `BGTaskScheduler` grants opportunistic minutes per day, not a daemon. Piko acts when invoked. |
 

@@ -24,6 +24,7 @@ public final class LiveActivityController {
             currentWords = 0
         }
 
+        if activity != nil { return }
         if let existing = Activity<PikoAttributes>.activities.first {
             activity = existing
             return
@@ -35,11 +36,15 @@ public final class LiveActivityController {
             words: 0,
             levels: LiveActivityContent.placeholderLevels()
         )
-        let content = ActivityContent(state: initialState, staleDate: Date().addingTimeInterval(8 * 3600))
+        let content = ActivityContent(state: initialState, staleDate: Date().addingTimeInterval(10 * 60))
 
         // A failed request must not throw out of start(skin:) — arming the mic must succeed
         // regardless of whether the supplementary Live Activity could be created.
-        activity = try? Activity<PikoAttributes>.request(attributes: attributes, content: content, pushType: nil)
+        do {
+            activity = try Activity<PikoAttributes>.request(attributes: attributes, content: content, pushType: nil)
+        } catch {
+            print("LiveActivityController: Live Activity unavailable (\(type(of: error)))")
+        }
     }
 
     /// Every `session.phase` emission reaches here; `.idle` ends the Activity instead of updating it.
@@ -63,13 +68,17 @@ public final class LiveActivityController {
 
     /// Wired to draft arrival; recomputes the live word count.
     public func updateWords(from text: String) async {
-        currentWords = LiveActivityContent.wordCount(in: text)
+        let words = LiveActivityContent.wordCount(in: text)
+        guard words != currentWords else { return }
+        currentWords = words
         await refreshContent()
     }
 
     public func end() async {
-        if let activity {
-            await activity.end(nil, dismissalPolicy: .default)
+        // Also end activities adopted from an earlier launch, so nothing is left behind.
+        for running in Activity<PikoAttributes>.activities {
+            // Immediate: a finished request should leave nothing behind on the Lock Screen.
+            await running.end(nil, dismissalPolicy: .immediate)
         }
         self.activity = nil
     }
@@ -80,7 +89,7 @@ public final class LiveActivityController {
             words: currentWords,
             levels: LiveActivityContent.placeholderLevels()
         )
-        let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(8 * 3600))
+        let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(10 * 60))
         if let activity {
             await activity.update(content)
         }

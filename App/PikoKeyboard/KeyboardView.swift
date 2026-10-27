@@ -120,14 +120,14 @@ enum KeyboardSetupPrompt: Equatable {
         case .fullAccess:
             "In Settings › General › Keyboard › Keyboards › Piko, turn on Allow Full Access."
         case .armSession:
-            "Open Piko and start a keyboard session from Home."
+            "Press Arm Piko in Control Center, on the Lock Screen or with the Action Button, then tap the mic again."
         }
     }
 
     var caption: String {
         switch self {
         case .fullAccess: "Full Access required"
-        case .armSession: "Set up your session"
+        case .armSession: "Arm Piko once to dictate"
         }
     }
 }

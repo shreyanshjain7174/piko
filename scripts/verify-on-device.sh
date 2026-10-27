@@ -1,164 +1,132 @@
 #!/usr/bin/env bash
-# Automated on-device verification for Piko.
-#
-# What it does (in order):
-#   1. Find the plugged-in iPhone via `xcrun devicectl`.
-#   2. Build + install a signed Debug build to the device.
-#   3. Launch the app and stream `os_log` to `verification-logs/<timestamp>/app.log`.
-#   4. Run the boundary checks the Simulator cannot honestly answer:
-#        - Extension memory ceiling: launch, drive keyboard, sample RSS every 5 s for 45 min.
-#        - AVAudioSession activation from background (arming path integration).
-#        - Live Activity real cadence (ActivityKit .update() rate limit observations).
-#   5. Capture an Instruments Time Profiler trace covering the soak.
-#   6. Write a machine-readable summary at verification-logs/<timestamp>/summary.json.
-#
-# Requires (checked at start; script exits with an actionable message if any is missing):
-#   - Xcode 27.0+ selected via xcode-select.
-#   - A code-signing identity ("Apple Development: …") in the login keychain.
-#   - DEVELOPMENT_TEAM set in App/project.yml OR PIKO_DEVELOPMENT_TEAM env var.
-#   - iPhone plugged in with Developer Mode enabled and paired ("Trust this computer").
-
+# Build/install smoke checks are not physical acceptance or a measured soak.
 set -euo pipefail
 
-RED=$'\033[31m'; GRN=$'\033[32m'; YEL=$'\033[33m'; BLD=$'\033[1m'; DIM=$'\033[2m'; NC=$'\033[0m'
-say()  { printf "%s%s%s\n" "$BLD" "$*" "$NC"; }
-ok()   { printf "%s✓%s %s\n" "$GRN" "$NC" "$*"; }
-warn() { printf "%s!%s %s\n" "$YEL" "$NC" "$*"; }
-die()  { printf "%s✗%s %s\n" "$RED" "$NC" "$*" >&2; exit 1; }
-
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT"
-
-TS="$(date +%Y%m%d-%H%M%S)"
-OUT="$ROOT/verification-logs/$TS"
+OUT="${PIKO_VERIFICATION_OUT:-$ROOT/verification-logs/$(date +%Y%m%d-%H%M%S)}"
+MODE="${1:---smoke}"
+case "$MODE" in
+  --preflight|--smoke) ;;
+  *) printf 'Usage: %s [--preflight|--smoke]\n' "$0" >&2; exit 1 ;;
+esac
 mkdir -p "$OUT"
+OUT="$(cd "$OUT" && pwd)"
+STAGE=preflight
+export OUT STAGE
 
-# --- Preflight --------------------------------------------------------------
+write_summary() {
+  RESULT="$1" python3 - <<'PY'
+import json
+import os
+from pathlib import Path
 
-say "Preflight"
+summary = {
+    "stage": os.environ["STAGE"],
+    "automated_smoke": os.environ["RESULT"],
+    "acceptance": "unverified",
+    "keyboard_peak_rss_bytes": None,
+    "container_peak_rss_bytes": None,
+    "bridge_round_trip_ms": None,
+    "first_inserted_word_ms": None,
+    "cleanup_ms": None,
+    "soak_minutes_verified": None,
+    "manual_gates": {
+        name: "unverified" for name in (
+            "accuracy", "offline", "background_survival", "interruptions",
+            "back_tap", "action_button", "keyboard_memory", "live_activity_stop"
+        )
+    },
+}
+Path(os.environ["OUT"], "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+PY
+}
 
-XCODE_VER="$(xcodebuild -version 2>/dev/null | head -1 || true)"
-[[ "$XCODE_VER" =~ "Xcode 27" ]] || die "Need Xcode 27+, have: $XCODE_VER"
-ok "$XCODE_VER"
+on_error() {
+  local code=$?
+  write_summary failed
+  printf 'Failed during %s. Evidence: %s\n' "$STAGE" "$OUT" >&2
+  exit "$code"
+}
+trap on_error ERR
+write_summary not_run
 
-IDENTITY="$(security find-identity -p codesigning -v 2>/dev/null | grep -oE 'Apple Development: [^"]+' | head -1 || true)"
-[[ -n "$IDENTITY" ]] || die "No code-signing identity. Open Xcode → Settings → Accounts, sign in, add your Team."
-ok "Signing identity: $IDENTITY"
+for tool in xcodebuild xcrun xcodegen python3 security; do
+  command -v "$tool" >/dev/null || { printf 'Missing tool: %s\n' "$tool" >&2; false; }
+done
+XCODE_VER="$(xcodebuild -version | awk '/^Xcode / {print $2}')"
+if [[ ! "$XCODE_VER" =~ ^[0-9]+(\.[0-9]+)*$ ]] || [[ "${XCODE_VER%%.*}" -lt 27 ]]; then
+  printf 'Piko verification requires Xcode 27+.\n' >&2
+  false
+fi
 
 TEAM="${PIKO_DEVELOPMENT_TEAM:-}"
 if [[ -z "$TEAM" ]]; then
-  TEAM="$(grep -E 'DEVELOPMENT_TEAM: "[A-Z0-9]{10}"' App/project.yml | grep -oE '[A-Z0-9]{10}' | head -1 || true)"
+  TEAM="$(awk -F '"' '/DEVELOPMENT_TEAM:/ {print $2; exit}' "$ROOT/App/project.yml")"
 fi
-[[ -n "$TEAM" ]] || die "No DEVELOPMENT_TEAM. Set PIKO_DEVELOPMENT_TEAM=<10-char-id> or pin it in App/project.yml."
-ok "Team ID: $TEAM"
+[[ "$TEAM" =~ ^[A-Z0-9]{10}$ ]] || { printf 'Set a valid PIKO_DEVELOPMENT_TEAM.\n' >&2; false; }
+security find-identity -v -p codesigning > "$OUT/signing-identities.txt"
+xcrun devicectl list devices --json-output "$OUT/devices.json" > "$OUT/devices.log"
 
-DEVICE_LINE="$(xcrun devicectl list devices 2>/dev/null | grep -v simulated | grep -E 'available|connected' | head -1 || true)"
-[[ -n "$DEVICE_LINE" ]] || die "No physical iPhone plugged in. Connect, unlock, and Trust this computer."
-UDID="$(echo "$DEVICE_LINE" | grep -oE '[0-9A-F]{8}-[0-9A-F]{16}' | head -1)"
-[[ -n "$UDID" ]] || die "Could not parse UDID from: $DEVICE_LINE"
-ok "Device: $UDID"
+UDID="$(python3 - "$OUT/devices.json" "${PIKO_DEVICE_UDID:-}" <<'PY'
+import json
+import sys
 
-# --- Build + install --------------------------------------------------------
-
-say "Build + install (this may prompt for keychain access on first signing)"
-
-make project >/dev/null
-
-DERIVED="$OUT/derived-data"
-xcodebuild \
-  -project App/Piko.xcodeproj \
-  -scheme Piko \
-  -destination "platform=iOS,id=$UDID" \
-  -allowProvisioningUpdates \
-  DEVELOPMENT_TEAM="$TEAM" \
-  -derivedDataPath "$DERIVED" \
-  build 2>&1 | tee "$OUT/xcodebuild.log" | grep -E "BUILD|error:" | tail -5
-
-APP="$(find "$DERIVED/Build/Products" -name "Piko.app" -type d | head -1)"
-[[ -d "$APP" ]] || die "Build did not produce Piko.app. See $OUT/xcodebuild.log"
-ok "Built: $APP"
-
-xcrun devicectl device install app --device "$UDID" "$APP" 2>&1 | tee -a "$OUT/xcodebuild.log" | tail -3
-ok "Installed on device"
-
-# --- Launch + log stream ----------------------------------------------------
-
-say "Launch + stream logs"
-
-xcrun devicectl device process launch --device "$UDID" dev.piko.Piko 2>&1 | tee -a "$OUT/xcodebuild.log" | tail -3
-
-# Console stream in background; kill on exit.
-xcrun devicectl device console --device "$UDID" \
-  > "$OUT/app.log" 2>&1 &
-CONSOLE_PID=$!
-trap 'kill $CONSOLE_PID 2>/dev/null || true' EXIT
-sleep 3
-ok "Console PID: $CONSOLE_PID → $OUT/app.log"
-
-# --- 45-min soak with 5-s RSS samples ---------------------------------------
-
-say "45-min soak (memory + CPU sampling every 5 s)"
-warn "Drive the keyboard on device: type in Notes, Messages, Safari address bar."
-
-SOAK_MIN="${PIKO_SOAK_MIN:-45}"
-RSS_CSV="$OUT/rss.csv"
-echo "ts,rss_kb,cpu_pct" > "$RSS_CSV"
-
-END=$(( $(date +%s) + SOAK_MIN * 60 ))
-while [[ $(date +%s) -lt $END ]]; do
-  PID="$(xcrun devicectl device info processes --device "$UDID" 2>/dev/null | awk '/dev\.piko\.Piko/ {print $1; exit}')"
-  if [[ -n "$PID" ]]; then
-    # devicectl process metrics is best-effort; fall back to log-scraped memory advisories.
-    STATS="$(xcrun devicectl device process metrics --device "$UDID" --pid "$PID" 2>/dev/null || true)"
-    RSS="$(echo "$STATS" | grep -oE 'residentMemory[^0-9]*[0-9]+' | grep -oE '[0-9]+' | head -1)"
-    CPU="$(echo "$STATS" | grep -oE 'cpuPercent[^0-9]*[0-9.]+' | grep -oE '[0-9.]+' | head -1)"
-    printf "%s,%s,%s\n" "$(date +%s)" "${RSS:-0}" "${CPU:-0}" >> "$RSS_CSV"
-  fi
-  sleep 5
-done
-ok "Soak complete, $(wc -l < "$RSS_CSV") samples"
-
-# --- Post-soak checks -------------------------------------------------------
-
-say "Post-soak analysis"
-
-# Extension jetsam detection: any 'EXC_RESOURCE' or 'jetsam' in the app log or system log.
-JETSAMS="$(grep -cE 'EXC_RESOURCE|jetsam|memory-limit' "$OUT/app.log" || true)"
-if [[ "${JETSAMS:-0}" -gt 0 ]]; then
-  warn "Detected $JETSAMS jetsam / memory-limit events in app.log"
-else
-  ok "No jetsam events observed during soak"
+devices = json.load(open(sys.argv[1]))["result"]["devices"]
+physical = [
+    device for device in devices
+    if device.get("hardwareProperties", {}).get("reality") == "physical"
+    and device.get("connectionProperties", {}).get("pairingState") == "paired"
+    and device.get("deviceProperties", {}).get("bootState") == "booted"
+]
+requested = sys.argv[2]
+if requested:
+    physical = [
+        device for device in physical
+        if requested in (device["identifier"], device["hardwareProperties"].get("udid"))
+    ]
+if len(physical) != 1:
+    sys.exit("Connect one paired, booted physical iPhone, or set PIKO_DEVICE_UDID.")
+device = physical[0]
+properties = device["deviceProperties"]
+if properties.get("developerModeStatus") != "enabled":
+    sys.exit("Enable Developer Mode and trust this Mac on the selected iPhone.")
+if int(properties["osVersionNumber"].split(".")[0]) < 27:
+    sys.exit("Piko requires iOS 27+.")
+print(device["hardwareProperties"]["udid"])
+PY
+)"
+xcrun devicectl device info details --device "$UDID" \
+  --json-output "$OUT/device-details.json" > "$OUT/device-details.log"
+write_summary preflight_ready
+if [[ "$MODE" == --preflight ]]; then
+  printf 'Preflight ready, acceptance unverified. Evidence: %s\n' "$OUT"
+  exit 0
 fi
 
-# AVAudioSession activation errors (device blocks calls Simulator permits).
-AVERR="$(grep -cE 'AVAudioSession.*error|setActive.*failed|OSStatus error 561' "$OUT/app.log" || true)"
-if [[ "${AVERR:-0}" -gt 0 ]]; then
-  warn "$AVERR AVAudioSession errors observed"
-else
-  ok "AVAudioSession clean"
-fi
+STAGE=build
+cd "$ROOT"
+make project > "$OUT/project.log" 2>&1
+xcodebuild -project App/Piko.xcodeproj -scheme Piko \
+  -destination "platform=iOS,id=$UDID" DEVELOPMENT_TEAM="$TEAM" \
+  -derivedDataPath "$OUT/derived-data" build > "$OUT/xcodebuild.log" 2>&1
 
-# Live Activity throttle observations.
-LA_THROTTLE="$(grep -cE 'ActivityKit.*throttl|update.*budget|refresh.*budget' "$OUT/app.log" || true)"
-ok "Live Activity throttle mentions: ${LA_THROTTLE:-0} (informational)"
+STAGE=install
+APP="$OUT/derived-data/Build/Products/Debug-iphoneos/Piko.app"
+[[ -d "$APP" ]] || { printf 'Missing build product: %s\n' "$APP" >&2; false; }
+xcrun devicectl device install app --device "$UDID" "$APP" > "$OUT/install.log" 2>&1
 
-# --- Summary ----------------------------------------------------------------
-
-cat > "$OUT/summary.json" <<JSON
-{
-  "timestamp": "$TS",
-  "xcode": "$XCODE_VER",
-  "device_udid": "$UDID",
-  "team_id": "$TEAM",
-  "soak_minutes": $SOAK_MIN,
-  "rss_samples": $(( $(wc -l < "$RSS_CSV") - 1 )),
-  "jetsams": ${JETSAMS:-0},
-  "avaudio_errors": ${AVERR:-0},
-  "live_activity_throttles": ${LA_THROTTLE:-0},
-  "verdict": "$([[ "${JETSAMS:-0}" -eq 0 && "${AVERR:-0}" -eq 0 ]] && echo pass || echo fail)"
-}
-JSON
-
-say "Done"
-cat "$OUT/summary.json"
-ok "Artifacts: $OUT"
+STAGE=launch
+BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
+xcrun devicectl device process launch --device "$UDID" "$BUNDLE_ID" \
+  --json-output "$OUT/launch.json" > "$OUT/launch.log" 2>&1
+xcrun devicectl device info processes --device "$UDID" \
+  --json-output "$OUT/processes.json" > "$OUT/processes.log"
+STAGE=smoke_complete
+write_summary passed
+printf '%s\n' \
+  "Build/install/launch completed. Acceptance remains UNVERIFIED." \
+  "Use Instruments to identify Piko and PikoKeyboard separately and record real memory/latency." \
+  "Complete docs/SPIKES.md, including the 45-minute soak and real stop/interruptions." \
+  "No console/metrics command, missing sample, or absent error string is treated as a pass." \
+  "Evidence: $OUT"
+exit 2

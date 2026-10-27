@@ -3,6 +3,7 @@ import UIKit
 import PikoKit
 
 struct HistoryView: View {
+    let app: AppComposition
     @State private var searchText = ""
     @State private var results: [CaptureResult] = []
     @State private var hasLoaded = false
@@ -14,7 +15,7 @@ struct HistoryView: View {
                 Section {
                     ForEach(results) { result in
                         NavigationLink {
-                            DictationDetailView(result: result)
+                            DictationDetailView(result: result, app: app)
                         } label: {
                             row(result)
                         }
@@ -66,7 +67,7 @@ struct HistoryView: View {
             await reload()
         }
         .task {
-            for await signal in AppComposition.shared.channel.signals where signal == .resultReady {
+            for await signal in app.channel.signals where signal == .resultReady {
                 guard !Task.isCancelled else { return }
                 await reload()
             }
@@ -99,20 +100,21 @@ struct HistoryView: View {
 
     private func reload() async {
         let query = searchText
-        let found = await AppComposition.shared.memory.search(query, limit: 100)
+        let found = await app.memory.search(query, limit: 100)
         guard !Task.isCancelled, query == searchText else { return }
         results = found
         hasLoaded = true
     }
 
     private func delete(_ result: CaptureResult) async {
-        await AppComposition.shared.memory.delete(result.id)
+        await app.memory.delete(result.id)
         await reload()
     }
 }
 
 private struct DictationDetailView: View {
     let result: CaptureResult
+    let app: AppComposition
     @State private var showCorrection = false
     @State private var copied = false
     @State private var savedCorrection = false
@@ -181,7 +183,7 @@ private struct DictationDetailView: View {
         .sheet(isPresented: $showCorrection) {
             CorrectionView(result: result) { corrected in
                 Task {
-                    await AppComposition.shared.memory.recordEdit(
+                    await app.memory.recordEdit(
                         EditPair(raw: result.raw, shipped: result.shipped, final: corrected, profile: result.profile))
                     savedCorrection = true
                 }

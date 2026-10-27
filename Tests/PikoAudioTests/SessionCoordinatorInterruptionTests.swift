@@ -21,6 +21,7 @@ struct SessionCoordinatorInterruptionTests {
             let coordinator = SessionCoordinator(
                 channel: MockSessionChannel(),
                 interruptions: interruptions,
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true })
 
             var iterator = coordinator.phase.makeAsyncIterator()
@@ -39,6 +40,7 @@ struct SessionCoordinatorInterruptionTests {
             let coordinator = SessionCoordinator(
                 channel: MockSessionChannel(),
                 interruptions: interruptions,
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true })
 
             var iterator = coordinator.phase.makeAsyncIterator()
@@ -57,6 +59,7 @@ struct SessionCoordinatorInterruptionTests {
             let coordinator = SessionCoordinator(
                 channel: MockSessionChannel(),
                 interruptions: interruptions,
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true })
 
             var iterator = coordinator.phase.makeAsyncIterator()
@@ -75,6 +78,7 @@ struct SessionCoordinatorInterruptionTests {
         let coordinator = SessionCoordinator(
             channel: MockSessionChannel(),
             interruptions: interruptions,
+            audioSession: .init(activate: {}, deactivate: {}),
             isForeground: { true })
 
         var iterator = coordinator.phase.makeAsyncIterator()

@@ -19,11 +19,11 @@ struct StreamingInsertionIntegrationTests {
         #expect(mock.deleteCount == 0)
         #expect(controller.insertedChars == 3)
 
-        // Draft 2: "Hello" (still nothing stable — transcriber not confident)
+        // Draft 2: "Hello" (still nothing stable). Unchanged characters are not retyped.
         controller.apply(CaptureDraft(
             sessionEpoch: 1, sequence: 2, text: "Hello", stablePrefix: 0, startedAt: startedAt))
-        #expect(mock.deleteCount == 3)
-        #expect(mock.insertedText.last == "Hello")
+        #expect(mock.deleteCount == 0)
+        #expect(mock.insertedText.last == "lo")
         #expect(controller.insertedChars == 5)
 
         // Draft 3: "Hello wor" with stablePrefix=6 ("Hello " is now stable)
@@ -44,7 +44,7 @@ struct StreamingInsertionIntegrationTests {
         #expect(mock.insertedText == ["ld h"])
         #expect(controller.insertedChars == 13)
 
-        // Draft 5: final draft before result — last unstable char rewritten, then the rest
+        // Draft 5: final draft before result — only the new words are typed
         mock.deleteCount = 0
         mock.insertedText = []
         controller.apply(CaptureDraft(
@@ -52,8 +52,8 @@ struct StreamingInsertionIntegrationTests {
             text: "Hello world how are you",
             stablePrefix: 12,
             startedAt: startedAt))
-        #expect(mock.deleteCount == 1)
-        #expect(mock.insertedText == ["how are you"])
+        #expect(mock.deleteCount == 0)
+        #expect(mock.insertedText == ["ow are you"])
         #expect(controller.insertedChars == 23)
 
         // CaptureResult with Brain rewrite of the streamed raw

@@ -52,6 +52,10 @@ public actor SQLiteMemory: Memory {
             INSERT INTO results_fts(results_fts, rowid, raw, shipped)
             VALUES ('delete', old.rowid, old.raw, old.shipped);
         END;
+        CREATE TABLE IF NOT EXISTS items (
+            id TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, text TEXT NOT NULL,
+            due REAL, createdAt REAL NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS edits (
             raw TEXT NOT NULL, shipped TEXT NOT NULL, final TEXT NOT NULL,
             profile TEXT NOT NULL, createdAt REAL NOT NULL
@@ -283,10 +287,58 @@ public actor SQLiteMemory: Memory {
     }
 }
 
+extension SQLiteMemory: ItemStore {
+    public func save(_ items: [DumpItem]) async {
+        let sql = "INSERT OR REPLACE INTO items (id, kind, text, due, createdAt) VALUES (?,?,?,?,?)"
+        for item in items {
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+                print("SQLiteMemory: save item prepare failed: \(String(cString: sqlite3_errmsg(db)))")
+                return
+            }
+            sqlite3_bind_text(stmt, 1, item.id.uuidString, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 2, item.kind.rawValue, -1, SQLITE_TRANSIENT)
+            sqlite3_bind_text(stmt, 3, item.text, -1, SQLITE_TRANSIENT)
+            if let due = item.due {
+                sqlite3_bind_double(stmt, 4, due.timeIntervalSince1970)
+            } else {
+                sqlite3_bind_null(stmt, 4)
+            }
+            sqlite3_bind_double(stmt, 5, item.createdAt.timeIntervalSince1970)
+            if sqlite3_step(stmt) != SQLITE_DONE {
+                print("SQLiteMemory: save item failed: \(String(cString: sqlite3_errmsg(db)))")
+            }
+            sqlite3_finalize(stmt)
+        }
+    }
+
+    public func items(kind: DumpItem.Kind, limit: Int) async -> [DumpItem] {
+        let sql = "SELECT id, kind, text, due, createdAt FROM items WHERE kind = ? ORDER BY createdAt DESC LIMIT ?"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, kind.rawValue, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_int(stmt, 2, Int32(limit))
+        var items: [DumpItem] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let idC = sqlite3_column_text(stmt, 0), let kindC = sqlite3_column_text(stmt, 1),
+                  let textC = sqlite3_column_text(stmt, 2),
+                  let id = UUID(uuidString: String(cString: idC)),
+                  let kind = DumpItem.Kind(rawValue: String(cString: kindC)) else { continue }
+            let due = sqlite3_column_type(stmt, 3) == SQLITE_NULL
+                ? nil : Date(timeIntervalSince1970: sqlite3_column_double(stmt, 3))
+            items.append(DumpItem(id: id, kind: kind, text: String(cString: textC), due: due,
+                                  createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 4))))
+        }
+        return items
+    }
+}
+
 /// In-memory implementation for tests and previews.
 public actor EphemeralMemory: Memory {
     private var results: [CaptureResult] = []
     private var edits: [EditPair] = []
+    private var filed: [DumpItem] = []
     public init() {}
 
     public func record(_ result: CaptureResult) { results.append(result) }
@@ -296,5 +348,12 @@ public actor EphemeralMemory: Memory {
     public func nearestEdits(to text: String, limit: Int) -> [EditPair] { Array(edits.suffix(limit)) }
     public func search(_ query: String, limit: Int) -> [CaptureResult] {
         results.filter { $0.shipped.localizedCaseInsensitiveContains(query) }.suffix(limit).reversed()
+    }
+}
+
+extension EphemeralMemory: ItemStore {
+    public func save(_ items: [DumpItem]) { filed.append(contentsOf: items) }
+    public func items(kind: DumpItem.Kind, limit: Int) -> [DumpItem] {
+        Array(filed.filter { $0.kind == kind }.sorted { $0.createdAt > $1.createdAt }.prefix(limit))
     }
 }

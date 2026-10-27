@@ -5,11 +5,6 @@ import PikoKit
 
 extension AVAudioPCMBuffer: @unchecked @retroactive Sendable {}
 
-/// One-shot flag for `AVAudioConverter` input blocks (runs off actor isolation).
-private final class ConverterOnce: @unchecked Sendable {
-    var done = false
-}
-
 /// Apple's on-device speech stack behind the `Transcriber` protocol.
 ///
 /// Uses iOS 26 `SpeechAnalyzer` + `SpeechTranscriber`. The plan named
@@ -21,103 +16,107 @@ private final class ConverterOnce: @unchecked Sendable {
 /// single dictation spans many phrases, so `CaptureDraft.text` is the running
 /// accumulation of already-finalized phrases plus the current in-progress
 /// phrase — never just the latest phrase alone.
-public actor SpeechTranscriberEngine: Transcriber {
+public actor SpeechTranscriberEngine: AudioTranscriber {
     private var lexicon: [String] = []
     private var sequence = 0
     private var sessionEpoch = 0
     private var startedAt: Date?
     private var buffers: AsyncStream<AVAudioPCMBuffer>?
-    private var accumulatedText = ""
+    private var transcript = SpeechTranscript()
+    private var preparedLocale: Locale?
+    private var analyzer: SpeechAnalyzer?
+    private var failure: PikoError?
+    private var generation = 0
 
     public init() {}
 
     public func setLexicon(_ words: [String]) { lexicon = words }
 
+    public func prepare(locale: Locale, allowDownload: Bool) async throws {
+        guard SpeechTranscriber.isAvailable,
+              locale.language.languageCode?.identifier == "en",
+              let supported = await SpeechTranscriber.supportedLocale(equivalentTo: locale) else {
+            throw PikoError.speechUnavailable(locale.identifier)
+        }
+        let transcriber = SpeechTranscriber(locale: supported, preset: .progressiveTranscription)
+        if await AssetInventory.status(forModules: [transcriber]) != .installed {
+            guard allowDownload else { throw PikoError.speechAssetsMissing }
+            if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+                try await request.downloadAndInstall()
+            }
+        }
+        guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
+            throw PikoError.speechAssetsMissing
+        }
+        preparedLocale = supported
+    }
+
     public func configure(buffers: AsyncStream<AVAudioPCMBuffer>, sessionEpoch: Int) {
+        guard sessionEpoch >= self.sessionEpoch else { return }
+        generation += 1
         self.buffers = buffers
         self.sessionEpoch = sessionEpoch
         self.sequence = 0
         self.startedAt = .now
-        self.accumulatedText = ""
+        self.transcript = SpeechTranscript()
+        self.failure = nil
     }
 
     nonisolated public func hypotheses() -> AsyncStream<CaptureDraft> {
         AsyncStream { continuation in
-            Task { await self.runRecognition(continuation: continuation) }
+            let task = Task { await self.runRecognition(continuation: continuation) }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
     private func runRecognition(continuation: AsyncStream<CaptureDraft>.Continuation) async {
-        guard let buffers else {
+        let current = generation
+        guard let buffers, let locale = preparedLocale else {
+            failure = .speechAssetsMissing
             continuation.finish()
             return
         }
-
-        let status = await withCheckedContinuation { cont in
-            SFSpeechRecognizer.requestAuthorization { status in cont.resume(returning: status) }
-        }
-        guard status == .authorized else {
+        let transcriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
+        guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
+            if generation == current { failure = .speechAssetsMissing }
             continuation.finish()
             return
         }
-
-        // T-05-04: refuse to start when the recognizer or transcriber is unavailable.
-        guard SpeechTranscriber.isAvailable,
-              SFSpeechRecognizer()?.isAvailable == true else {
-            continuation.finish()
-            return
-        }
-
-        guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current) else {
-            continuation.finish()
-            return
-        }
-
-        let transcriber = SpeechTranscriber(
-            locale: locale,
-            preset: .progressiveTranscription
-        )
-
-        do {
-            if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
-                try await request.downloadAndInstall()
-            }
-        } catch {
+        guard generation == current, !Task.isCancelled else {
             continuation.finish()
             return
         }
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
+        self.analyzer = analyzer
         let audioFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber])
 
         do {
             try await analyzer.prepareToAnalyze(in: audioFormat)
+            guard generation == current, !Task.isCancelled else {
+                await analyzer.cancelAndFinishNow()
+                continuation.finish()
+                return
+            }
+            try await analyzer.start(inputSequence: Self.analyzerInput(buffers, format: audioFormat))
         } catch {
+            if generation == current { failure = .transcriptionFailed }
+            await analyzer.cancelAndFinishNow()
+            continuation.finish()
+            return
+        }
+        guard generation == current, !Task.isCancelled else {
+            await analyzer.cancelAndFinishNow()
             continuation.finish()
             return
         }
 
-        let (inputSequence, inputBuilder) = AsyncStream.makeStream(of: AnalyzerInput.self)
-
-        let feedTask = Task {
-            for await buffer in buffers {
-                let toYield: AVAudioPCMBuffer
-                if let audioFormat, let converted = Self.convert(buffer, to: audioFormat) {
-                    toYield = converted
-                } else {
-                    toYield = buffer
-                }
-                inputBuilder.yield(AnalyzerInput(buffer: toYield))
-            }
-            inputBuilder.finish()
-            try? await analyzer.finalizeAndFinishThroughEndOfInput()
-        }
-
-        let analyzeTask = Task {
+        let finalizeTask = Task {
             do {
-                try await analyzer.start(inputSequence: inputSequence)
+                try await analyzer.finalizeAndFinishThroughEndOfInput()
             } catch {
-                // Sequence finished or cancelled; results stream will terminate.
+                if generation == current { failure = .transcriptionFailed }
+                await analyzer.cancelAndFinishNow()
             }
         }
 
@@ -126,72 +125,67 @@ public actor SpeechTranscriberEngine: Transcriber {
                 let phraseText = String(result.text.characters)
                 let isFinal = result.isFinal
 
-                let fullText = accumulatedText.isEmpty ? phraseText : accumulatedText + " " + phraseText
-
-                let stablePrefix: Int
-                if isFinal {
-                    accumulatedText = fullText
-                    stablePrefix = fullText.count
-                } else if phraseText.hasSuffix(".") || phraseText.hasSuffix("?") || phraseText.hasSuffix("!") {
-                    stablePrefix = fullText.count
-                } else {
-                    // Only prior finalized phrases are stable; the current phrase is volatile.
-                    stablePrefix = accumulatedText.count
-                }
+                guard !Task.isCancelled, generation == current else { break }
+                transcript.update(phraseText, at: result.range.start.seconds, isFinal: isFinal)
 
                 sequence += 1
                 let draft = CaptureDraft(
                     sessionEpoch: sessionEpoch,
                     sequence: sequence,
-                    text: fullText,
-                    stablePrefix: stablePrefix,
+                    text: transcript.text,
+                    stablePrefix: transcript.stablePrefix,
                     startedAt: startedAt ?? .now
                 )
                 continuation.yield(draft)
             }
         } catch {
-            // Results sequence failed; still finish the stream.
+            if generation == current { failure = .transcriptionFailed }
         }
 
-        feedTask.cancel()
-        analyzeTask.cancel()
-        _ = await feedTask.result
-        _ = await analyzeTask.result
+        if Task.isCancelled || generation != current { await analyzer.cancelAndFinishNow() }
+        await finalizeTask.value
+        if generation == current {
+            if !transcript.isFinal { failure = .transcriptionFailed }
+            self.analyzer = nil
+        }
         continuation.finish()
     }
 
-    public func finish() async -> String { accumulatedText }
+    public func finish() async -> String { transcript.finalText }
 
-    /// Convert a PCM buffer into the analyzer's preferred format.
-    /// Identity when rates, channels, and common format already match.
-    private static func convert(_ buffer: AVAudioPCMBuffer, to format: AVAudioFormat) -> AVAudioPCMBuffer? {
-        if buffer.format.sampleRate == format.sampleRate,
-           buffer.format.channelCount == format.channelCount,
-           buffer.format.commonFormat == format.commonFormat {
-            return buffer
-        }
-        guard let converter = AVAudioConverter(from: buffer.format, to: format) else {
-            return nil
-        }
-        let ratio = format.sampleRate / buffer.format.sampleRate
-        let outFrames = AVAudioFrameCount((Double(buffer.frameLength) * ratio).rounded(.up))
-        guard let out = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: max(outFrames, 1)) else {
-            return nil
-        }
-        var error: NSError?
-        let consumed = ConverterOnce()
-        let status = converter.convert(to: out, error: &error) { _, outStatus in
-            if consumed.done {
-                outStatus.pointee = .noDataNow
-                return nil
+    public func recognitionFailure() -> PikoError? { failure }
+
+    public func cancel(sessionEpoch: Int) async {
+        guard sessionEpoch == self.sessionEpoch else { return }
+        generation += 1
+        let active = analyzer
+        analyzer = nil
+        failure = .sessionInterrupted
+        await active?.cancelAndFinishNow()
+    }
+
+    private static func analyzerInput(
+        _ buffers: AsyncStream<AVAudioPCMBuffer>, format: AVAudioFormat?
+    ) -> AsyncThrowingStream<AnalyzerInput, any Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                let converter = StreamingAudioConverter()
+                for await buffer in buffers {
+                    guard !Task.isCancelled else { break }
+                    if let format {
+                        guard let converted = converter.convert(buffer, to: format) else {
+                            continuation.finish(throwing: PikoError.audioUnavailable)
+                            return
+                        }
+                        continuation.yield(AnalyzerInput(buffer: converted))
+                    } else {
+                        continuation.yield(AnalyzerInput(buffer: buffer))
+                    }
+                }
+                continuation.finish()
             }
-            consumed.done = true
-            outStatus.pointee = .haveData
-            return buffer
+            continuation.onTermination = { _ in task.cancel() }
         }
-        guard status != .error else { return nil }
-        return out
     }
 }
 #endif
-

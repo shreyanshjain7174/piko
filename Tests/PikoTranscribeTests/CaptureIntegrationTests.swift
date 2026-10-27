@@ -14,6 +14,73 @@ import PikoMemory
 struct CaptureIntegrationTests {
 
     #if os(iOS)
+    @Test @MainActor func keyboardCaptureStopKeepsSessionArmed() async throws {
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let channel = MockSessionChannel()
+            let transcriber = MockTranscriber()
+            await transcriber.setScript(.progressive("Hello.", chunkSize: 20))
+            let session = SessionCoordinator(
+                channel: channel, interruptions: NullInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
+                isForeground: { true })
+            let coordinator = CaptureCoordinator(
+                session: session, channel: channel, transcriber: transcriber,
+                brain: MockBrain(), memory: EphemeralMemory())
+            try await session.arm()
+            try await coordinator.startCapture()
+            await coordinator.handleSignal(.captureStop)
+            #expect(session.currentPhase == .armed)
+            #expect(channel.readResult()?.raw == "Hello.")
+            await session.disarm()
+        }
+    }
+
+    @Test @MainActor func captureSourceSeparatesKeyboardFromAssistant() async throws {
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let channel = MockSessionChannel()
+            let transcriber = MockTranscriber()
+            await transcriber.setScript(.progressive("Hello.", chunkSize: 20))
+            let session = SessionCoordinator(
+                channel: channel, interruptions: NullInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
+                isForeground: { true })
+            let coordinator = CaptureCoordinator(
+                session: session, channel: channel, transcriber: transcriber,
+                brain: MockBrain(), memory: EphemeralMemory())
+            try await session.arm()
+            await coordinator.handleSignal(.captureStart)
+            #expect(coordinator.lastCaptureFromKeyboard)
+            await coordinator.handleSignal(.captureStop)
+            try await coordinator.startCapture()
+            #expect(!coordinator.lastCaptureFromKeyboard)
+            await coordinator.stopCapture()
+            await session.disarm()
+        }
+    }
+
+    @Test @MainActor func emptyCaptureTellsTheUserNothingWasHeard() async throws {
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let channel = MockSessionChannel()
+            let transcriber = MockTranscriber()
+            await transcriber.setScript(MockTranscriber.Script(drafts: [], delayBetween: .milliseconds(10)))
+            let session = SessionCoordinator(
+                channel: channel, interruptions: NullInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
+                isForeground: { true })
+            let coordinator = CaptureCoordinator(
+                session: session, channel: channel, transcriber: transcriber,
+                brain: MockBrain(), memory: EphemeralMemory())
+            var heardNothing = false
+            coordinator.onNothingHeard = { heardNothing = true }
+            try await session.arm()
+            try await coordinator.startCapture()
+            await coordinator.stopCapture()
+            #expect(heardNothing)
+            #expect(channel.readResult() == nil)
+            await session.disarm()
+        }
+    }
+
     @Test @MainActor func startCaptureBeginsDraftFlow() async throws {
         try await AudioSessionTestGate.shared.run { @MainActor in
             let channel = MockSessionChannel()
@@ -27,6 +94,7 @@ struct CaptureIntegrationTests {
             let session = SessionCoordinator(
                 channel: channel,
                 interruptions: NullInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true }
             )
 
@@ -65,6 +133,7 @@ struct CaptureIntegrationTests {
             let session = SessionCoordinator(
                 channel: channel,
                 interruptions: NullInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true }
             )
 
@@ -98,6 +167,7 @@ struct CaptureIntegrationTests {
             let session = SessionCoordinator(
                 channel: channel,
                 interruptions: NullInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true }
             )
             let coordinator = CaptureCoordinator(
@@ -131,6 +201,7 @@ struct CaptureIntegrationTests {
             let session = SessionCoordinator(
                 channel: channel,
                 interruptions: NullInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true }
             )
 
@@ -161,6 +232,7 @@ struct CaptureIntegrationTests {
             let session = SessionCoordinator(
                 channel: channel,
                 interruptions: NullInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true }
             )
 
@@ -193,6 +265,7 @@ struct CaptureIntegrationTests {
             let session = SessionCoordinator(
                 channel: channel,
                 interruptions: NullInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true }
             )
 
@@ -232,6 +305,7 @@ struct CaptureIntegrationTests {
             let session = SessionCoordinator(
                 channel: channel,
                 interruptions: NullInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true }
             )
 

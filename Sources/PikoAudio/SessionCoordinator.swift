@@ -12,17 +12,22 @@ public final class SessionCoordinator: ArmedSession {
     private let interruptions: any InterruptionSource
     private let isForeground: @MainActor @Sendable () -> Bool
     private let audioLevelMonitor: AudioLevelMonitor
+    private let audioSession: AudioSessionAccess
+    private let relay = AudioBufferRelay()
+    /// A ready-but-unused session releases the microphone after this long, so Piko is only
+    /// live (mic indicator, Dynamic Island) around actual dictation.
+    private let idleTimeout: Duration
+    private var idleTask: Task<Void, Never>?
 
     private var sessionEpoch = 0
     public private(set) var currentPhase: SessionPhase = .idle
     private var heartbeatTask: Task<Void, Never>?
-    /// Recreated on each `startCapture()` after the session is active. An engine
+    /// Recreated on foreground arming after the session is active. An engine
     /// built before `AVAudioSession.setActive(true)` often has a 0 Hz input node.
     private var engine = AVAudioEngine()
     /// True only while a tap is installed. `removeTap` without a matching install crashes.
     private var tapInstalled = false
-    /// Yields silent PCM when the input node reports 0 Hz (Simulator / pre-I/O). The
-    /// hardware tap never fires in that state; 05-02 still needs a live buffer stream.
+    /// Simulator-only PCM source; production never substitutes silence for failed hardware.
     private var silencePumpTask: Task<Void, Never>?
 
     /// Fanned out to every independent subscriber — `phase` hands back a fresh stream per
@@ -51,11 +56,15 @@ public final class SessionCoordinator: ArmedSession {
     public init(channel: any SessionChannel,
                 interruptions: any InterruptionSource,
                 audioLevels: (any AudioLevelChannel)? = nil,
+                audioSession: AudioSessionAccess = .system,
+                idleTimeout: Duration = .seconds(300),
                 isForeground: @escaping @MainActor @Sendable () -> Bool) {
         self.channel = channel
         self.audioLevelMonitor = AudioLevelMonitor(channel: audioLevels)
         self.interruptions = interruptions
         self.isForeground = isForeground
+        self.audioSession = audioSession
+        self.idleTimeout = idleTimeout
         (buffers, buffersContinuation) = AsyncStream.makeStream()
 
         Task { [weak self] in
@@ -74,6 +83,7 @@ public final class SessionCoordinator: ArmedSession {
 
     public func arm() async throws {
         guard isForeground() else { throw PikoError.notForeground }
+        guard currentPhase == .idle else { return }
 
         sessionEpoch += 1
 
@@ -84,21 +94,22 @@ public final class SessionCoordinator: ArmedSession {
             (buffers, buffersContinuation) = AsyncStream.makeStream()
         }
 
-        guard AVAudioApplication.shared.recordPermission != .denied else {
-            throw PikoError.microphoneDenied
-        }
-
-        let session = AVAudioSession.sharedInstance()
+        try audioSession.activate()
         do {
-            try session.setCategory(.playAndRecord, options: [.allowBluetoothHFP])
-            try session.setActive(true)
+            try startAudioInput()
         } catch {
-            throw PikoError.audioUnavailable
+            do {
+                try audioSession.deactivate()
+            } catch {
+                print("SessionCoordinator: failed to release audio after startup failure")
+            }
+            throw error
         }
 
         currentPhase = .armed
         broadcastPhase()
         writeChannelState(phase: .armed)
+        scheduleIdleRelease()
 
         heartbeatTask?.cancel()
         heartbeatTask = Task { [weak self] in
@@ -111,12 +122,15 @@ public final class SessionCoordinator: ArmedSession {
     }
 
     public func disarm() async {
+        idleTask?.cancel()
+        idleTask = nil
         audioLevelMonitor.stop()
         heartbeatTask?.cancel()
         heartbeatTask = nil
 
         silencePumpTask?.cancel()
         silencePumpTask = nil
+        relay.finish()
         if tapInstalled {
             engine.inputNode.removeTap(onBus: 0)
             tapInstalled = false
@@ -124,11 +138,25 @@ public final class SessionCoordinator: ArmedSession {
         engine.stop()
         buffersContinuation.finish()
 
-        try? AVAudioSession.sharedInstance().setActive(false)
+        do {
+            try audioSession.deactivate()
+        } catch {
+            print("SessionCoordinator: audio session deactivation failed (\(type(of: error)))")
+        }
 
         currentPhase = .idle
         broadcastPhase()
         writeChannelState(phase: .idle)
+    }
+
+    private func scheduleIdleRelease() {
+        idleTask?.cancel()
+        let timeout = idleTimeout
+        idleTask = Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            guard !Task.isCancelled, let self, self.currentPhase == .armed else { return }
+            await self.disarm()
+        }
     }
 
     private func broadcastPhase() {
@@ -151,10 +179,25 @@ public final class SessionCoordinator: ArmedSession {
 
     public func startCapture() async throws {
         guard currentPhase == .armed else { throw PikoError.notArmed }
+        idleTask?.cancel()
+        idleTask = nil
 
         buffersContinuation.finish()
         (buffers, buffersContinuation) = AsyncStream.makeStream()
+        relay.begin(buffers: buffersContinuation, levels: audioLevelMonitor.start())
 
+        currentPhase = .capturing
+        broadcastPhase()
+        writeChannelState(phase: .capturing)
+    }
+
+    private func startAudioInput() throws {
+        #if targetEnvironment(simulator)
+        guard let format = AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1) else {
+            throw PikoError.audioUnavailable
+        }
+        startSilencePump(format: format)
+        #else
         if tapInstalled {
             engine.inputNode.removeTap(onBus: 0)
             tapInstalled = false
@@ -165,46 +208,16 @@ public final class SessionCoordinator: ArmedSession {
 
         let inputNode = engine.inputNode
         let hardwareFormat = inputNode.outputFormat(forBus: 0)
-        let session = AVAudioSession.sharedInstance()
-        // Simulator (and some devices before I/O starts) reports 0 Hz / 0 channels
-        // on the node. Prefer the live session rate; a mismatched tap format never fires.
         let hardwareLive = hardwareFormat.sampleRate > 0 && hardwareFormat.channelCount > 0
-        let format: AVAudioFormat
-        if hardwareLive {
-            format = hardwareFormat
-        } else if let fallback = AVAudioFormat(
-            standardFormatWithSampleRate: session.sampleRate > 0 ? session.sampleRate : 48_000,
-            channels: AVAudioChannelCount(max(session.inputNumberOfChannels, 1))
-        ) {
-            format = fallback
-        } else {
-            throw PikoError.sessionInterrupted
-        }
+        guard hardwareLive else { throw PikoError.audioUnavailable }
+        let format = hardwareFormat
 
-        // Pull input through the graph so the tap is rendered. Keep a tiny mixer
-        // volume — outputVolume 0 can let the engine skip rendering entirely,
-        // which means the tap never runs (observed on Simulator).
-        engine.mainMixerNode.outputVolume = 0.001
-        engine.connect(inputNode, to: engine.mainMixerNode, format: format)
-
-        // Capture the continuation into a local before installing the tap. The tap
-        // closure runs on the audio render thread; SessionCoordinator is @MainActor,
-        // so a self.buffersContinuation access here would cross actor isolation.
-        let continuation = buffersContinuation
-        let levelContinuation = audioLevelMonitor.start()
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
-            levelContinuation.yield(AudioLevelMonitor.measure(buffer))
-            continuation.yield(buffer)
-        }
+        let relay = self.relay
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format, block: relay.makeTap())
         tapInstalled = true
 
         engine.prepare()
 
-        #if targetEnvironment(simulator)
-        // Simulator HAL often hangs ~2.5s in engine.start() and never fires the tap.
-        // Pump silent PCM first so capturing still yields for 05-02 / tests.
-        startSilencePump(format: format, continuation: continuation)
-        #else
         do {
             try engine.start()
         } catch {
@@ -214,30 +227,23 @@ public final class SessionCoordinator: ArmedSession {
             currentPhase = .armed
             throw PikoError.sessionInterrupted
         }
-        if !hardwareLive {
-            startSilencePump(format: format, continuation: continuation)
-        }
         #endif
-
-        currentPhase = .capturing
-        broadcastPhase()
-        writeChannelState(phase: .capturing)
     }
 
     private func startSilencePump(
-        format: AVAudioFormat,
-        continuation: AsyncStream<AVAudioPCMBuffer>.Continuation
+        format: AVAudioFormat
     ) {
         silencePumpTask?.cancel()
         // Detached: SessionCoordinator is @MainActor; an inherited Task would
         // starve while other suites occupy the main actor and miss the 2s probe.
+        let relay = self.relay
         silencePumpTask = Task.detached {
             while !Task.isCancelled {
                 guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 1024) else {
                     return
                 }
                 buffer.frameLength = 1024
-                continuation.yield(buffer)
+                relay.receive(buffer)
                 try? await Task.sleep(for: .milliseconds(20))
             }
         }
@@ -245,13 +251,7 @@ public final class SessionCoordinator: ArmedSession {
 
     public func stopCapture() async {
         audioLevelMonitor.stop()
-        silencePumpTask?.cancel()
-        silencePumpTask = nil
-        if tapInstalled {
-            engine.inputNode.removeTap(onBus: 0)
-            tapInstalled = false
-        }
-        engine.stop()
+        relay.finish()
         buffersContinuation.finish()
         currentPhase = .tidying
         broadcastPhase()
@@ -263,6 +263,7 @@ public final class SessionCoordinator: ArmedSession {
         currentPhase = .armed
         broadcastPhase()
         writeChannelState(phase: .armed)
+        scheduleIdleRelease()
     }
 }
 #endif

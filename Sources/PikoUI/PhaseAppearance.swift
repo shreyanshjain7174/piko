@@ -9,18 +9,18 @@ extension SessionPhase {
     public var displayName: String {
         switch self {
         case .idle:      "Idle"
-        case .armed:     "Armed"
-        case .capturing: "Recording…"
-        case .tidying:   "Tidying…"
+        case .armed:     "Ready"
+        case .capturing: "Listening…"
+        case .tidying:   "Typing…"
         }
     }
 
     public var spokenStatus: String {
         switch self {
         case .idle:      "Not armed"
-        case .armed:     "Armed and ready"
-        case .capturing: "Recording"
-        case .tidying:   "Tidying up what you said"
+        case .armed:     "Ready to listen"
+        case .capturing: "Listening"
+        case .tidying:   "Typing what you said"
         }
     }
 

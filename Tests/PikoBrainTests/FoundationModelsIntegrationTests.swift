@@ -1,10 +1,5 @@
-// Real Foundation Models integration checks. Run only when Apple Intelligence is
-// available on the test device — either an iOS 27 device with AI on, or, on Xcode 27's
-// iOS 27 Simulator when the runtime advertises the model. Skipped silently on hosts
-// without a usable model (macOS SPM `swift test`, older Simulators, AI-off devices).
-// This closes the Phase 6 CLNP-01 and CLNP-02 device-only rows *when* the platform
-// makes it possible; on hosts where it cannot, `.serialized` and `SkipCondition` keep
-// the suite from falsely failing.
+// Real-model result-or-explicit-bypass integration. A budget bypass is not cleanup
+// quality or physical-device latency proof. Unavailable models are explicitly skipped.
 
 #if os(iOS)
 import Foundation
@@ -21,7 +16,8 @@ private enum FoundationModelsProbe {
     }
 }
 
-@Suite("Foundation Models integration (device-condition-gated)")
+@Suite("Foundation Models integration (device-condition-gated)", .serialized,
+       .enabled(if: FoundationModelsProbe.isAvailable))
 struct FoundationModelsIntegrationTests {
 
     /// 60-word input matching CLNP-02's stated scenario (12 filler words, 5 sentences,
@@ -34,44 +30,41 @@ struct FoundationModelsIntegrationTests {
     ship it right so let me know if that works for you thanks
     """
 
-    @Test("rewrite runs against the real SystemLanguageModel when available")
-    func realRewriteRunsWhenModelAvailable() async throws {
-        guard #available(iOS 27.0, *), FoundationModelsProbe.isAvailable else {
-            print("[FM] SystemLanguageModel unavailable on this host. Skipping.")
-            return
+    @Test("short real cleanup completes within production budget or reports an explicit bypass")
+    func realRewriteHonorsProductionOutcome() async throws {
+        let brain = SystemBrain()
+        let start = ContinuousClock.now
+        do {
+            let out = try await brain.rewrite("um hello there", profile: .message, lexicon: [], examples: [])
+            #expect(ContinuousClock.now - start <= .milliseconds(600))
+            #expect(!out.isEmpty)
+            #expect(!out.lowercased().hasPrefix("um "))
+            print("[FM] Short cleanup completed within 600ms.")
+        } catch PikoError.brainBudgetExceeded(let budget) {
+            #expect(budget == 600)
+            print("[FM] Short cleanup explicitly bypassed at the production budget; quality not verified.")
+        } catch PikoError.brainUnavailable(let reason) {
+            #expect(!reason.isEmpty)
+            print("[FM] Model became unavailable; explicit bypass, not a quality pass.")
         }
-        // Real inference, no mock. Use SystemBrain's own default inference path.
-        let brain = SystemBrain(budget: .milliseconds(2_000))
-        let out = try await brain.rewrite(
-            "um hello there",
-            profile: .message,
-            lexicon: [],
-            examples: []
-        )
-        #expect(!out.isEmpty)
-        #expect(!out.lowercased().hasPrefix("um "))
     }
 
-    @Test("CLNP-02 60-word input completes within 2000ms budget when model available")
-    func realSixtyWordCleanupWithinExtendedBudget() async throws {
-        guard #available(iOS 27.0, *), FoundationModelsProbe.isAvailable else {
-            print("[FM] SystemLanguageModel unavailable on this host. Skipping.")
-            return
+    @Test("60-word real cleanup completes within 600ms or reports an explicit bypass")
+    func realSixtyWordCleanupHonorsProductionOutcome() async throws {
+        let brain = SystemBrain()
+        let start = ContinuousClock.now
+        do {
+            let out = try await brain.rewrite(Self.sixtyWordInput, profile: .message, lexicon: [], examples: [])
+            #expect(ContinuousClock.now - start <= .milliseconds(600))
+            #expect(!out.isEmpty)
+            print("[FM] 60-word cleanup completed within 600ms.")
+        } catch PikoError.brainBudgetExceeded(let budget) {
+            #expect(budget == 600)
+            print("[FM] 60-word cleanup explicitly bypassed at the production budget; quality not verified.")
+        } catch PikoError.brainUnavailable(let reason) {
+            #expect(!reason.isEmpty)
+            print("[FM] Model became unavailable; explicit bypass, not a quality pass.")
         }
-        let brain = SystemBrain(budget: .milliseconds(2_000))
-        let start = ContinuousClock().now
-        let out = try await brain.rewrite(
-            Self.sixtyWordInput,
-            profile: .message,
-            lexicon: [],
-            examples: []
-        )
-        let elapsed = ContinuousClock().now - start
-        let ms = Int(elapsed.components.seconds * 1_000
-                   + elapsed.components.attoseconds / 1_000_000_000_000_000)
-        print("[FM] CLNP-02 60-word rewrite: \(ms)ms. Output length: \(out.count) chars.")
-        #expect(ms <= 2_000, "60-word rewrite must complete within extended 2000ms budget")
-        #expect(!out.isEmpty)
     }
 }
 #endif
