@@ -73,3 +73,20 @@ func coolSkinSuppressesEyes() {
     #expect(Skin.hero.showsEyes)
     #expect(Skin.sparkle.showsEyes)
 }
+
+@Test("Beat 0 is each phase's resting face, so the app's screens are unchanged")
+func beatZeroIsTheRestingFace() {
+    for phase: SessionPhase in [.idle, .armed, .capturing, .tidying] {
+        #expect(phase.pose(beat: 0) == PikoPose(phase.faceState.eye, phase.faceState.mouth))
+    }
+}
+
+@Test("Beats loop, and a waiting Piko blinks and glances")
+func beatsLoopAndLive() {
+    let armed = SessionPhase.armed
+    #expect(armed.pose(beat: armed.poses.count) == armed.pose(beat: 0))
+    #expect(armed.pose(beat: -1) == armed.pose(beat: armed.poses.count - 1))
+    #expect(armed.poses.contains { $0.eye == .closed })
+    #expect(armed.poses.contains { $0.gaze != 0 })
+    #expect(SessionPhase.idle.poses.count == 1)
+}

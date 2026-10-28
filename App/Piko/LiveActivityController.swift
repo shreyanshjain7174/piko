@@ -13,6 +13,10 @@ public final class LiveActivityController {
     private var currentWords: Int = 0
     private var currentPhase: SessionPhase = .idle
     private var isTidyingOverride: Bool = false
+    private var beat = 0
+    /// Steps Piko through blinks and glances while the session runs. The armed audio session keeps
+    /// the app alive in the background, so these local updates keep coming with the app closed.
+    private var heartbeat: Task<Void, Never>?
 
     public init() {}
 
@@ -27,6 +31,7 @@ public final class LiveActivityController {
         if activity != nil { return }
         if let existing = Activity<PikoAttributes>.activities.first {
             activity = existing
+            startHeartbeat()
             return
         }
 
@@ -42,6 +47,7 @@ public final class LiveActivityController {
         // regardless of whether the supplementary Live Activity could be created.
         do {
             activity = try Activity<PikoAttributes>.request(attributes: attributes, content: content, pushType: nil)
+            startHeartbeat()
         } catch {
             print("LiveActivityController: Live Activity unavailable (\(type(of: error)))")
         }
@@ -49,6 +55,7 @@ public final class LiveActivityController {
 
     /// Every `session.phase` emission reaches here; `.idle` ends the Activity instead of updating it.
     public func update(phase: SessionPhase) async {
+        if phase != currentPhase { beat = 0 }   // each phase opens on its resting face
         currentPhase = phase
         if LiveActivityContent.shouldEndActivity(for: phase) {
             isTidyingOverride = false
@@ -61,6 +68,7 @@ public final class LiveActivityController {
     /// Wired to `CaptureCoordinator.onTidyingChange`. No-ops once the Activity has already
     /// ended so a late-arriving call can never resurrect it.
     public func setTidying(_ tidying: Bool) async {
+        if tidying != isTidyingOverride { beat = 0 }
         isTidyingOverride = tidying
         guard currentPhase != .idle else { return }
         await refreshContent()
@@ -75,6 +83,8 @@ public final class LiveActivityController {
     }
 
     public func end() async {
+        heartbeat?.cancel()
+        heartbeat = nil
         // Also end activities adopted from an earlier launch, so nothing is left behind.
         for running in Activity<PikoAttributes>.activities {
             // Immediate: a finished request should leave nothing behind on the Lock Screen.
@@ -83,11 +93,29 @@ public final class LiveActivityController {
         self.activity = nil
     }
 
+    private func startHeartbeat() {
+        heartbeat?.cancel()
+        heartbeat = Task { [weak self] in
+            while !Task.isCancelled {
+                let phase = self.map {
+                    LiveActivityContent.effectivePhase(sessionPhase: $0.currentPhase, isTidying: $0.isTidyingOverride)
+                } ?? .idle
+                // An idle phase still waits a moment: start() sets .armed only as it returns.
+                try? await Task.sleep(for: LiveActivityContent.beatInterval(for: phase) ?? .seconds(1))
+                guard let self, !Task.isCancelled, self.activity != nil else { return }
+                guard LiveActivityContent.beatInterval(for: phase) != nil else { continue }
+                self.beat &+= 1
+                await self.refreshContent()
+            }
+        }
+    }
+
     private func refreshContent() async {
         let state = PikoAttributes.ContentState(
             phase: LiveActivityContent.effectivePhase(sessionPhase: currentPhase, isTidying: isTidyingOverride),
             words: currentWords,
-            levels: LiveActivityContent.placeholderLevels()
+            levels: LiveActivityContent.placeholderLevels(),
+            beat: beat
         )
         let content = ActivityContent(state: state, staleDate: Date().addingTimeInterval(10 * 60))
         if let activity {
