@@ -108,7 +108,7 @@ The island can only show held frames, so Lop's fluid, pet-like motion lives in t
 ways to build it: the Rive runtime with an animator-made `.riv` state machine, or a rig drawn in
 SwiftUI (`TimelineView` + `Canvas`) and driven by our own spring physics.
 
-Branch `spike/lop-rig`. Debug-only lab screen: launch with `-PikoLopLab YES`.
+Branch `spike/lop-rig` (PR #7). Debug-only lab screen: launch with `-PikoLopLab YES`.
 
 **Built:**
 - `Sources/PikoUI/LopPhysics.swift`: springs and timers (ears with follow-through, breathing,
@@ -116,8 +116,11 @@ Branch `spike/lop-rig`. Debug-only lab screen: launch with `-PikoLopLab YES`.
   where to look, mood). A pure value type with a seeded RNG, covered by 7 Swift Testing tests.
 - `Sources/PikoUI/LopRigView.swift`: draws the sketch-canvas geometry every frame, as either
   the soft app render or the flat island look. Stroking Lop pats it.
-- `App/Piko/LopLab.swift`: the Canvas rig next to RiveRuntime 6.28.1 playing a sample file
-  (`mascot.riv`, MIT, from rive-app/rive-ios), because a Lop `.riv` needs the Rive editor.
+- `App/Piko/LopLab.swift`: every rig input on one screen, in both looks.
+- During the spike the lab also ran RiveRuntime 6.28.1 next to the Canvas rig, playing a sample
+  file (`mascot.riv`, MIT, from rive-app/rive-ios), because a Lop `.riv` needs the Rive editor.
+  Once the numbers below were recorded, the Rive package, the sample file and the Rive panel were
+  removed, so nothing Rive ships.
 
 **Measured.** Release build, `generic/platform=iOS`, unsigned, Xcode 27:
 
@@ -157,7 +160,8 @@ Instruments run on a device.
 **Result:** keep the SwiftUI Canvas rig for v0.1. It costs almost nothing, works everywhere
 PikoUI does, adds no network surface, and its behaviour is unit-tested. Rive only becomes worth
 +2 MB once a dedicated animator is producing many blended clips. If that happens, gate it to
-the app target and enforce `loadCdn: false`.
+the app target and enforce `loadCdn: false`. **Decision (2026-10-28): Canvas rig adopted; Rive
+removed from the branch.**
 
 **Still open:** frame cost on a real iPhone (Instruments, Core Animation FPS + CPU); a Metal
 `distortionEffect` for the fuzzy fur edge; driving the rig from the real `AudioLevelMonitor`

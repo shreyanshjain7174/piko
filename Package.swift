@@ -57,7 +57,6 @@ let package = Package(
                 "Voice.swift",
                 "FiledView.swift",
                 "LopLab.swift",
-                "mascot.riv",
                 "Info.plist",
                 "Piko.entitlements",
             ]
