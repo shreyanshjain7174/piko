@@ -55,6 +55,35 @@ struct LopPhysicsTests {
         #expect(abs(hit.earLeft) > 90)
     }
 
+    @Test("a bang that ramps up over a few frames still thumps, the way a real level meter reports it")
+    func rampedStartleSquashes() {
+        var physics = LopPhysics(seed: 8)
+        _ = run(&physics, seconds: 1, LopInputs(listening: true, loudness: 0.05))
+        var lowest = 1.0
+        for level in [0.2, 0.45, 0.7, 0.9, 1.0] {
+            lowest = min(lowest, physics.step(dt: 1.0 / 60, inputs: LopInputs(listening: true, loudness: level)).squashY)
+        }
+        var t = 0.0
+        while t < 0.2 {
+            lowest = min(lowest, physics.step(dt: 1.0 / 60, inputs: LopInputs(listening: true, loudness: 1)).squashY)
+            t += 1.0 / 60
+        }
+        #expect(lowest < 0.95)
+    }
+
+    @Test("getting louder slowly does not startle")
+    func slowRiseDoesNotStartle() {
+        var physics = LopPhysics(seed: 9)
+        _ = run(&physics, seconds: 1, LopInputs(listening: true, loudness: 0.05))
+        var lowest = 1.0
+        var level = 0.05
+        while level < 1 {
+            level += 0.01
+            lowest = min(lowest, physics.step(dt: 1.0 / 60, inputs: LopInputs(listening: true, loudness: level)).squashY)
+        }
+        #expect(lowest > 0.95)
+    }
+
     @Test("patting closes the eyes happily and presses the ears back")
     func pattingMelts() {
         var physics = LopPhysics(seed: 5)
@@ -77,6 +106,18 @@ struct LopPhysicsTests {
         let a = firstBlink(seed: 9)
         #expect(a != nil)
         #expect(a == firstBlink(seed: 9))
+    }
+
+    @Test("ears never cross when they swing from pressed back to fully up")
+    func earsNeverCross() {
+        var physics = LopPhysics(seed: 7)
+        _ = run(&physics, seconds: 1, LopInputs(patting: true))
+        var t = 0.0
+        while t < 2 {
+            let pose = physics.step(dt: 1.0 / 60, inputs: LopInputs(listening: true, loudness: 1))
+            #expect(pose.earLeft < 0 && pose.earRight > 0)
+            t += 1.0 / 60
+        }
     }
 
     @Test("a long frame gap, like returning from background, stays finite")

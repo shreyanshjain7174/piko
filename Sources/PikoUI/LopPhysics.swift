@@ -41,6 +41,20 @@ struct Spring: Equatable, Sendable {
         velocity += force * dt
         value += velocity * dt
     }
+
+    /// Keeps the value at or below `limit`, bouncing back with a little of its speed.
+    mutating func stop(atMost limit: Double) {
+        guard value > limit else { return }
+        value = limit
+        velocity = min(0, -velocity * 0.3)
+    }
+
+    /// Keeps the value at or above `limit`, bouncing back with a little of its speed.
+    mutating func stop(atLeast limit: Double) {
+        guard value < limit else { return }
+        value = limit
+        velocity = max(0, -velocity * 0.3)
+    }
 }
 
 /// The drawable result of one simulation step. Angles are degrees in the same convention as the
@@ -66,6 +80,9 @@ public struct LopPose: Equatable, Sendable {
 /// Lop's body as a handful of springs and timers. Pure value type with an injected random source,
 /// so tests can step it deterministically and the view can step it once per display frame.
 public struct LopPhysics: Sendable {
+    /// Degrees from vertical each ear must keep from the middle of the head.
+    static let earStop = 2.0
+
     private var earL = Spring(value: -150, stiffness: 140, damping: 9)
     // The far ear is a touch softer, so the pair never moves in lockstep.
     private var earR = Spring(value: 150, stiffness: 118, damping: 8)
@@ -82,7 +99,8 @@ public struct LopPhysics: Sendable {
     private var glance = CGPoint.zero
     private var noseBurstEnd: Double = 0
     private var nextNoseBurst: Double
-    private var lastLoudness: Double = 0
+    private var lastQuiet: Double = 0
+    private var armedForStartle = true
     private var startleEnd: Double = -1
 
     private var random: SplitMix
@@ -109,17 +127,28 @@ public struct LopPhysics: Sendable {
     private mutating func advance(dt: Double, inputs: LopInputs) {
         time += dt
 
-        // A sudden jump from quiet to loud is a startle: ears pinned back, a hard squash (the thump).
-        if inputs.listening, inputs.loudness > 0.85, lastLoudness < 0.4 {
+        // A sudden jump from quiet to loud is a startle: ears pinned back, a hard squash (the
+        // thump). Levels ramp over a few frames even for a bang, so "sudden" means loud within
+        // a quarter second of quiet, not a jump between two frames. Once per loud burst.
+        if inputs.loudness < 0.4 {
+            lastQuiet = time
+            armedForStartle = true
+        }
+        if inputs.listening, armedForStartle, inputs.loudness > 0.85, time - lastQuiet < 0.25 {
             startleEnd = time + 0.45
             squash.velocity -= 6
+            armedForStartle = false
         }
-        lastLoudness = inputs.loudness
         let startled = time < startleEnd
 
         let target = earTargets(inputs: inputs, startled: startled)
         earL.step(toward: target.left, dt: dt)
         earR.step(toward: target.right, dt: dt)
+        // A big swing (pressed back to straight up) overshoots past vertical, and the two ears
+        // would cross into an X. Real ears stop at the middle of the head: hold each on its own
+        // side and let it bounce back off the stop.
+        earL.stop(atMost: -Self.earStop)
+        earR.stop(atLeast: Self.earStop)
         foldL.step(toward: target.foldLeft, dt: dt)
         foldR.step(toward: target.foldRight, dt: dt)
 
