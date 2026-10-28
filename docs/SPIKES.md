@@ -99,3 +99,66 @@ device-unverified assumption per `03-RESEARCH.md` Assumptions Log A1. SESS-02 an
 **not** closed by this session — a human with a physical iPhone (and, for SESS-03, an iPhone 15
 Pro or later) must complete the steps above and update this Result before either requirement is
 considered device-verified.
+
+---
+
+## Spike 7 — fluid Lop rig: Rive vs SwiftUI Canvas
+
+The island can only show held frames, so Lop's fluid, pet-like motion lives in the app. Two
+ways to build it: the Rive runtime with an animator-made `.riv` state machine, or a rig drawn in
+SwiftUI (`TimelineView` + `Canvas`) and driven by our own spring physics.
+
+Branch `spike/lop-rig`. Debug-only lab screen: launch with `-PikoLopLab YES`.
+
+**Built:**
+- `Sources/PikoUI/LopPhysics.swift`: springs and timers (ears with follow-through, breathing,
+  blinks, glances, nose twitch, startle), driven by `LopInputs` (listening, loudness, patting,
+  where to look, mood). A pure value type with a seeded RNG, covered by 7 Swift Testing tests.
+- `Sources/PikoUI/LopRigView.swift`: draws the sketch-canvas geometry every frame, as either
+  the soft app render or the flat island look. Stroking Lop pats it.
+- `App/Piko/LopLab.swift`: the Canvas rig next to RiveRuntime 6.28.1 playing a sample file
+  (`mascot.riv`, MIT, from rive-app/rive-ios), because a Lop `.riv` needs the Rive editor.
+
+**Measured.** Release build, `generic/platform=iOS`, unsigned, Xcode 27:
+
+| | Piko.app on disk | Piko.app zipped (-9) |
+|---|---|---|
+| Without Rive (Canvas rig included) | 9,208 KB | 3,170 KB |
+| With RiveRuntime embedded | 14,268 KB | 5,227 KB |
+| **Rive cost** | **+5,060 KB (+55%)** | **+2,057 KB (+65%)** |
+
+- RiveRuntime ships as a dynamic framework (arm64 binary 5,142,592 bytes). It can't go in the
+  keyboard or widget targets at all, because the keyboard has a ~60 MB ceiling and links PikoUI.
+- Canvas rig cost: `LopRigView.o` + `LopPhysics.o` add up to about 36 KB of `__TEXT` + `__DATA`
+  before dead-stripping.
+- A Rive character file is small. The sample mascot is 27,909 bytes.
+- **Network:** RiveRuntime links `NSURLSession`, and every `RiveViewModel` / `RiveFile`
+  initialiser defaults to `loadCdn: true`, which fetches CDN-hosted assets from
+  `public.rive.app`. Shipping it would mean passing `loadCdn: false` on every call and adding a
+  CI check for it, or "nothing leaves the device" breaks quietly.
+
+**Seen in the Simulator only** (iPhone 17, iOS 27): both panels render. Canvas Lop breathes,
+blinks, raises its ears when listening and droops when sleepy. Frame cost, battery and dyld
+launch cost were **not measured**, because Simulator numbers don't count. That needs an
+Instruments run on a device.
+
+**Comparison:**
+
+| | SwiftUI Canvas rig | Rive |
+|---|---|---|
+| Download size | ~0 | +2.0 MB compressed |
+| Keyboard / widget use | yes (PikoUI) | no |
+| Network surface | none | CDN loader on by default |
+| Who changes the motion | an engineer, in Swift | an animator, in the Rive editor |
+| Blending, bones, mesh deform | hand-written | built in |
+| Testable in `swift test` | yes (physics is a value type) | state machine is opaque |
+| Fur / soft render | gradients + blurred shadow; real fur edge needs a Metal shader | depends on the file |
+
+**Result:** keep the SwiftUI Canvas rig for v0.1. It costs almost nothing, works everywhere
+PikoUI does, adds no network surface, and its behaviour is unit-tested. Rive only becomes worth
++2 MB once a dedicated animator is producing many blended clips. If that happens, gate it to
+the app target and enforce `loadCdn: false`.
+
+**Still open:** frame cost on a real iPhone (Instruments, Core Animation FPS + CPU); a Metal
+`distortionEffect` for the fuzzy fur edge; driving the rig from the real `AudioLevelMonitor`
+level instead of the lab slider.

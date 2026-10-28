@@ -56,6 +56,8 @@ let package = Package(
                 "PlanProbe.swift",
                 "Voice.swift",
                 "FiledView.swift",
+                "LopLab.swift",
+                "mascot.riv",
                 "Info.plist",
                 "Piko.entitlements",
             ]

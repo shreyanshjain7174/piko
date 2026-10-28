@@ -8,9 +8,21 @@ struct PikoApp: App {
     @State private var benchmarkStarted = false
     #endif
 
+    @ViewBuilder private var rootView: some View {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "PikoLopLab") {
+            LopLab()
+        } else {
+            RootView()
+        }
+        #else
+        RootView()
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
-            RootView()
+            rootView
                 #if DEBUG
                 .overlay(alignment: .top) {
                     if UserDefaults.standard.string(forKey: "PikoBenchmarkFixtureManifest") != nil
