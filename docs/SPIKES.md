@@ -15,6 +15,25 @@ personality selection, Quiet mode, learning reset and relaunch persistence.
 These are simulator UI results, not physical-device memory, background-audio or FPS measurements.
 No 60-fps, CPU or residency target is claimed by this first slice.
 
+### Physical Piko and development-history recovery
+
+The full app now launches with native 3D Piko on iPhone 17, iOS 27.2. Two public
+accessibility activations exercised its real pat path without starting capture.
+This is not hardware-touch UI automation or a physical speech-duration measurement.
+
+That phone held the unreleased development-v2 history. A DEBUG-only, explicitly requested
+repair retained a complete SQLite backup on the phone and verified every result, correction,
+filed item and rowid before committing final v1. The backup includes WAL and is excluded
+from cloud backup. Production startup still rejects v2.
+
+The repair requires both `--piko-reconcile-development-history` and
+`--keep-original-history-on-device`. It refuses unknown layouts, manual turns and nonempty
+experimental memory. Original files remain under
+`history.sqlite.development-backups/<uuid>/original.sqlite` beside the active database.
+Do not install an older development-v2-only binary over the reconciled final-v1 store.
+
+Normal Piko was relaunched without repair/test flags. No private history was exported or reset.
+
 Five experiments, roughly a day each. Run them in order. Stop at the first failure and rethink
 the product rather than routing around it — each of these can invalidate the design.
 

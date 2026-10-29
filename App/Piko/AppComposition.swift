@@ -67,14 +67,7 @@ final class AppComposition {
         #endif
         self.brain = brain
 
-        var appSupportURL = try FileManager.default.url(
-            for: .applicationSupportDirectory, in: .userDomainMask,
-            appropriateFor: nil, create: true)
-        var storageValues = URLResourceValues()
-        storageValues.isExcludedFromBackup = true
-        try appSupportURL.setResourceValues(storageValues)
-        let dbURL = appSupportURL.appendingPathComponent("history.sqlite")
-        let sqlite = try SQLiteMemory(path: dbURL)
+        let sqlite = try SQLiteMemory(path: Self.historyURL())
         let memory: any Memory = sqlite
         self.memory = memory
         self.items = sqlite
@@ -143,6 +136,16 @@ final class AppComposition {
                 await self?.liveActivityController.setTidying(isTidying)
             }
         }
+    }
+
+    static func historyURL() throws -> URL {
+        var appSupportURL = try FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask,
+            appropriateFor: nil, create: true)
+        var storageValues = URLResourceValues()
+        storageValues.isExcludedFromBackup = true
+        try appSupportURL.setResourceValues(storageValues)
+        return appSupportURL.appendingPathComponent("history.sqlite")
     }
 
     /// Arms the session, then starts (or adopts) the Live Activity in the same foreground call path.

@@ -10,6 +10,12 @@ public actor SQLiteMemory: Memory {
         store = try SQLiteStore(path: path)
     }
 
+    #if DEBUG
+    public static func reconcileDevelopmentHistory(path: URL) throws -> DevelopmentHistoryRecovery.Outcome {
+        try DevelopmentHistoryRecovery.reconcile(path: path)
+    }
+    #endif
+
     public func record(_ result: CaptureResult) async { await store.record(result) }
     public func recordEdit(_ pair: EditPair) async { await store.recordEdit(pair) }
     public func delete(_ id: UUID) async { await store.delete(id) }

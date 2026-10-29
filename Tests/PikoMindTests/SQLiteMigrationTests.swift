@@ -3,11 +3,424 @@ import SQLite3
 import Testing
 import PikoKit
 import PikoMemory
-import PikoMind
+@testable import PikoMind
 
 private struct DatabaseError: Error {
     let message: String
 }
+
+#if DEBUG
+private func developmentBackupDirectory(_ path: URL) -> URL {
+    path.appendingPathExtension("development-backups")
+}
+
+private func seedDevelopmentHistory(_ db: Database) throws {
+    try seedLegacy(db)
+    try db.execute("""
+        CREATE TABLE turns (
+            lsn INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL, createdAt REAL NOT NULL,
+            session TEXT NOT NULL, role TEXT NOT NULL CHECK (role IN ('user','assistant','tool','system')),
+            text TEXT NOT NULL, ts REAL NOT NULL
+        );
+        INSERT INTO turns (lsn,id,createdAt,session,role,text,ts)
+        SELECT 10, id, createdAt, id, 'user', raw, createdAt FROM results WHERE rowid = 1;
+        INSERT INTO turns (lsn,id,createdAt,session,role,text,ts)
+        SELECT 11, id, createdAt, id, 'assistant', shipped, createdAt FROM results WHERE rowid = 1;
+        INSERT INTO turns (lsn,id,createdAt,session,role,text,ts)
+        SELECT 20, id, createdAt, id, 'user', raw, createdAt FROM results WHERE rowid = 2;
+        INSERT INTO turns (lsn,id,createdAt,session,role,text,ts)
+        SELECT 21, id, createdAt, id, 'assistant', shipped, createdAt FROM results WHERE rowid = 2;
+        UPDATE sqlite_sequence SET seq = 99 WHERE name = 'turns';
+        CREATE TABLE entities (
+            id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL,
+            createdAt REAL NOT NULL, aliases TEXT NOT NULL DEFAULT '[]', contactID TEXT
+        );
+        CREATE TABLE facts (
+            id TEXT NOT NULL PRIMARY KEY, text TEXT NOT NULL, createdAt REAL NOT NULL,
+            key TEXT NOT NULL DEFAULT '', value TEXT NOT NULL DEFAULT '',
+            lsn INTEGER NOT NULL DEFAULT 0 CHECK (lsn >= 0),
+            sourceTurn INTEGER REFERENCES turns(lsn) ON DELETE SET NULL,
+            confidence REAL NOT NULL DEFAULT 0 CHECK (confidence BETWEEN 0 AND 1),
+            lastUsed REAL NOT NULL DEFAULT 0,
+            entityID TEXT REFERENCES entities(id) ON DELETE SET NULL
+        );
+        CREATE UNIQUE INDEX facts_key ON facts (key);
+        CREATE TABLE embeddings (
+            ownerKind TEXT NOT NULL CHECK (ownerKind IN ('turn','fact','entity')),
+            ownerID TEXT NOT NULL, model TEXT NOT NULL,
+            dimensions INTEGER NOT NULL CHECK (dimensions > 0), vector BLOB NOT NULL,
+            encoding TEXT NOT NULL DEFAULT 'float16' CHECK (encoding IN ('float16','int8')),
+            PRIMARY KEY (ownerKind,ownerID,model)
+        );
+        CREATE INDEX turns_capture ON turns (id);
+        CREATE TRIGGER turns_no_update BEFORE UPDATE ON turns BEGIN
+            SELECT RAISE(ABORT, 'turns are append-only');
+        END;
+        CREATE TRIGGER turns_no_replace BEFORE INSERT ON turns
+        WHEN EXISTS (SELECT 1 FROM turns WHERE lsn = new.lsn) BEGIN
+            SELECT RAISE(ABORT, 'turns are append-only');
+        END;
+        CREATE TRIGGER results_turn AFTER INSERT ON results BEGIN
+            INSERT INTO turns (id,createdAt,session,role,text,ts)
+            VALUES (new.id,new.createdAt,new.id,'user',new.raw,new.createdAt),
+                   (new.id,new.createdAt,new.id,'assistant',new.shipped,new.createdAt);
+        END;
+        CREATE TRIGGER results_forget AFTER DELETE ON results BEGIN
+            DELETE FROM turns WHERE id = old.id;
+        END;
+        PRAGMA user_version = 2;
+        """)
+}
+
+private final class DevelopmentRecoveryAuthorizer {
+    let authorize: (Int32, UnsafePointer<CChar>?) -> Int32
+
+    init(_ authorize: @escaping (Int32, UnsafePointer<CChar>?) -> Int32) {
+        self.authorize = authorize
+    }
+}
+
+private func withDevelopmentRecoveryAuthorizer<T>(
+    _ db: Database,
+    authorize: @escaping (Int32, UnsafePointer<CChar>?) -> Int32,
+    perform: () throws -> T
+) throws -> T {
+    let context = Unmanaged.passRetained(DevelopmentRecoveryAuthorizer(authorize))
+    defer {
+        sqlite3_set_authorizer(db.handle, nil, nil)
+        context.release()
+    }
+    guard sqlite3_set_authorizer(db.handle, { context, action, first, _, _, _ in
+        guard let context else { return SQLITE_DENY }
+        return Unmanaged<DevelopmentRecoveryAuthorizer>.fromOpaque(context)
+            .takeUnretainedValue().authorize(action, first)
+    }, context.toOpaque()) == SQLITE_OK else {
+        throw DatabaseError(message: String(cString: sqlite3_errmsg(db.handle)))
+    }
+    return try perform()
+}
+
+@Suite struct DevelopmentHistoryRecoveryTests {
+    @Test("A WAL writer after backup aborts recovery without losing its new capture")
+    func concurrentWALWriterPreservesCapture() throws {
+        let path = databaseURL()
+        let directory = developmentBackupDirectory(path)
+        defer {
+            try? FileManager.default.removeItem(at: path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let db = try Database(path)
+        try db.execute("PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0")
+        try seedDevelopmentHistory(db)
+        let writer = try Database(path)
+        var inserted = false
+        var writerError: (any Error)?
+        _ = try withDevelopmentRecoveryAuthorizer(db, authorize: { action, _ in
+            guard action == SQLITE_ATTACH else { return SQLITE_OK }
+            do {
+                try writer.execute("INSERT INTO results VALUES " +
+                    "('55555555-5555-5555-5555-555555555555','New raw','New cleaned','write','email',123,1,2,3)")
+                inserted = true
+                return SQLITE_OK
+            } catch {
+                writerError = error
+                return SQLITE_DENY
+            }
+        }) {
+            // ATTACH is prepared after the backup, before the first source write.
+            #expect(throws: (any Error).self) {
+                try DevelopmentHistoryRecovery.reconcile(db.handle, backupDirectory: directory)
+            }
+        }
+        #expect(inserted)
+        #expect(writerError == nil)
+        #expect(sqlite3_get_autocommit(db.handle) == 1)
+        #expect(try db.rows("PRAGMA user_version") == [["2"]])
+        #expect(try db.rows("SELECT count(*) FROM results") == [["3"]])
+        #expect(try db.rows("SELECT count(*) FROM turns") == [["6"]])
+        #expect(try db.rows("SELECT role,text FROM turns WHERE session='55555555-5555-5555-5555-555555555555' ORDER BY lsn") == [
+            ["user", "New raw"], ["assistant", "New cleaned"],
+        ])
+        guard case .reconciled(let backup) = try DevelopmentHistoryRecovery.reconcile(path: path) else {
+            Issue.record("Expected a fresh-snapshot retry to succeed")
+            return
+        }
+        #expect(try db.rows("SELECT count(*) FROM turns") == [["3"]])
+        #expect(try db.rows("SELECT lsn,role,text FROM turns WHERE session='55555555-5555-5555-5555-555555555555'") == [
+            ["101", "user", "New cleaned"],
+        ])
+        let original = try Database(backup)
+        #expect(try original.rows("SELECT count(*) FROM results") == [["3"]])
+        #expect(try original.rows("SELECT count(*) FROM turns") == [["6"]])
+    }
+
+    @Test("A late DDL failure rolls back dropped tables, history and LSN state")
+    func lateDDLFailureRollsBack() throws {
+        let path = databaseURL()
+        let directory = developmentBackupDirectory(path)
+        defer {
+            try? FileManager.default.removeItem(at: path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let db = try Database(path)
+        try seedDevelopmentHistory(db)
+        let schema = try db.rows("SELECT type,name,sql FROM sqlite_schema ORDER BY name")
+        let tables = ["results", "items", "edits", "turns", "facts", "entities", "embeddings", "sqlite_sequence"]
+        let rows = try tables.map { try db.rows("SELECT rowid,* FROM \($0) ORDER BY rowid") }
+        var denied = false
+        _ = try withDevelopmentRecoveryAuthorizer(db, authorize: { action, name in
+            // facts, embeddings and entities have already been dropped at this point.
+            if action == SQLITE_DROP_TABLE, let name, String(cString: name) == "turns" {
+                denied = true
+                return SQLITE_DENY
+            }
+            return SQLITE_OK
+        }) {
+            #expect(throws: (any Error).self) {
+                try DevelopmentHistoryRecovery.reconcile(db.handle, backupDirectory: directory)
+            }
+        }
+        #expect(denied)
+        #expect(sqlite3_get_autocommit(db.handle) == 1)
+        #expect(try db.rows("PRAGMA user_version") == [["2"]])
+        #expect(try db.rows("SELECT type,name,sql FROM sqlite_schema ORDER BY name") == schema)
+        #expect(try tables.map { try db.rows("SELECT rowid,* FROM \($0) ORDER BY rowid") } == rows)
+        #expect(try db.rows("PRAGMA quick_check") == [["ok"]])
+        _ = try DevelopmentHistoryRecovery.reconcile(path: path)
+        #expect(try db.rows("PRAGMA user_version") == [["1"]])
+    }
+
+    @Test("Verification keeps the original backup read-only and byte-for-byte unchanged")
+    func verificationDoesNotMutateBackup() throws {
+        let path = databaseURL()
+        let directory = developmentBackupDirectory(path)
+        defer {
+            try? FileManager.default.removeItem(at: path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let db = try Database(path)
+        try db.execute("PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0")
+        try seedDevelopmentHistory(db)
+        var capturedURL: URL?
+        var bytesBefore: Data?
+        var captureError: (any Error)?
+        let outcome = try withDevelopmentRecoveryAuthorizer(db, authorize: { action, name in
+            guard action == SQLITE_ATTACH, let name else { return SQLITE_OK }
+            do {
+                var components = URLComponents(string: String(cString: name))
+                components?.query = nil
+                guard let url = components?.url else {
+                    throw DatabaseError(message: "Invalid backup ATTACH URI")
+                }
+                capturedURL = url
+                bytesBefore = try Data(contentsOf: url)
+                return SQLITE_OK
+            } catch {
+                captureError = error
+                return SQLITE_DENY
+            }
+        }) {
+            try DevelopmentHistoryRecovery.reconcile(db.handle, backupDirectory: directory)
+        }
+        #expect(captureError == nil)
+        guard case .reconciled(let backup) = outcome else {
+            Issue.record("Expected a retained original backup")
+            return
+        }
+        let before = try #require(bytesBefore)
+        #expect(capturedURL == backup)
+        #expect(try Data(contentsOf: backup) == before)
+        #expect(sqlite3_db_readonly(db.handle, "development_original") == 1)
+        #expect(sqlite3_exec(db.handle, "DELETE FROM development_original.results", nil, nil, nil) == SQLITE_READONLY)
+        #expect(try Data(contentsOf: backup) == before)
+    }
+
+    @Test("Empty history preserves its deleted-turn LSN high-water and next allocation")
+    func emptyHistoryPreservesHighWater() async throws {
+        let path = databaseURL()
+        defer {
+            try? FileManager.default.removeItem(at: path)
+            try? FileManager.default.removeItem(at: developmentBackupDirectory(path))
+        }
+        let db = try Database(path)
+        try seedDevelopmentHistory(db)
+        try db.execute("DELETE FROM results")
+        #expect(try db.rows("SELECT count(*) FROM turns") == [["0"]])
+        guard case .reconciled(let backup) = try DevelopmentHistoryRecovery.reconcile(path: path) else {
+            Issue.record("Expected empty development history to reconcile")
+            return
+        }
+        #expect(try db.rows("SELECT count(*) FROM turns") == [["0"]])
+        #expect(try db.rows("SELECT seq FROM sqlite_sequence WHERE name='turns'") == [["99"]])
+        let original = try Database(backup)
+        #expect(try original.rows("SELECT count(*) FROM turns") == [["0"]])
+        #expect(try original.rows("SELECT seq FROM sqlite_sequence WHERE name='turns'") == [["99"]])
+        let memory = try SQLiteMemory(path: path)
+        await memory.record(CaptureResult(raw: "Later raw", shipped: "Later cleaned"))
+        #expect(try db.rows("SELECT lsn,role,text FROM turns") == [["100", "user", "Later cleaned"]])
+    }
+
+    @Test("Explicit development recovery preserves history, duplicates, rowids, backups and LSN high water")
+    func preservesHistory() async throws {
+        let path = databaseURL()
+        defer {
+            try? FileManager.default.removeItem(at: path)
+            try? FileManager.default.removeItem(at: developmentBackupDirectory(path))
+        }
+        let db = try Database(path)
+        try seedDevelopmentHistory(db)
+        let results = try db.rows("SELECT rowid,* FROM results ORDER BY rowid")
+        let edits = try db.rows("SELECT rowid,* FROM edits ORDER BY rowid")
+        let items = try db.rows("SELECT rowid,* FROM items ORDER BY rowid")
+        let turns = try db.rows("SELECT * FROM turns ORDER BY lsn")
+        let outcome = try DevelopmentHistoryRecovery.reconcile(path: path)
+        guard case .reconciled(let backup) = outcome else {
+            Issue.record("Expected an on-device backup and reconciliation")
+            return
+        }
+        #expect(try db.rows("SELECT rowid,* FROM results ORDER BY rowid") == results)
+        #expect(try db.rows("SELECT rowid,* FROM edits ORDER BY rowid") == edits)
+        #expect(try db.rows("SELECT rowid,* FROM items ORDER BY rowid") == items)
+        #expect(try db.rows("SELECT lsn,role,text FROM turns ORDER BY lsn") == [
+            ["11", "user", "First keepsake"], ["21", "user", "Second keepsake"],
+        ])
+        let original = try Database(backup)
+        #expect(try original.rows("PRAGMA user_version") == [["2"]])
+        #expect(try original.rows("SELECT * FROM turns ORDER BY lsn") == turns)
+        #expect(try original.rows("SELECT rowid,* FROM results ORDER BY rowid") == results)
+        #expect(try original.rows("SELECT rowid,* FROM edits ORDER BY rowid") == edits)
+        #expect(try original.rows("SELECT rowid,* FROM items ORDER BY rowid") == items)
+        #expect(try original.rows("PRAGMA quick_check") == [["ok"]])
+        let memory = try SQLiteMemory(path: path)
+        #expect(await memory.search("keepsake", limit: 10).count == 2)
+        await memory.record(CaptureResult(raw: "later raw", shipped: "Later clean"))
+        #expect(try db.rows("SELECT max(lsn) FROM turns") == [["100"]])
+        #expect(try db.rows("PRAGMA foreign_key_check").isEmpty)
+    }
+
+    @Test("Recovery backs up uncheckpointed WAL history")
+    func includesWAL() throws {
+        let path = databaseURL()
+        defer {
+            try? FileManager.default.removeItem(at: path)
+            try? FileManager.default.removeItem(at: developmentBackupDirectory(path))
+        }
+        let db = try Database(path)
+        try db.execute("PRAGMA journal_mode = WAL; PRAGMA wal_autocheckpoint = 0")
+        try seedDevelopmentHistory(db)
+        guard case .reconciled(let backup) = try DevelopmentHistoryRecovery.reconcile(path: path) else {
+            Issue.record("Expected a complete SQLite backup")
+            return
+        }
+        let original = try Database(backup)
+        #expect(try original.rows("SELECT count(*) FROM results") == [["2"]])
+        #expect(try original.rows("SELECT count(*) FROM turns") == [["4"]])
+    }
+
+    @Test("A commit failure rolls back every change and permits a later retry")
+    func rollbackAndRetry() throws {
+        let path = databaseURL()
+        let directory = developmentBackupDirectory(path)
+        defer {
+            try? FileManager.default.removeItem(at: path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let db = try Database(path)
+        try seedDevelopmentHistory(db)
+        let turns = try db.rows("SELECT * FROM turns ORDER BY lsn")
+        sqlite3_commit_hook(db.handle, { _ in 1 }, nil)
+        #expect(throws: (any Error).self) {
+            try DevelopmentHistoryRecovery.reconcile(db.handle, backupDirectory: directory)
+        }
+        sqlite3_commit_hook(db.handle, nil, nil)
+        #expect(try db.rows("PRAGMA user_version") == [["2"]])
+        #expect(try db.rows("SELECT * FROM turns ORDER BY lsn") == turns)
+        #expect(try db.rows("SELECT seq FROM sqlite_sequence WHERE name='turns'") == [["99"]])
+        _ = try DevelopmentHistoryRecovery.reconcile(path: path)
+        #expect(try db.rows("PRAGMA user_version") == [["1"]])
+    }
+
+    @Test("Experimental memory is refused, never dropped", arguments: ["facts", "entities", "embeddings"])
+    func refusesExperimentalMemory(_ table: String) throws {
+        let path = databaseURL()
+        defer { try? FileManager.default.removeItem(at: path) }
+        let db = try Database(path)
+        try seedDevelopmentHistory(db)
+        switch table {
+        case "facts":
+            try db.execute("INSERT INTO facts(id,text,createdAt) VALUES ('f','Important',123)")
+        case "entities":
+            try db.execute("INSERT INTO entities(id,name,kind,createdAt) VALUES ('e','Person','person',123)")
+        default:
+            try seedVectors(db, owners: [("turn", "11")])
+        }
+        let saved = try db.rows("SELECT * FROM \(table)")
+        #expect(throws: DevelopmentHistoryRecovery.Failure.experimentalMemoryPresent) {
+            try DevelopmentHistoryRecovery.reconcile(path: path)
+        }
+        #expect(try db.rows("SELECT * FROM \(table)") == saved)
+        #expect(try db.rows("PRAGMA user_version") == [["2"]])
+        #expect(!FileManager.default.fileExists(atPath: developmentBackupDirectory(path).path))
+    }
+
+    @Test("Manual turns and unknown layouts are preserved and refused", arguments: [false, true])
+    func refusesUnknownContent(_ extraTable: Bool) throws {
+        let path = databaseURL()
+        defer { try? FileManager.default.removeItem(at: path) }
+        let db = try Database(path)
+        try seedDevelopmentHistory(db)
+        if extraTable {
+            try db.execute("CREATE TABLE experimental(text TEXT); INSERT INTO experimental VALUES ('Keep')")
+        } else {
+            try db.execute("""
+                INSERT INTO turns(id,createdAt,session,role,text,ts)
+                VALUES ('manual',123,'manual','assistant','Do not discard',123)
+                """)
+        }
+        let turns = try db.rows("SELECT * FROM turns ORDER BY lsn")
+        #expect(throws: (any Error).self) { try DevelopmentHistoryRecovery.reconcile(path: path) }
+        #expect(try db.rows("SELECT * FROM turns ORDER BY lsn") == turns)
+        #expect(try db.rows("PRAGMA user_version") == [["2"]])
+        #expect(!FileManager.default.fileExists(atPath: developmentBackupDirectory(path).path))
+    }
+
+    @Test("Unsupported versions are unchanged", arguments: [0, 3])
+    func refusesOtherVersions(_ version: Int) throws {
+        let path = databaseURL()
+        defer { try? FileManager.default.removeItem(at: path) }
+        let db = try Database(path)
+        try seedLegacy(db)
+        try db.execute("PRAGMA user_version = \(version)")
+        #expect(throws: (any Error).self) { try DevelopmentHistoryRecovery.reconcile(path: path) }
+        #expect(try db.rows("PRAGMA user_version") == [[String(version)]])
+    }
+
+    @Test("Already-current recovery is explicit and creates no extra backup")
+    func idempotentCurrentStore() throws {
+        let path = databaseURL()
+        defer { try? FileManager.default.removeItem(at: path) }
+        _ = try SQLiteMemory(path: path)
+        #expect(try DevelopmentHistoryRecovery.reconcile(path: path) == .alreadyCurrent)
+        #expect(!FileManager.default.fileExists(atPath: developmentBackupDirectory(path).path))
+    }
+
+    @Test("A backup failure cannot change the original")
+    func backupMustSucceed() throws {
+        let path = databaseURL()
+        let directory = developmentBackupDirectory(path)
+        defer {
+            try? FileManager.default.removeItem(at: path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let db = try Database(path)
+        try seedDevelopmentHistory(db)
+        try Data("Occupied backup destination".utf8).write(to: directory)
+        #expect(throws: (any Error).self) { try DevelopmentHistoryRecovery.reconcile(path: path) }
+        #expect(try db.rows("PRAGMA user_version") == [["2"]])
+        #expect(try db.rows("SELECT count(*) FROM turns") == [["4"]])
+    }
+}
+#endif
 
 /// A separate SQLite connection: assertions inspect the file, not a mocked store.
 private final class Database {
@@ -15,7 +428,7 @@ private final class Database {
 
     init(_ path: URL) throws {
         var db: OpaquePointer?
-        let status = sqlite3_open_v2(path.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil)
+        let status = sqlite3_open_v2(path.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI, nil)
         guard status == SQLITE_OK, let db else {
             let message = db.map { String(cString: sqlite3_errmsg($0)) } ?? "open failed"
             sqlite3_close(db)
