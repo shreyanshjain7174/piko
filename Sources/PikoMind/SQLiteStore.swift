@@ -34,6 +34,9 @@ public actor SQLiteStore: Memory {
             guard sqlite3_busy_timeout(handle, 5_000) == SQLITE_OK else {
                 throw SQLiteStoreError.stepFailed(String(cString: sqlite3_errmsg(handle)))
             }
+            guard sqlite3_exec(handle, "PRAGMA foreign_keys = ON", nil, nil, nil) == SQLITE_OK else {
+                throw SQLiteStoreError.stepFailed(String(cString: sqlite3_errmsg(handle)))
+            }
             try SQLiteSchema.migrate(handle)
         } catch {
             sqlite3_close(handle)

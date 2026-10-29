@@ -98,6 +98,47 @@ private func seedLegacy(_ db: Database) throws {
         """)
 }
 
+/// The first, incomplete foundation commit also needs an in-place upgrade.
+private func seedVersionOne(_ db: Database) throws {
+    try seedLegacy(db)
+    try db.execute("""
+        CREATE TABLE turns (
+            lsn INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL, createdAt REAL NOT NULL
+        );
+        INSERT INTO turns (id, createdAt) SELECT id, createdAt FROM results ORDER BY rowid;
+        INSERT INTO turns (lsn, id, createdAt) VALUES (40, 'deleted-capture', 100);
+        CREATE TRIGGER turns_no_update BEFORE UPDATE ON turns BEGIN
+            SELECT RAISE(ABORT, 'turns are append-only');
+        END;
+        CREATE TRIGGER turns_no_delete BEFORE DELETE ON turns BEGIN
+            SELECT RAISE(ABORT, 'turns are append-only');
+        END;
+        CREATE TRIGGER turns_no_replace BEFORE INSERT ON turns
+        WHEN EXISTS (SELECT 1 FROM turns WHERE lsn = new.lsn) BEGIN
+            SELECT RAISE(ABORT, 'turns are append-only');
+        END;
+        CREATE TRIGGER results_turn AFTER INSERT ON results BEGIN
+            INSERT INTO turns (id, createdAt) VALUES (new.id, new.createdAt);
+        END;
+        CREATE TABLE facts (
+            id TEXT NOT NULL PRIMARY KEY, text TEXT NOT NULL, createdAt REAL NOT NULL
+        );
+        INSERT INTO facts VALUES ('old-fact', 'preserved value', 123.5);
+        CREATE TABLE entities (
+            id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, createdAt REAL NOT NULL
+        );
+        INSERT INTO entities VALUES ('old-entity', 'Riya', 'person', 123.5);
+        CREATE TABLE embeddings (
+            ownerKind TEXT NOT NULL CHECK (ownerKind IN ('turn', 'fact', 'entity')),
+            ownerID TEXT NOT NULL, model TEXT NOT NULL,
+            dimensions INTEGER NOT NULL CHECK (dimensions > 0), vector BLOB NOT NULL,
+            PRIMARY KEY (ownerKind, ownerID, model)
+        );
+        INSERT INTO embeddings VALUES ('fact', 'old-fact', 'existing', 2, X'00000000');
+        PRAGMA user_version = 1;
+        """)
+}
+
 @Suite struct SQLiteMigrationTests {
     @Test("Fresh files contain the versioned foundation and all compatibility objects")
     func freshSchema() throws {
@@ -105,7 +146,7 @@ private func seedLegacy(_ db: Database) throws {
         defer { try? FileManager.default.removeItem(at: path) }
         _ = try SQLiteMemory(path: path)
         let db = try Database(path)
-        #expect(try db.rows("PRAGMA user_version") == [["1"]])
+        #expect(try db.rows("PRAGMA user_version") == [["2"]])
         let names = try db.rows("""
             SELECT name FROM sqlite_master WHERE type = 'table'
             AND name IN ('turns','facts','entities','embeddings','edits','results','results_fts','items')
@@ -131,7 +172,9 @@ private func seedLegacy(_ db: Database) throws {
         #expect(try db.rows("SELECT rowid, * FROM items ORDER BY rowid") == items)
         #expect(try db.rows("SELECT lsn, id, createdAt FROM turns ORDER BY lsn") == [
             ["1", firstID.uuidString, "1700000000.25"],
-            ["2", secondID.uuidString, "1600000000.5"],
+            ["2", firstID.uuidString, "1700000000.25"],
+            ["3", secondID.uuidString, "1600000000.5"],
+            ["4", secondID.uuidString, "1600000000.5"],
         ])
         let history = await memory.search("", limit: 10)
         #expect(history.map(\.id) == [firstID, secondID])
@@ -178,7 +221,7 @@ private func seedLegacy(_ db: Database) throws {
         }
         #expect(try db.rows("SELECT * FROM turns ORDER BY lsn") == turns)
         #expect(try db.rows("SELECT seq FROM sqlite_sequence WHERE name = 'turns'") == sequence)
-        #expect(sequence == [["3"]])
+        #expect(sequence == [["6"]])
     }
 
     @Test("A migration error rolls back all DDL, data and version changes, and can be retried")
@@ -202,8 +245,8 @@ private func seedLegacy(_ db: Database) throws {
         #expect(try db.rows("SELECT rowid, * FROM results ORDER BY rowid") == results)
         try db.execute("DROP VIEW facts")
         _ = try SQLiteMemory(path: path)
-        #expect(try db.rows("PRAGMA user_version") == [["1"]])
-        #expect(try db.rows("SELECT count(*) FROM turns") == [["2"]])
+        #expect(try db.rows("PRAGMA user_version") == [["2"]])
+        #expect(try db.rows("SELECT count(*) FROM turns") == [["4"]])
     }
 
     @Test("A future schema is rejected without changing its version, schema or data")
@@ -248,7 +291,7 @@ private func seedLegacy(_ db: Database) throws {
         #expect(await memory.search("legacyraw", limit: 10).isEmpty)
         #expect(await memory.nearestEdits(to: "", limit: 1).first?.final == "corrected")
         #expect(await memory.items(kind: .note, limit: 10).first?.text == "A new note")
-        #expect(try db.rows("SELECT lsn FROM turns ORDER BY lsn") == [["1"], ["2"], ["3"]])
+        #expect(try db.rows("SELECT lsn FROM turns ORDER BY lsn") == [["3"], ["4"], ["5"], ["6"]])
         try db.execute("INSERT INTO results_fts(results_fts, rank) VALUES ('integrity-check', 1)")
     }
 
@@ -264,12 +307,15 @@ private func seedLegacy(_ db: Database) throws {
         await memory.record(first)
         await memory.record(second)
         #expect(try db.rows("SELECT lsn, id FROM turns ORDER BY lsn") == [
-            ["1", first.id.uuidString], ["2", second.id.uuidString],
+            ["1", first.id.uuidString], ["2", first.id.uuidString],
+            ["3", second.id.uuidString], ["4", second.id.uuidString],
         ])
         for sql in [
             "UPDATE turns SET createdAt = 0",
-            "DELETE FROM turns",
-            "INSERT OR REPLACE INTO turns (lsn, id, createdAt) VALUES (1, 'rewrite', 0)",
+            """
+            INSERT OR REPLACE INTO turns (lsn, id, createdAt, session, role, text, ts)
+            VALUES (1, 'rewrite', 0, 'rewrite', 'user', 'rewrite', 0)
+            """,
         ] {
             var failed = false
             do { try db.execute(sql) } catch { failed = true }
@@ -277,8 +323,8 @@ private func seedLegacy(_ db: Database) throws {
         }
         await memory.delete(first.id)
         await memory.record(CaptureResult(raw: "three", shipped: "three"))
-        #expect(try db.rows("SELECT lsn FROM turns ORDER BY lsn") == [["1"], ["2"], ["3"]])
-        #expect(try db.rows("SELECT seq FROM sqlite_sequence WHERE name = 'turns'") == [["3"]])
+        #expect(try db.rows("SELECT lsn FROM turns ORDER BY lsn") == [["3"], ["4"], ["5"], ["6"]])
+        #expect(try db.rows("SELECT seq FROM sqlite_sequence WHERE name = 'turns'") == [["6"]])
     }
 
     @Test("A failed turn append atomically rolls back the capture and FTS insertion")
@@ -288,7 +334,7 @@ private func seedLegacy(_ db: Database) throws {
         let memory = try SQLiteMemory(path: path)
         let db = try Database(path)
         try db.execute("""
-            CREATE TRIGGER fail_turn BEFORE INSERT ON turns BEGIN
+            CREATE TRIGGER fail_turn BEFORE INSERT ON turns WHEN new.role = 'assistant' BEGIN
                 SELECT RAISE(ABORT, 'injected turn failure');
             END
             """)
@@ -298,7 +344,7 @@ private func seedLegacy(_ db: Database) throws {
         #expect(await memory.search("atomic", limit: 10).isEmpty)
         try db.execute("DROP TRIGGER fail_turn")
         await memory.record(capture)
-        #expect(try db.rows("SELECT lsn FROM turns") == [["1"]])
+        #expect(try db.rows("SELECT lsn FROM turns ORDER BY lsn") == [["1"], ["2"]])
         #expect(await memory.search("atomic", limit: 10).map(\.id) == [capture.id])
     }
 
@@ -323,11 +369,171 @@ private func seedLegacy(_ db: Database) throws {
         let db = try Database(path)
         #expect(await store.search("shared", limit: 100).count == 20)
         #expect(await memory.search("shared", limit: 100).count == 20)
-        #expect(try db.rows("SELECT lsn FROM turns ORDER BY lsn") == (1...20).map { [String($0)] })
+        #expect(try db.rows("SELECT lsn FROM turns ORDER BY lsn") == (1...40).map { [String($0)] })
         let note = DumpItem(kind: .note, text: "Shared note")
         await store.save([note])
         #expect(await memory.items(kind: .note, limit: 1).first?.id == note.id)
         await memory.delete(note.id) // Unknown capture ID must not touch the filed item.
         #expect(await store.items(kind: .note, limit: 1).first?.id == note.id)
+    }
+
+    @Test("Legacy and new captures become exact user/assistant turns in deterministic sessions")
+    func modelTurnContent() async throws {
+        let path = databaseURL()
+        defer { try? FileManager.default.removeItem(at: path) }
+        let db = try Database(path)
+        try seedLegacy(db)
+        let memory = try SQLiteMemory(path: path)
+        #expect(try db.rows("SELECT lsn, session, role, text, ts FROM turns ORDER BY lsn") == [
+            ["1", firstID.uuidString, "user", "legacyraw café", "1700000000.25"],
+            ["2", firstID.uuidString, "assistant", "First keepsake", "1700000000.25"],
+            ["3", secondID.uuidString, "user", "second raw", "1600000000.5"],
+            ["4", secondID.uuidString, "assistant", "Second keepsake", "1600000000.5"],
+        ])
+        let capture = CaptureResult(raw: "  user's café\n", shipped: "Exact reply!",
+                                    createdAt: Date(timeIntervalSince1970: 1234.125))
+        await memory.record(capture)
+        #expect(try db.rows("SELECT session, role, text, ts FROM turns WHERE lsn > 4 ORDER BY lsn") == [
+            [capture.id.uuidString, "user", capture.raw, "1234.125"],
+            [capture.id.uuidString, "assistant", capture.shipped, "1234.125"],
+        ])
+    }
+
+    @Test("Keyed facts retain LSN/provenance/confidence/use, entity links, aliases and vector storage")
+    func modelFactEntityAndEmbeddingFields() async throws {
+        let path = databaseURL()
+        defer { try? FileManager.default.removeItem(at: path) }
+        let memory = try SQLiteMemory(path: path)
+        let capture = CaptureResult(raw: "Riya is my sister", shipped: "Riya is my sister.")
+        await memory.record(capture)
+        let db = try Database(path)
+        try db.execute("""
+            PRAGMA foreign_keys = ON;
+            INSERT INTO entities (id, name, kind, createdAt, aliases, contactID)
+            VALUES ('riya', 'Riya', 'person', 100, '["Ri","Riya"]', 'contact-123');
+            INSERT INTO facts (id, text, createdAt, key, value, lsn, sourceTurn, confidence, lastUsed, entityID)
+            VALUES ('fact-1', 'sister', 100, 'person/riya/relation', 'sister', 2, 1, 0.875, 123.5, 'riya');
+            INSERT INTO embeddings (rowid, ownerKind, ownerID, model, dimensions, vector, encoding)
+            VALUES (9, 'fact', 'fact-1', 'foundation', 512, zeroblob(1024), 'float16'),
+                   (10, 'entity', 'riya', 'foundation', 512, zeroblob(512), 'int8');
+            """)
+        #expect(try db.rows("""
+            SELECT f.key, f.value, f.lsn, f.sourceTurn, f.confidence, f.lastUsed,
+                   e.aliases, e.contactID, t.role
+            FROM facts f JOIN entities e ON e.id = f.entityID JOIN turns t ON t.lsn = f.sourceTurn
+            """) == [["person/riya/relation", "sister", "2", "1", "0.875", "123.5",
+                      "[\"Ri\",\"Riya\"]", "contact-123", "user"]])
+        #expect(try db.rows("SELECT rowid, dimensions, length(vector), encoding FROM embeddings ORDER BY rowid") == [
+            ["9", "512", "1024", "float16"], ["10", "512", "512", "int8"],
+        ])
+        var duplicateFailed = false
+        do {
+            try db.execute("""
+                INSERT INTO facts (id, text, createdAt, key, value, lsn, confidence, lastUsed)
+                VALUES ('fact-2', 'other', 100, 'person/riya/relation', 'other', 2, 1, 123)
+                """)
+        } catch { duplicateFailed = true }
+        #expect(duplicateFailed)
+        // Expiring source text must not make an otherwise retained fact block deletion.
+        try db.execute("DELETE FROM turns WHERE lsn = 1")
+        #expect(try db.rows("SELECT value, sourceTurn FROM facts") == [["sister", "<NULL>"]])
+        try db.execute("UPDATE facts SET sourceTurn = 2")
+        await memory.delete(capture.id)
+        #expect(try db.rows("SELECT value, sourceTurn FROM facts") == [["sister", "<NULL>"]])
+        #expect(try db.rows("SELECT count(*) FROM turns") == [["0"]])
+        _ = try SQLiteMemory(path: path)
+        #expect(try db.rows("SELECT key, value FROM facts") == [["person/riya/relation", "sister"]])
+    }
+
+    @Test("History deletion purges both transcript copies; explicit turn expiry never reuses LSNs")
+    func purgeContentAndPreserveSequence() async throws {
+        let path = databaseURL()
+        defer { try? FileManager.default.removeItem(at: path) }
+        let db = try Database(path)
+        try seedLegacy(db)
+        let memory = try SQLiteMemory(path: path)
+        let capture = CaptureResult(raw: "new private raw", shipped: "new private reply")
+        await memory.record(capture)
+        await memory.delete(firstID)
+        await memory.delete(capture.id)
+        #expect(try db.rows("SELECT text FROM turns ORDER BY lsn") == [["second raw"], ["Second keepsake"]])
+        #expect(await memory.search("legacyraw", limit: 10).isEmpty)
+        #expect(await memory.search("private", limit: 10).isEmpty)
+        try db.execute("DELETE FROM turns") // Storage must permit later expired-turn purges.
+        _ = try SQLiteMemory(path: path) // Expired turns must not be backfilled again.
+        #expect(try db.rows("SELECT count(*) FROM turns") == [["0"]])
+        await memory.record(CaptureResult(raw: "after purge", shipped: "after purge"))
+        #expect(try db.rows("SELECT lsn FROM turns ORDER BY lsn") == [["7"], ["8"]])
+    }
+
+    @Test("Version-one metadata upgrades without losing old data or reusing its committed LSNs")
+    func upgradeVersionOne() async throws {
+        let path = databaseURL()
+        defer { try? FileManager.default.removeItem(at: path) }
+        let db = try Database(path)
+        try seedVersionOne(db)
+        let results = try db.rows("SELECT rowid, * FROM results ORDER BY rowid")
+        let memory = try SQLiteMemory(path: path)
+        #expect(try db.rows("PRAGMA user_version") == [["2"]])
+        #expect(try db.rows("SELECT rowid, * FROM results ORDER BY rowid") == results)
+        #expect(try db.rows("SELECT lsn, role, text FROM turns ORDER BY lsn") == [
+            ["1", "user", "legacyraw café"], ["2", "user", "second raw"],
+            ["41", "assistant", "First keepsake"], ["42", "assistant", "Second keepsake"],
+        ])
+        #expect(try db.rows("SELECT id, text, createdAt, key, value, lastUsed FROM facts") == [
+            ["old-fact", "preserved value", "123.5", "old-fact", "preserved value", "123.5"],
+        ])
+        #expect(try db.rows("SELECT name, aliases, contactID FROM entities") == [["Riya", "[]", "<NULL>"]])
+        #expect(try db.rows("SELECT rowid, hex(vector), encoding FROM embeddings") == [["1", "00000000", "float16"]])
+        let turns = try db.rows("SELECT * FROM turns ORDER BY lsn")
+        _ = try SQLiteMemory(path: path)
+        #expect(try db.rows("SELECT * FROM turns ORDER BY lsn") == turns)
+        await memory.delete(firstID)
+        #expect(try db.rows("SELECT text FROM turns ORDER BY lsn") == [["second raw"], ["Second keepsake"]])
+        await memory.record(CaptureResult(raw: "next", shipped: "next"))
+        #expect(try db.rows("SELECT lsn FROM turns WHERE lsn > 42 ORDER BY lsn") == [["43"], ["44"]])
+    }
+
+    @Test("A failed version-one upgrade rolls back columns, guards, backfill, sequence and version")
+    func versionOneUpgradeRollback() throws {
+        let path = databaseURL()
+        defer { try? FileManager.default.removeItem(at: path) }
+        let db = try Database(path)
+        try seedVersionOne(db)
+        try db.execute("CREATE INDEX facts_key ON facts (text)")
+        let schema = try db.rows("SELECT type, name, sql FROM sqlite_master ORDER BY name")
+        let turns = try db.rows("SELECT * FROM turns ORDER BY lsn")
+        var failed = false
+        do { _ = try SQLiteMemory(path: path) } catch { failed = true }
+        #expect(failed)
+        #expect(try db.rows("PRAGMA user_version") == [["1"]])
+        #expect(try db.rows("SELECT type, name, sql FROM sqlite_master ORDER BY name") == schema)
+        #expect(try db.rows("SELECT * FROM turns ORDER BY lsn") == turns)
+        #expect(try db.rows("SELECT seq FROM sqlite_sequence WHERE name = 'turns'") == [["40"]])
+        try db.execute("DROP INDEX facts_key")
+        _ = try SQLiteMemory(path: path)
+        #expect(try db.rows("PRAGMA user_version") == [["2"]])
+    }
+
+    @Test("A failed history purge leaves capture, both turns and FTS intact")
+    func historyPurgeFailureIsAtomic() async throws {
+        let path = databaseURL()
+        defer { try? FileManager.default.removeItem(at: path) }
+        let memory = try SQLiteMemory(path: path)
+        let db = try Database(path)
+        let capture = CaptureResult(raw: "purgeatomic raw", shipped: "purgeatomic reply")
+        await memory.record(capture)
+        try db.execute("""
+            CREATE TRIGGER fail_purge BEFORE DELETE ON turns BEGIN
+                SELECT RAISE(ABORT, 'injected purge failure');
+            END
+            """)
+        await memory.delete(capture.id)
+        #expect(await memory.search("purgeatomic", limit: 10).map(\.id) == [capture.id])
+        #expect(try db.rows("SELECT count(*) FROM turns") == [["2"]])
+        try db.execute("DROP TRIGGER fail_purge")
+        await memory.delete(capture.id)
+        #expect(await memory.search("purgeatomic", limit: 10).isEmpty)
+        #expect(try db.rows("SELECT count(*) FROM turns") == [["0"]])
     }
 }

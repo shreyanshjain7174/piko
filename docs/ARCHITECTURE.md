@@ -79,18 +79,30 @@ package closure of the keyboard products; PikoMind must never reach the keyboard
 the `PikoMind.SQLiteStore` actor at the same app-container `history.sqlite` URL. There is no
 second database, new package dependency, or change to `EphemeralMemory`.
 
-Schema version 1 uses SQLite `user_version`. Opening an unversioned file adds `turns`, `facts`,
+Schema version 2 uses SQLite `user_version`. Opening an unversioned file adds `turns`, `facts`,
 `entities` and `embeddings`, retaining `results`, `results_fts`, `items` and `edits` in place.
 The migration holds an immediate transaction through backfill, FTS rebuild and version update.
 Failure rolls everything back and throws from initialization; newer versions are rejected.
-Reopening version 1 does not backfill again or allocate LSNs.
+Reopening version 2 does not backfill again or allocate LSNs. The initial version-1 foundation
+also upgrades in place, retaining active committed LSNs and existing foundation columns/data.
 
-`turns` is an append-only envelope of capture ID and original timestamp, ordered by an
-autoincrementing LSN. Legacy captures backfill in rowid order; subsequent capture inserts append
-atomically via a trigger. The transcript has only one copy, in `results`: deleting history still
-removes the transcript and its search entry, while the immutable ID/timestamp envelope remains.
-Deleting then recording the same capture ID appends a new LSN. Facts, entities and embeddings
-are schema foundations only, with no extraction, inference, recall or settings API yet.
+`turns` stores `lsn`, `session`, `role`, `text` and `ts`. Each capture UUID is its deterministic
+synthetic session: raw text becomes a user turn and shipped text an assistant turn, both with
+the exact original timestamp. Unversioned captures backfill in rowid order, user then assistant.
+Subsequent captures append both turns atomically via a trigger. The original `id`/`createdAt`
+columns remain for compatibility; `id` links both turns to history deletion.
+
+Normal writes append rather than update or replace turns. Explicit history deletion atomically
+removes the result, FTS entry and both transcript-bearing turns. Direct turn deletion is allowed
+for future forgetting/expiry; no maintenance API is introduced here. AUTOINCREMENT preserves
+the committed LSN high-water mark even after all turn rows are deleted.
+
+Facts store unique keys and values, LSN, source-turn provenance, confidence and `lastUsed`;
+an optional entity ID links facts to entities. Source/entity foreign keys become null when their
+referenced row is deleted, so retaining facts cannot prevent raw-turn expiry. Entities include
+JSON-text aliases and an optional contact ID. Embeddings retain SQLite rowid-addressable vector
+blobs with dimensions, model/owner identity and a Float16/int8 encoding tag. These are storage
+shapes only, with no extraction, inference, recall, photo, maintenance or settings API yet.
 The nonthrowing compatibility operations retain best-effort behavior and print storage errors.
 
 ## Data contracts
