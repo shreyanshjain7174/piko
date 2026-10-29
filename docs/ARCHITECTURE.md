@@ -113,6 +113,35 @@ entities (`'entity'`, `old.id`). Other IDs and same-ID owners of other kinds are
 failure rolls back the enclosing history/turn/embedding deletion atomically.
 The nonthrowing compatibility operations retain best-effort behavior and print storage errors.
 
+### Quiet-sidekick companion
+
+The native 3D character lives in `App/Piko/Pet`, using RealityKit's virtual `nonAR` mode.
+It starts no camera or microphone session. `PikoUI` and the keyboard do not import RealityKit.
+Pure finite motion in `PikoKit/PikoPetMotion.swift` maps actual listening, thinking, speaking
+and completion state to the pet. Reduce Motion freezes idle motion. Home passes scroll,
+scene and presentation visibility; the renderer tears down its view and update tasks when inactive.
+
+Voice and typed requests share the existing `Conversation` and `ToolHarness`. Typed input is
+recorded as user text without re-dictating or rewriting it. A typed clarification never starts
+voice capture. External actions still wait for the existing confirmation. Results and errors
+remain visible even when Quiet mode or learned habits suppress routine speech and celebration.
+Superseded planning responses cannot run after dismissal. An already-approved action that is
+finishing is not presented as cancelled.
+Capture startup is separately owned and cancelled across permission, preparation, activity and
+capture awaits. Stop invalidates pending arming, including a request sent from a widget.
+Cancelled preparation cannot activate audio later, and stale cleanup cannot end a newer turn.
+Activities being ended are not adopted by a new turn.
+
+`PikoCompanionPreferences` stores a versioned preferences blob in app-only UserDefaults.
+It contains personality, Quiet mode and the last 8 explicit engaged/dismissed events for each
+of greeting and completion. There are no transcripts, screenshots, inferred emotions or
+cross-app usage records in this store. The existing history SQLite file/schema is unchanged.
+After at least 3 observations, a category with at least 75% dismissals stops routine nudges.
+Recent engagement displaces old habits. There is no automatic promotion to unsolicited voice.
+Explicit quiet settings override patterns; required approvals and real results bypass suppression.
+Settings shows the retained counts and resets learning without resetting personality or history.
+Corrupt or future preferences are reported and preserved until an explicit reset.
+
 ## Data contracts
 
 All cross-process state lives in the App Group container, defined once in `PikoKit`:

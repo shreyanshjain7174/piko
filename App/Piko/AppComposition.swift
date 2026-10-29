@@ -29,6 +29,8 @@ final class AppComposition {
     private let captureLaunchRequestStore: CaptureLaunchRequestStore?
     private var isHandlingCaptureLaunch = false
     private let transcriber: any AudioTranscriber
+    let brain: any Brain
+    private var armRequestID = UUID()
 
     var onCaptureLaunchError: (@MainActor (String) -> Void)?
     /// Set by Home so Talk to Piko from Control Center / Action Button runs the same voice turn.
@@ -63,6 +65,7 @@ final class AppComposition {
         #else
         brain = SystemBrain()
         #endif
+        self.brain = brain
 
         var appSupportURL = try FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask,
@@ -100,7 +103,11 @@ final class AppComposition {
             guard let channel = self?.channel else { return }
             for await signal in channel.signals {
                 guard let self else { return }
-                await self.captureCoordinator.handleSignal(signal)
+                if signal == .stopRequested {
+                    await self.stopFromLiveActivity()
+                } else {
+                    await self.captureCoordinator.handleSignal(signal)
+                }
             }
         }
 
@@ -140,6 +147,7 @@ final class AppComposition {
 
     /// Arms the session, then starts (or adopts) the Live Activity in the same foreground call path.
     func armSession() async throws {
+        try Task.checkCancellation()
         #if DEBUG
         if UserDefaults.standard.string(forKey: "PikoBenchmarkFixtureManifest") != nil
             || UserDefaults.standard.string(forKey: "PikoBenchmarkFixture") != nil {
@@ -147,8 +155,16 @@ final class AppComposition {
         }
         #endif
         guard UIApplication.shared.applicationState == .active else { throw PikoError.notForeground }
-        guard await AVAudioApplication.requestRecordPermission() else { throw PikoError.microphoneDenied }
+        let requestID = UUID()
+        armRequestID = requestID
+        let allowed = await AVAudioApplication.requestRecordPermission()
+        try Task.checkCancellation()
+        guard armRequestID == requestID else { throw CancellationError() }
+        guard allowed else { throw PikoError.microphoneDenied }
         try await prepareSpeech()
+        try Task.checkCancellation()
+        guard armRequestID == requestID else { throw CancellationError() }
+        guard UIApplication.shared.applicationState == .active else { throw PikoError.notForeground }
         try await session.arm()
     }
 
@@ -162,6 +178,7 @@ final class AppComposition {
     /// Stop from the Live Activity: end any capture, release the microphone and remove the
     /// activity immediately. Called directly by `StopSessionIntent` in the app process.
     func stopFromLiveActivity() async {
+        armRequestID = UUID()
         onStopRequested?()
         if session.currentPhase == .capturing || captureCoordinator.isTidying {
             await captureCoordinator.stopCapture(endSession: true)
@@ -306,6 +323,8 @@ final class AppComposition {
                 await showLiveActivity()
                 try await captureCoordinator.startCapture()
             }
+        } catch is CancellationError {
+            store.clear(id: request.id)
         } catch {
             store.clear(id: request.id)
             let message = PikoError.userMessage(for: error)

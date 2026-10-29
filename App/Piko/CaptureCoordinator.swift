@@ -89,6 +89,7 @@ public final class CaptureCoordinator {
     public private(set) var lastCaptureFromKeyboard = false
 
     public func startCapture(fromKeyboard: Bool = false) async throws {
+        try Task.checkCancellation()
         guard !isTidying, !isStartingCapture else { return }
         lastCaptureFromKeyboard = fromKeyboard
         isStartingCapture = true
@@ -102,6 +103,7 @@ public final class CaptureCoordinator {
         }
         sessionEpoch = max(sessionEpoch, channel.readDraft()?.sessionEpoch ?? 0) + 1
         let epoch = sessionEpoch
+        try Task.checkCancellation()
         try await session.startCapture()
         guard epoch == sessionEpoch, session.currentPhase == .capturing else { return }
         let buffers = session.buffers
@@ -254,7 +256,7 @@ public final class CaptureCoordinator {
         await session.finishTidying()
     }
 
-    private func cancelCapture() async {
+    public func cancelCapture() async {
         let cancelledEpoch = sessionEpoch
         sessionEpoch += 1
         transcriptionTask?.cancel()

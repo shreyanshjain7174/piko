@@ -6,6 +6,12 @@ notes and journal entries into Piko, and answers "what did I say about…?" from
 history. Free features run on-device; premium cloud features are planned as opt-in and paid.
 The Piko keyboard remains an optional extra for typing into other apps.
 
+Home follows a quiet-sidekick layout with a small native 3D Piko beside the work.
+Tap or stroke Piko for a reaction. Recording starts from the microphone control, not the pet.
+Typed requests use the same planner, confirmations and real tools without opening the microphone.
+Settings includes personality, Quiet mode, spoken replies and resettable local attention learning.
+Learning uses only the last 8 explicit responses per routine category, not other-app activity or mood guesses.
+
 - **Landing page** — `web/index.html`
 - **What we're building** — `docs/SPEC.md`
 - **How it works and why it has to work that way** — `docs/ARCHITECTURE.md`

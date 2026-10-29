@@ -60,6 +60,7 @@ let package = Package(
                 "Voice.swift",
                 "FiledView.swift",
                 "LopLab.swift",
+                "Pet",
                 "Info.plist",
                 "Piko.entitlements",
             ]

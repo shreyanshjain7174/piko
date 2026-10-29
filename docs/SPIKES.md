@@ -1,5 +1,20 @@
 # Spikes
 
+## Quiet-sidekick native renderer
+
+The app's small companion now uses original procedural RealityKit geometry in virtual nonAR
+mode. It does not use a WebView, camera session or downloaded character asset. Rendering stays
+inside the app target; the keyboard's light dependency closure is unchanged.
+
+Host module tests exercise finite motion, live-level clamping, short pat/completion reactions,
+Reduce Motion, bounded attention feedback, preference persistence/reset and stale speech callbacks.
+An iPhone 17 Simulator run exercised the real app: typed note saving and Filed persistence,
+an external reminder waiting for confirmation, dismissal without microphone activation,
+personality selection, Quiet mode, learning reset and relaunch persistence.
+
+These are simulator UI results, not physical-device memory, background-audio or FPS measurements.
+No 60-fps, CPU or residency target is claimed by this first slice.
+
 Five experiments, roughly a day each. Run them in order. Stop at the first failure and rethink
 the product rather than routing around it — each of these can invalidate the design.
 
