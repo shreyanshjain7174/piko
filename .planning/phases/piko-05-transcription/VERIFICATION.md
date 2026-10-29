@@ -167,3 +167,31 @@ No code gaps found. All artifacts exist, are substantive, and are correctly wire
 
 _Verified: 2026-08-29T23:15:00Z_
 _Verifier: Claude (gsd-verifier)_
+
+## Addendum 2 — 2026-09-29 re-run under Xcode 27, free-tier signing
+
+### Algorithm-level (unchanged, still green)
+
+- `xcodebuild test -only-testing:PikoTranscribeTests/MockTranscriberTests
+  -only-testing:PikoTranscribeTests/StablePrefixTests` under iOS 27 Simulator →
+  **9 tests, all pass**.
+- MockTranscriber Script progressive replay + StablePrefix diffing algorithm both
+  proven on Xcode 27 / Swift 6.4.
+
+### AVAudioSession-touching PikoTranscribeTests
+
+`CaptureIntegrationTests` (10 tests) fail on iOS 27 Simulator standalone xctest with
+`.microphoneDenied` — same TCC identity issue documented in Phase 3 Addendum 3. Root
+cause is Simulator TCC, not code; tests compile and link, they hit an OS wall at
+`AVAudioSession.setActive(true)`.
+
+### Device-only rows unchanged
+
+- **CAPT-03** (400 ms first-word latency) — needs real mic, stopwatch, physical device.
+  Free-tier `dev.shreyansh.Piko` build is installed on the connected iPhone, but launch
+  requires the device be physically re-trusted every 7 days and manual observer scripting.
+- **CAPT-04** (30 s thrash-free monologue) — same constraints.
+
+Both remain **human_needed**, with the algorithm-level truths intact.
+
+*Addendum 2 by: opencode / auto-best-coding, 2026-09-29*

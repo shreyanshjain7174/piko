@@ -12,7 +12,12 @@ public struct CaptureLaunchRequestStore: Sendable {
         ) else {
             return nil
         }
-        fileURL = container.appendingPathComponent(AppGroup.captureRequestFile)
+        do {
+            fileURL = try SharedContainer.prepare(in: container).appendingPathComponent(AppGroup.captureRequestFile)
+        } catch {
+            print("PikoBridge: capture handoff storage is unavailable (\(type(of: error)))")
+            return nil
+        }
     }
 
     /// Test/support initializer for an explicitly controlled container.

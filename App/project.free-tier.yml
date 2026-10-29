@@ -1,0 +1,47 @@
+# Legacy compile-only overlay; not the paid beta signing configuration.
+#
+# Omits the keyboard/widget targets, Live Activity declaration, background audio,
+# and App Group entitlement. It does not validate those capabilities.
+#
+# Current startup explicitly reports unavailable shared storage without the App Group.
+# This overlay cannot verify the dictation loop, keyboard, or background session.
+# Use project.yml with the confirmed paid team for beta and physical acceptance.
+#
+# Regenerate explicitly with: xcodegen generate --spec project.free-tier.yml
+name: Piko
+options:
+  bundleIdPrefix: dev.shreyansh
+  deploymentTarget:
+    iOS: "27.0"
+  createIntermediateGroups: true
+
+packages:
+  Piko:
+    path: ..
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    DEVELOPMENT_TEAM: "C7524YZPLL"
+    CODE_SIGN_STYLE: Automatic
+
+targets:
+  Piko:
+    type: application
+    platform: iOS
+    sources: [Piko, SharedIntents, Assets.xcassets]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.shreyansh.Piko
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: FREE_TIER_BUILD
+    dependencies:
+      - package: Piko
+        products: [PikoKit, PikoBridge, PikoAudio, PikoTranscribe, PikoBrain, PikoMemory, PikoUI]
+    info:
+      path: Piko/Info.plist
+      properties:
+        UILaunchScreen: {}
+        NSMicrophoneUsageDescription: "Piko turns what you say into text. Audio never leaves this phone."

@@ -13,6 +13,17 @@ public enum AppGroup {
     public static let audioLevelFile = "audio-level.json"
 }
 
+/// Settings shared through the App Group's `UserDefaults`.
+public enum KeyboardPreferences {
+    public static let autoListenKey = "PikoAutoListenOnKeyboard"
+
+    /// While a session is armed, start listening as soon as the Piko keyboard appears.
+    /// On unless the user turns it off.
+    public static func autoListen(in defaults: UserDefaults?) -> Bool {
+        defaults?.object(forKey: autoListenKey) as? Bool ?? true
+    }
+}
+
 /// Darwin notification names. Cross-process, no payload — the payload goes through the App Group.
 public enum Signal: String, Sendable, CaseIterable {
     case captureStart  = "dev.piko.capture.start"

@@ -7,7 +7,7 @@ import Testing
 
 /// Buffer-stream lifecycle for `SessionCoordinator`: idle until `startCapture()`, yields
 /// while capturing, silent after `stopCapture()`, and safe to `disarm()` mid-capture.
-/// Simulator may yield silent PCM; this suite only proves the tap is installed and torn down.
+/// Simulator yields synthetic PCM; this suite proves stream gating, not physical microphone I/O.
 @Suite("SessionCoordinator buffer lifecycle", .serialized)
 struct SessionCoordinatorBufferTests {
 
@@ -51,6 +51,7 @@ struct SessionCoordinatorBufferTests {
             let coordinator = SessionCoordinator(
                 channel: MockSessionChannel(),
                 interruptions: MockInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true })
 
             try await coordinator.arm()
@@ -68,6 +69,7 @@ struct SessionCoordinatorBufferTests {
             let coordinator = SessionCoordinator(
                 channel: MockSessionChannel(),
                 interruptions: MockInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true })
 
             try await coordinator.arm()
@@ -88,6 +90,7 @@ struct SessionCoordinatorBufferTests {
             let coordinator = SessionCoordinator(
                 channel: MockSessionChannel(),
                 interruptions: MockInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true })
 
             try await coordinator.arm()
@@ -121,6 +124,7 @@ struct SessionCoordinatorBufferTests {
             let coordinator = SessionCoordinator(
                 channel: MockSessionChannel(),
                 interruptions: MockInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true })
 
             var phaseIterator = coordinator.phase.makeAsyncIterator()
@@ -142,6 +146,7 @@ struct SessionCoordinatorBufferTests {
             let coordinator = SessionCoordinator(
                 channel: MockSessionChannel(),
                 interruptions: MockInterruptionSource(),
+                audioSession: .init(activate: {}, deactivate: {}),
                 isForeground: { true })
 
             try await coordinator.arm()

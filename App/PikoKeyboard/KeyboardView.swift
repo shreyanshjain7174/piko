@@ -15,6 +15,7 @@ struct KeyboardView: View {
     let voiceActivity: VoiceActivityModel
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.colorScheme) private var scheme
     @State private var showingHelp = false
 
     var body: some View {
@@ -49,7 +50,7 @@ struct KeyboardView: View {
                     .font(.system(size: 13, weight: .medium))
                     .padding(.horizontal, 12)
                     .frame(height: 36)
-                    .background(Color(.secondarySystemFill), in: Capsule())
+                    .background(skin.theme(for: scheme).cardRaised, in: Capsule())
                 }
                 .accessibilityLabel("Tone")
                 .accessibilityValue(selectedProfile.keyboardTitle)
@@ -63,7 +64,7 @@ struct KeyboardView: View {
                     .accessibilityLabel("Keyboard setup")
                 }
             }
-            .foregroundStyle(Color(.secondaryLabel))
+            .foregroundStyle(skin.theme(for: scheme).ink2)
 
             MicButton(phase: sessionPhase, skin: skin, setupPrompt: setupPrompt,
                       voiceActivity: voiceActivity, action: onMicTap)
@@ -84,7 +85,8 @@ struct KeyboardView: View {
         .padding(.top, 4)
         .padding(.bottom, 8)
         .frame(maxWidth: .infinity)
-        .background(Color(.systemBackground))
+        .background(skin.theme(for: scheme).ground)
+        .fontDesign(.rounded)
         .alert(setupPrompt?.caption ?? "Keyboard setup", isPresented: $showingHelp) {
             Button("Done", role: .cancel) {}
         } message: {
@@ -120,14 +122,14 @@ enum KeyboardSetupPrompt: Equatable {
         case .fullAccess:
             "In Settings › General › Keyboard › Keyboards › Piko, turn on Allow Full Access."
         case .armSession:
-            "Open Piko and start a keyboard session from Home."
+            "Press Arm Piko in Control Center, on the Lock Screen or with the Action Button, then tap the mic again."
         }
     }
 
     var caption: String {
         switch self {
         case .fullAccess: "Full Access required"
-        case .armSession: "Set up your session"
+        case .armSession: "Arm Piko once to dictate"
         }
     }
 }

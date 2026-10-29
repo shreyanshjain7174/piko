@@ -8,11 +8,10 @@ struct PikoLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: PikoAttributes.self) { context in
             LockScreenView(state: context.state, skin: context.attributes.skin)
-                .activityBackgroundTint(Color(white: 0.09))
+                .activityBackgroundTint(context.attributes.skin.theme(for: .dark).ground)
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
             let phase = context.state.phase
-            let words = context.state.words
 
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -23,7 +22,7 @@ struct PikoLiveActivityWidget: Widget {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel("Start dictation")
+                        .accessibilityLabel("Talk to Piko")
                         .accessibilityHint("Opens Piko and starts listening.")
                     } else {
                         PikoFace(phase: phase, skin: context.attributes.skin)
@@ -32,9 +31,8 @@ struct PikoLiveActivityWidget: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    WordCount(words: words, phase: phase)
+                    ListeningWave(phase: phase)
                         .font(.title3.weight(.semibold))
-                        .foregroundStyle(.white)
                 }
                 DynamicIslandExpandedRegion(.center) {
                     Text(phase.displayName)
@@ -49,12 +47,10 @@ struct PikoLiveActivityWidget: Widget {
                     .foregroundStyle(phase == .capturing ? .white : .secondary)
                     .accessibilityLabel(phase.spokenStatus)
             } compactTrailing: {
-                WordCount(words: words, phase: phase)
+                ListeningWave(phase: phase)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white)
             } minimal: {
-                Image(systemName: phase.symbolName)
-                    .foregroundStyle(phase == .capturing ? .white : .secondary)
+                ListeningWave(phase: phase)
                     .accessibilityLabel(phase.spokenStatus)
             }
         }
@@ -74,9 +70,8 @@ private struct LockScreenView: View {
                 Text(state.phase.displayName)
                     .font(.headline)
                     .foregroundStyle(.white)
-                WordCount(words: state.words, phase: state.phase)
+                ListeningWave(phase: state.phase)
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.7))
             }
 
             Spacer(minLength: 8)
@@ -91,16 +86,15 @@ private struct LockScreenView: View {
     }
 }
 
-private struct WordCount: View {
-    let words: Int
+/// Animated waveform while Piko listens; a quiet mic glyph otherwise. No word counts.
+private struct ListeningWave: View {
     let phase: SessionPhase
 
     var body: some View {
-        if phase == .capturing || words > 0 {
-            Text("^[\(words) word](inflect: true)")
-        } else {
-            EmptyView()
-        }
+        Image(systemName: phase == .capturing ? "waveform" : phase.symbolName)
+            .foregroundStyle(phase == .capturing ? .white : .secondary)
+            .symbolEffect(.variableColor.iterative, options: .repeating, isActive: phase != .idle)
+            .accessibilityHidden(true)
     }
 }
 
@@ -109,8 +103,10 @@ private struct StopButton: View {
         Button(intent: StopSessionIntent()) {
             Label("Stop", systemImage: "stop.fill")
                 .font(.subheadline.weight(.semibold))
+                .fontDesign(.rounded)
         }
         .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
         .tint(.white)
         .accessibilityLabel("Stop the Piko session")
     }

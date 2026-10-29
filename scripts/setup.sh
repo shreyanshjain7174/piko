@@ -12,10 +12,10 @@ if ! command -v xcodebuild >/dev/null; then
 fi
 XCODE_VER=$(xcodebuild -version | head -1 | awk '{print $2}')
 say "  Xcode $XCODE_VER"
-case "$XCODE_VER" in
-  26.[3-9]*|26.[1-9][0-9]*|27*|2[89]*) say "  built-in MCP server available" ;;
-  *) warn "  Xcode 26.3+ needed for the built-in MCP server. XcodeBuildMCP still works." ;;
-esac
+if [[ ! "$XCODE_VER" =~ ^[0-9]+(\.[0-9]+)*$ ]] || [[ "${XCODE_VER%%.*}" -lt 27 ]]; then
+  warn "  Piko requires Xcode 27+ and the iOS 27 SDK."
+  exit 1
+fi
 
 say "Checking XcodeGen…"
 command -v xcodegen >/dev/null || { warn "  missing — brew install xcodegen"; }

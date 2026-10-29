@@ -29,7 +29,12 @@ public final class AVAudioSessionInterruptionSource: InterruptionSource, @unchec
             }
 
             let routeChangeTask = Task {
-                for await _ in NotificationCenter.default.notifications(named: AVAudioSession.routeChangeNotification) {
+                for await note in NotificationCenter.default.notifications(named: AVAudioSession.routeChangeNotification) {
+                    // Foreground arming changes our own category before starting input.
+                    if let rawReason = note.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                       AVAudioSession.RouteChangeReason(rawValue: rawReason) == .categoryChange {
+                        continue
+                    }
                     continuation.yield(.routeChanged)
                 }
             }

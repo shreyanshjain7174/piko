@@ -1,16 +1,41 @@
 import Foundation
 import Testing
 import PikoKit
+import PikoBrain
 import PikoMemory
 @testable import PikoTranscribe
 #if os(iOS)
 @testable import PikoAudio
 @testable import PikoCaptureCore
+import FoundationModels
 #endif
 
 #if os(iOS)
 @Suite("CaptureCoordinator Brain wiring", .serialized)
 struct CaptureCoordinatorBrainTests {
+    @Test("real model either tidies within budget or ships the unchanged original with a notice",
+          .enabled(if: SystemLanguageModel.default.availability == .available))
+    @MainActor func realModelPreservesShippingContract() async throws {
+        try await AudioSessionTestGate.shared.run { @MainActor in
+            let raw = "um please send the report tomorrow"
+            let (coordinator, channel, session) = try await makeCoordinator(
+                transcript: raw, brain: SystemBrain())
+            var notice: String?
+            coordinator.onCleanupBypassed = { notice = $0 }
+            await coordinator.stopCapture()
+            let result = try #require(channel.readResult())
+            #expect(result.raw == raw)
+            if let notice {
+                #expect(!notice.isEmpty)
+                #expect(result.shipped == raw)
+                print("[FM] Real capture shipped raw with explicit cleanup bypass; hardware quality remains open.")
+            } else {
+                #expect(!result.shipped.isEmpty)
+                #expect(result.timings.brainMS <= 600)
+            }
+            await session.disarm()
+        }
+    }
 
     @Test @MainActor func cleanedTextShipsWhileRawStaysUntouched() async throws {
         try await AudioSessionTestGate.shared.run { @MainActor in
@@ -116,6 +141,7 @@ struct CaptureCoordinatorBrainTests {
         let session = SessionCoordinator(
             channel: channel,
             interruptions: NullInterruptionSource(),
+            audioSession: .init(activate: {}, deactivate: {}),
             isForeground: { true }
         )
         let coordinator = CaptureCoordinator(

@@ -2,28 +2,36 @@
 
 ## One sentence
 
-Hold a button anywhere on iOS, speak, and cleaned-up text appears in the field you were already
-in, with no network involved.
+Press, talk, and Piko files what you said — reminders, notes, journal — and later answers
+"what did I say about…?" from your own history, privately on your iPhone.
 
-## v0.1 scope
+Piko does not replace Siri or system Dictation, and iOS does not allow a background wake word:
+activation is a press (Action Button, Control Center / Lock Screen control, Siri phrase
+"Talk to Piko", or the app), which briefly foregrounds Piko. Dynamic Island shows listening
+state with a stop button.
+
+## MVP scope (free, on-device)
 
 **In:**
 
-1. Arm a session from the container app, Back Tap, or the Action Button.
-2. A keyboard extension with a mic button that drives the armed session.
-3. Streaming insertion of partial transcript into the host text field.
-4. On-device cleanup of the final transcript — fillers, punctuation, casing.
-5. A Live Activity showing armed / listening / tidying state with a working stop button.
-6. Local history of every session, searchable.
-7. Four skins for the Piko character, chosen locally.
+1. "Talk to Piko" from the Action Button, Control Center / Lock Screen control, Siri/Spotlight
+   or the Home screen button.
+2. On-device speech recognition and a Live Activity with an animated listening state.
+3. Filing: every iPhone gets rule-based filing (`RuleOrganizer`); Apple Intelligence devices
+   get on-device Foundation Models filing (`ModelOrganizer`) with a faithfulness guard and
+   rule fallback. Items are reviewed, then saved with one tap.
+4. Reminders saved to Apple Reminders (EventKit, only on Save); notes and journal stored
+   locally and shown in the Filed tab.
+5. Recall: questions starting "what did I…" are answered only from local history.
+6. Local history of every capture, searchable; on-device weekly brain-dump count for testers.
+7. Four skins for the Piko character. Optional Piko keyboard for typing into other apps.
 
-**Out (deliberately):**
+**Out (deliberately, for this MVP):**
 
-- Accounts, sync, subscriptions, any server at all.
-- "Do" and "Recall" modes. The router ships in v0.2; v0.1 always takes the write path.
-- The Pebble accessory.
-- iPad and Mac.
-- Any model we trained ourselves. v0.1 uses what ships with the OS.
+- Cloud, accounts, sync, subscriptions. Premium cloud is chosen from tester demand later.
+- Wake word, replacing Siri, Hindi/Hinglish.
+- The Pebble accessory, iPad and Mac.
+- Any model we trained ourselves.
 
 ## Modules and their contracts
 

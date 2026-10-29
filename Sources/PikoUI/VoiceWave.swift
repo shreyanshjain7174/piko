@@ -24,9 +24,8 @@ public struct VoiceWave: View {
             Canvas { context, size in
                 let energy = reduceMotion ? 0.2 : level
                 let amplitude = size.height * (0.055 + energy * 0.32)
-                let gradient = Gradient(colors: [
-                    .cyan.opacity(0), .cyan, tint, .indigo, .indigo.opacity(0)
-                ])
+                // One hue, faded only at the tapered ends: the wave wears the skin's colour.
+                let gradient = Gradient(colors: [tint.opacity(0), tint, tint, tint.opacity(0)])
                 let shading = GraphicsContext.Shading.linearGradient(
                     gradient, startPoint: CGPoint(x: 0, y: size.height / 2),
                     endPoint: CGPoint(x: size.width, y: size.height / 2))

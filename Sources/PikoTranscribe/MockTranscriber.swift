@@ -35,6 +35,8 @@ public actor MockTranscriber: Transcriber {
     private var script: Script?
     private var usesExplicitScript = false
     private var lexicon: [String] = []
+    private var cancelled = false
+    private var configuredEpoch = 0
 
     public init() {}
 
@@ -47,12 +49,14 @@ public actor MockTranscriber: Transcriber {
 
     public func setDefaultScript(_ script: Script) {
         guard !usesExplicitScript else { return }
+        guard (script.drafts.first?.sessionEpoch ?? configuredEpoch) >= configuredEpoch else { return }
         self.script = script
     }
 
     nonisolated public func hypotheses() -> AsyncStream<CaptureDraft> {
         AsyncStream { continuation in
-            Task { await self.runScript(continuation: continuation) }
+            let task = Task { await self.runScript(continuation: continuation) }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
@@ -63,7 +67,13 @@ public actor MockTranscriber: Transcriber {
         }
 
         for draft in script.drafts {
-            try? await Task.sleep(for: script.delayBetween)
+            do {
+                try await Task.sleep(for: script.delayBetween)
+            } catch {
+                continuation.finish()
+                return
+            }
+            guard !Task.isCancelled, !cancelled else { break }
             continuation.yield(draft)
         }
         continuation.finish()
@@ -71,5 +81,16 @@ public actor MockTranscriber: Transcriber {
 
     public func finish() async -> String {
         script?.drafts.last?.text ?? ""
+    }
+
+    public func resetCancellation(sessionEpoch: Int) {
+        guard sessionEpoch >= configuredEpoch else { return }
+        configuredEpoch = sessionEpoch
+        cancelled = false
+    }
+
+    public func cancel(sessionEpoch: Int) {
+        guard sessionEpoch == configuredEpoch else { return }
+        cancelled = true
     }
 }

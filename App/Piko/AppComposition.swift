@@ -1,4 +1,5 @@
 import Foundation
+import AVFAudio
 import PikoAudio
 import PikoBrain
 import PikoBridge
@@ -11,30 +12,50 @@ import UIKit
 /// `DarwinChannel` and `SessionCoordinator`.
 @MainActor
 final class AppComposition {
-    static let shared = AppComposition()
+    static let shared: Result<AppComposition, any Error> = Result { try AppComposition() }
 
     let channel: any SessionChannel
     let session: SessionCoordinator
     public let captureCoordinator: CaptureCoordinator
     public let liveActivityController: LiveActivityController
     public let memory: any Memory
+    let items: any ItemStore
+    let organizer: any Organizer = ModelOrganizer()
+    let reminders = ReminderWriter()
+    let dumpLog = DumpLog()
+    let planner: any Planner = ModelPlanner()
+    private(set) lazy var harness = ToolHarness(
+        tools: AssistantTools.all(memory: memory, items: items, reminders: reminders))
     private let captureLaunchRequestStore: CaptureLaunchRequestStore?
     private var isHandlingCaptureLaunch = false
+    private let transcriber: any AudioTranscriber
 
     var onCaptureLaunchError: (@MainActor (String) -> Void)?
+    /// Set by Home so Talk to Piko from Control Center / Action Button runs the same voice turn.
+    var onTalkRequested: (@MainActor () async -> Void)?
+    var onStopRequested: (@MainActor () -> Void)?
     private(set) var lastCaptureLaunchError: String?
 
-    private init() {
-        let channel = DarwinChannel()!
+    private init() throws {
+        guard let channel = DarwinChannel() else { throw PikoError.sharedContainerUnavailable }
         self.channel = channel
         session = SessionCoordinator(channel: channel, interruptions: AVAudioSessionInterruptionSource(), audioLevels: channel, isForeground: { UIApplication.shared.applicationState == .active })
 
-        let transcriber: any Transcriber
+        let transcriber: any AudioTranscriber
+        #if DEBUG
+        if let selection = UserDefaults.standard.string(forKey: "PikoBenchmarkEngine") {
+            transcriber = try Self.makeBenchmarkTranscriber(selection)
+        } else {
         #if targetEnvironment(simulator)
         transcriber = MockTranscriber()
         #else
         transcriber = SpeechTranscriberEngine()
         #endif
+        }
+        #else
+        transcriber = SpeechTranscriberEngine()
+        #endif
+        self.transcriber = transcriber
 
         let brain: any Brain
         #if targetEnvironment(simulator)
@@ -43,12 +64,17 @@ final class AppComposition {
         brain = SystemBrain()
         #endif
 
-        let appSupportURL = try! FileManager.default.url(
+        var appSupportURL = try FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask,
             appropriateFor: nil, create: true)
+        var storageValues = URLResourceValues()
+        storageValues.isExcludedFromBackup = true
+        try appSupportURL.setResourceValues(storageValues)
         let dbURL = appSupportURL.appendingPathComponent("history.sqlite")
-        let memory: any Memory = try! SQLiteMemory(path: dbURL)
+        let sqlite = try SQLiteMemory(path: dbURL)
+        let memory: any Memory = sqlite
         self.memory = memory
+        self.items = sqlite
         self.captureLaunchRequestStore = CaptureLaunchRequestStore()
 
         self.captureCoordinator = CaptureCoordinator(
@@ -59,7 +85,17 @@ final class AppComposition {
             memory: memory
         )
         self.liveActivityController = LiveActivityController()
-
+        #if DEBUG
+        if let fixture = UserDefaults.standard.string(forKey: "PikoBenchmarkCaptureFixture") {
+            guard fixture == URL(fileURLWithPath: fixture).lastPathComponent,
+                  fixture.hasSuffix(".wav"),
+                  let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+                throw PikoError.audioUnavailable
+            }
+            try captureCoordinator.setBenchmarkFixture(
+                documents.appendingPathComponent("Benchmarks").appendingPathComponent(fixture))
+        }
+        #endif
         Task { [weak self] in
             guard let channel = self?.channel else { return }
             for await signal in channel.signals {
@@ -104,9 +140,137 @@ final class AppComposition {
 
     /// Arms the session, then starts (or adopts) the Live Activity in the same foreground call path.
     func armSession() async throws {
+        #if DEBUG
+        if UserDefaults.standard.string(forKey: "PikoBenchmarkFixtureManifest") != nil
+            || UserDefaults.standard.string(forKey: "PikoBenchmarkFixture") != nil {
+            throw PikoError.benchmarkInProgress
+        }
+        #endif
+        guard UIApplication.shared.applicationState == .active else { throw PikoError.notForeground }
+        guard await AVAudioApplication.requestRecordPermission() else { throw PikoError.microphoneDenied }
+        try await prepareSpeech()
         try await session.arm()
+    }
+
+    /// The Live Activity is only shown while Piko is actively listening or working on a request,
+    /// and only for captures started in the foreground (ActivityKit's own rule).
+    func showLiveActivity() async {
+        guard UIApplication.shared.applicationState == .active else { return }
         await liveActivityController.start(skin: channel.readState()?.skin ?? .cute)
     }
+
+    /// Stop from the Live Activity: end any capture, release the microphone and remove the
+    /// activity immediately. Called directly by `StopSessionIntent` in the app process.
+    func stopFromLiveActivity() async {
+        onStopRequested?()
+        if session.currentPhase == .capturing || captureCoordinator.isTidying {
+            await captureCoordinator.stopCapture(endSession: true)
+        }
+        await session.disarm()
+        await liveActivityController.end()
+    }
+
+    func prepareSpeech(allowDownload: Bool = false) async throws {
+        guard UIApplication.shared.applicationState == .active else { throw PikoError.notForeground }
+        try await transcriber.prepare(locale: Locale(identifier: "en-IN"), allowDownload: allowDownload)
+    }
+
+    #if DEBUG
+    private static func makeBenchmarkTranscriber(_ selection: String) throws -> any AudioTranscriber {
+        switch selection {
+        case "apple":
+            return SpeechTranscriberEngine()
+        case "whisper":
+            let cached = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
+                .appendingPathComponent("Benchmarks/Whisper", isDirectory: true)
+            guard let folder = Bundle.main.url(forResource: "Whisper", withExtension: nil) ?? cached,
+                  FileManager.default.fileExists(atPath: folder.appendingPathComponent("manifest.json").path) else {
+                throw PikoError.speechAssetsMissing
+            }
+            return WhisperTranscriberEngine(modelFolder: folder)
+        default:
+            throw PikoError.speechUnavailable("benchmark engine \(selection)")
+        }
+    }
+
+    func prepareBenchmarkSpeech() async throws -> String {
+        guard !(transcriber is MockTranscriber) else {
+            throw PikoError.speechUnavailable("Simulator mock (not a speech model)")
+        }
+        try await prepareSpeech()
+        return String(describing: type(of: transcriber))
+    }
+
+    func runBenchmarkFixture(_ name: String) async throws -> String {
+        guard UIApplication.shared.applicationState == .active else { throw PikoError.notForeground }
+        let previousIdleTimer = UIApplication.shared.isIdleTimerDisabled
+        UIApplication.shared.isIdleTimerDisabled = true
+        defer { UIApplication.shared.isIdleTimerDisabled = previousIdleTimer }
+        guard name == URL(fileURLWithPath: name).lastPathComponent, name.hasSuffix(".wav"),
+              let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
+              let selection = UserDefaults.standard.string(forKey: "PikoBenchmarkEngine") else {
+            throw PikoError.audioUnavailable
+        }
+        var folder = documents.appendingPathComponent("Benchmarks", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try folder.setResourceValues(values)
+        let adapter = try Self.makeBenchmarkTranscriber(selection)
+        let result = try await SpeechFixtureBenchmark.run(
+            transcriber: adapter, fixture: folder.appendingPathComponent(name),
+            locale: Locale(identifier: "en-IN"))
+        let outputName = String(name.dropLast(4)) + "." + selection + ".json"
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(result).write(to: folder.appendingPathComponent(outputName), options: .atomic)
+        return outputName
+    }
+
+    private struct FixtureManifest: Decodable {
+        let locale: String
+        let files: [String]
+    }
+
+    func runBenchmarkManifest(_ name: String) async throws -> String {
+        guard UIApplication.shared.applicationState == .active else { throw PikoError.notForeground }
+        let previousIdleTimer = UIApplication.shared.isIdleTimerDisabled
+        UIApplication.shared.isIdleTimerDisabled = true
+        defer { UIApplication.shared.isIdleTimerDisabled = previousIdleTimer }
+        guard name == URL(fileURLWithPath: name).lastPathComponent, name.hasSuffix(".json"),
+              let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
+              let selection = UserDefaults.standard.string(forKey: "PikoBenchmarkEngine") else {
+            throw PikoError.audioUnavailable
+        }
+        var folder = documents.appendingPathComponent("Benchmarks", isDirectory: true)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try folder.setResourceValues(values)
+        let manifest = try JSONDecoder().decode(
+            FixtureManifest.self, from: Data(contentsOf: folder.appendingPathComponent(name)))
+        guard !manifest.files.isEmpty, Set(manifest.files).count == manifest.files.count else {
+            throw PikoError.audioUnavailable
+        }
+        let adapter = try Self.makeBenchmarkTranscriber(selection)
+        let outputName = String(name.dropLast(5)) + "." + selection + ".results.json"
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        var reports: [SpeechFixtureReport] = []
+        for (index, file) in manifest.files.enumerated() {
+            try Task.checkCancellation()
+            guard file == URL(fileURLWithPath: file).lastPathComponent, file.hasSuffix(".wav") else {
+                throw PikoError.audioUnavailable
+            }
+            reports.append(try await SpeechFixtureBenchmark.run(
+                transcriber: adapter, fixture: folder.appendingPathComponent(file),
+                locale: Locale(identifier: manifest.locale), sessionEpoch: index + 1))
+            try encoder.encode(reports).write(to: folder.appendingPathComponent(outputName), options: .atomic)
+            FileHandle.standardOutput.write(Data(
+                "PIKO_FIXTURE_PROGRESS: \(index + 1)/\(manifest.files.count)\n".utf8))
+        }
+        return outputName
+    }
+    #endif
 
     /// Consume an intent request only after foreground activation. Keeping the request on disk
     /// until then covers both a running app and a cold process launch without a timing race.
@@ -135,8 +299,13 @@ final class AppComposition {
                 store.clear(id: request.id)
                 return
             }
-            try await captureCoordinator.startCapture()
             store.clear(id: request.id)
+            if let onTalkRequested {
+                await onTalkRequested()
+            } else {
+                await showLiveActivity()
+                try await captureCoordinator.startCapture()
+            }
         } catch {
             store.clear(id: request.id)
             let message = PikoError.userMessage(for: error)

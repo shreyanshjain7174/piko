@@ -15,8 +15,16 @@ public final class DarwinChannel: SessionChannel, AudioLevelChannel, @unchecked 
 
     public init?(groupID: String = AppGroup.identifier) {
         guard let url = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: groupID) else { return nil }
-        self.container = url
+            .containerURL(forSecurityApplicationGroupIdentifier: groupID) else {
+            print("PikoBridge: shared container is unavailable")
+            return nil
+        }
+        do {
+            self.container = try SharedContainer.prepare(in: url)
+        } catch {
+            print("PikoBridge: could not prepare protected shared storage (\(type(of: error)))")
+            return nil
+        }
         observeAll()
     }
 
@@ -89,10 +97,14 @@ public final class DarwinChannel: SessionChannel, AudioLevelChannel, @unchecked 
     }
 
     private func write<T: Encodable>(_ value: T, to name: String, signal: Signal) {
-        guard let data = try? JSONEncoder().encode(value) else { return }
-        // Atomic: the reader is another process and may be mid-read.
-        try? data.write(to: container.appendingPathComponent(name), options: .atomic)
-        post(signal)
+        do {
+            let data = try JSONEncoder().encode(value)
+            // Atomic: the reader is another process and may be mid-read.
+            try data.write(to: container.appendingPathComponent(name), options: .atomic)
+            post(signal)
+        } catch {
+            print("PikoBridge: shared payload write failed for \(name) (\(type(of: error)))")
+        }
     }
 }
 

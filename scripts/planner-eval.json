@@ -1,0 +1,366 @@
+[
+ {
+  "say": "put dentist on my calendar on friday at four",
+  "expect": [
+   {
+    "tools": [
+     "calendar.create"
+    ],
+    "hour": 16,
+    "day": "friday"
+   }
+  ]
+ },
+ {
+  "say": "um so like put dentist on my calendar friday",
+  "expect": [
+   {
+    "tools": [
+     "calendar.create"
+    ],
+    "ask": true,
+    "day": "friday"
+   }
+  ]
+ },
+ {
+  "say": "remind me to call mom tomorrow at 6",
+  "expect": [
+   {
+    "tools": [
+     "reminder.create"
+    ],
+    "hour": 18,
+    "day": "tomorrow"
+   }
+  ]
+ },
+ {
+  "say": "remind me to uh buy oat milk",
+  "expect": [
+   {
+    "tools": [
+     "reminder.create"
+    ],
+    "text": "oat milk",
+    "nowhen": true
+   }
+  ]
+ },
+ {
+  "say": "add gym at 7 am tomorrow to my calendar",
+  "expect": [
+   {
+    "tools": [
+     "calendar.create"
+    ],
+    "hour": 7,
+    "day": "tomorrow"
+   }
+  ]
+ },
+ {
+  "say": "meeting with Riya tomorrow at 3, no actually 5 pm",
+  "expect": [
+   {
+    "tools": [
+     "calendar.create",
+     "reminder.create"
+    ],
+    "hour": 17,
+    "day": "tomorrow"
+   }
+  ]
+ },
+ {
+  "say": "nudge me at 9 pm to journal",
+  "expect": [
+   {
+    "tools": [
+     "checkin.schedule"
+    ],
+    "hour": 21
+   }
+  ]
+ },
+ {
+  "say": "I felt really anxious about the interview today",
+  "expect": [
+   {
+    "tools": [
+     "journal.save"
+    ]
+   }
+  ]
+ },
+ {
+  "say": "app idea, a cute planner with stickers for students",
+  "expect": [
+   {
+    "tools": [
+     "note.save"
+    ],
+    "text": "planner"
+   }
+  ]
+ },
+ {
+  "say": "remind me to pay rent on the 1st",
+  "expect": [
+   {
+    "tools": [
+     "reminder.create"
+    ],
+    "text": "rent"
+   }
+  ]
+ },
+ {
+  "say": "book a table for dinner tomorrow evening",
+  "expect": [
+   {
+    "tools": [
+     "calendar.create",
+     "reminder.create"
+    ],
+    "hour": 18,
+    "day": "tomorrow"
+   }
+  ]
+ },
+ {
+  "say": "run my gym shortcut",
+  "expect": [
+   {
+    "tools": [
+     "shortcut.run"
+    ],
+    "text": "gym"
+   }
+  ]
+ },
+ {
+  "say": "so basically I need to email Priya about the deck by Friday",
+  "expect": [
+   {
+    "tools": [
+     "reminder.create"
+    ],
+    "text": "priya",
+    "day": "friday"
+   }
+  ]
+ },
+ {
+  "say": "put lunch with Sam on Saturday at 1",
+  "expect": [
+   {
+    "tools": [
+     "calendar.create"
+    ],
+    "hour": 13,
+    "day": "saturday"
+   }
+  ]
+ },
+ {
+  "say": "remind me this evening to water the plants",
+  "expect": [
+   {
+    "tools": [
+     "reminder.create"
+    ],
+    "hour": 18,
+    "text": "plants"
+   }
+  ]
+ },
+ {
+  "say": "tomorrow morning remind me to take my vitamins",
+  "expect": [
+   {
+    "tools": [
+     "reminder.create"
+    ],
+    "hour": 9,
+    "day": "tomorrow"
+   }
+  ]
+ },
+ {
+  "say": "remind me to call the electrician tomorrow at 10:30",
+  "expect": [
+   {
+    "tools": [
+     "reminder.create"
+    ],
+    "hour": 10,
+    "day": "tomorrow"
+   }
+  ]
+ },
+ {
+  "say": "uh what was I saying, oh yeah, remind me to submit the form",
+  "expect": [
+   {
+    "tools": [
+     "reminder.create"
+    ],
+    "text": "form"
+   }
+  ]
+ },
+ {
+  "say": "today was good, I finally finished the sketch, and remind me to buy frames",
+  "expect": [
+   {
+    "tools": [
+     "journal.save"
+    ]
+   },
+   {
+    "tools": [
+     "reminder.create"
+    ],
+    "text": "frames"
+   }
+  ]
+ },
+ {
+  "say": "check in with me at 10 pm to ask how my day was",
+  "expect": [
+   {
+    "tools": [
+     "checkin.schedule"
+    ],
+    "hour": 22
+   }
+  ]
+ },
+ {
+  "say": "put standup on my calendar tomorrow at 10",
+  "expect": [
+   {
+    "tools": [
+     "calendar.create"
+    ],
+    "hour": 10,
+    "day": "tomorrow"
+   }
+  ]
+ },
+ {
+  "say": "dentist friday 4pm calendar",
+  "expect": [
+   {
+    "tools": [
+     "calendar.create"
+    ],
+    "hour": 16,
+    "day": "friday"
+   }
+  ]
+ },
+ {
+  "say": "remind me to call dad at four",
+  "expect": [
+   {
+    "tools": [
+     "reminder.create"
+    ],
+    "hour": 16
+   }
+  ]
+ },
+ {
+  "say": "put dentist on my calendar friday at 4 pm, remind me to buy oat milk, and nudge me at 9 pm to journal",
+  "expect": [
+   {
+    "tools": [
+     "calendar.create"
+    ],
+    "hour": 16,
+    "day": "friday"
+   },
+   {
+    "tools": [
+     "reminder.create"
+    ],
+    "text": "oat milk",
+    "nowhen": true
+   },
+   {
+    "tools": [
+     "checkin.schedule"
+    ],
+    "hour": 21
+   }
+  ]
+ },
+ {
+  "say": "hmm",
+  "expect": []
+ },
+ {
+  "say": "I need to call the bank, and also I'm so tired of this week",
+  "expect": [
+   {
+    "tools": [
+     "reminder.create"
+    ],
+    "text": "bank",
+    "nowhen": true
+   },
+   {
+    "tools": [
+     "journal.save"
+    ]
+   }
+  ]
+ },
+ {
+  "say": "put yoga on my calendar sunday at 8 am and remind me to buy a mat",
+  "expect": [
+   {
+    "tools": [
+     "calendar.create"
+    ],
+    "hour": 8,
+    "day": "sunday"
+   },
+   {
+    "tools": [
+     "reminder.create"
+    ],
+    "text": "mat",
+    "nowhen": true
+   }
+  ]
+ },
+ {
+  "say": "remind me to call Riya at 2, sorry, I mean 3",
+  "expect": [
+   {
+    "tools": [
+     "reminder.create"
+    ],
+    "hour": 15
+   }
+  ]
+ },
+ {
+  "say": "okay um so yeah",
+  "expect": []
+ },
+ {
+  "say": "thought: what if Piko had a sleepy mode at night",
+  "expect": [
+   {
+    "tools": [
+     "note.save"
+    ],
+    "text": "sleepy"
+   }
+  ]
+ }
+]

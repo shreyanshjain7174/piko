@@ -10,3 +10,9 @@ Packages/
 models/
 graphify-out/
 App/build/
+verification-logs/
+__pycache__/
+
+# Local scratch dirs
+.mimosa/
+.playwright-mcp/
