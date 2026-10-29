@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "PikoTranscribe", targets: ["PikoTranscribe"]),
         .library(name: "PikoBrain", targets: ["PikoBrain"]),
         .library(name: "PikoMemory", targets: ["PikoMemory"]),
+        .library(name: "PikoMind", targets: ["PikoMind"]),
         .library(name: "PikoUI", targets: ["PikoUI"]),
         // Everything the keyboard extension is allowed to link. Keep this list short —
         // it is the build-time expression of the ~60 MB ceiling (see docs/CONSTRAINTS.md C4).
@@ -27,11 +28,13 @@ let package = Package(
             "PikoKit",
             .product(name: "WhisperKit", package: "argmax-oss-swift", condition: .when(platforms: [.iOS])),
         ]),
-        .target(name: "PikoMemory", dependencies: ["PikoKit"]),
+        .target(name: "PikoMind", dependencies: ["PikoKit"]),
+        .target(name: "PikoMemory", dependencies: ["PikoKit", "PikoMind"]),
         .target(name: "PikoBrain", dependencies: ["PikoKit", "PikoMemory"]),
         .target(name: "PikoUI", dependencies: ["PikoKit"], resources: [.process("Resources")]),
         .testTarget(name: "PikoKitTests", dependencies: ["PikoKit", "PikoBrain", "PikoMemory"]),
         .testTarget(name: "PikoMemoryTests", dependencies: ["PikoMemory", "PikoKit"]),
+        .testTarget(name: "PikoMindTests", dependencies: ["PikoMind", "PikoMemory", "PikoKit"]),
         .testTarget(name: "PikoUITests", dependencies: ["PikoUI", "PikoKit"]),
         .testTarget(name: "PikoBridgeTests", dependencies: ["PikoBridge", "PikoKit"]),
         .testTarget(name: "PikoAudioTests", dependencies: ["PikoAudio", "PikoKit"]),
