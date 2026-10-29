@@ -3,6 +3,7 @@ import Foundation
 import SQLite3
 @testable import PikoMemory
 import PikoKit
+import PikoMind
 
 @Test("PikoMemoryTests target compiles and runs")
 func targetIsWired() {
@@ -254,3 +255,31 @@ func ephemeralDeleteMatches() async {
     #expect(await memory.search("distinctive", limit: 10).isEmpty)
 }
 
+
+// MARK: - PikoMind adapter
+
+@Test("record() also appends the dictation to PikoMind's turn log")
+func recordAppendsTurn() async throws {
+    let path = temporaryDatabaseURL()
+    let memory = try SQLiteMemory(path: path)
+    let result = CaptureResult(raw: "raw", shipped: "Pick up the cake at six")
+    await memory.record(result)
+
+    let mind = try MindDatabase(path: path)
+    let turns = try mind.turns(session: MindDatabase.dictationSession, last: 10)
+    #expect(turns.map(\.text) == ["Pick up the cake at six"])
+    #expect(turns.first?.sourceID == result.id.uuidString)
+}
+
+@Test("delete() forgets the dictation's turn as well as its history row")
+func deleteForgetsTurn() async throws {
+    let path = temporaryDatabaseURL()
+    let memory = try SQLiteMemory(path: path)
+    let result = CaptureResult(raw: "raw", shipped: "Something to forget")
+    await memory.record(result)
+    await memory.delete(result.id)
+
+    #expect(await memory.search("forget", limit: 10).isEmpty)
+    let mind = try MindDatabase(path: path)
+    #expect(try mind.turns(session: MindDatabase.dictationSession, last: 10).isEmpty)
+}

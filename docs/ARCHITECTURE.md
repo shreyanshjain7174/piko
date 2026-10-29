@@ -59,7 +59,8 @@ PikoKit        (types, protocols, no dependencies)
   ├── PikoBridge      → PikoKit
   ├── PikoAudio       → PikoKit
   ├── PikoTranscribe  → PikoKit
-  ├── PikoMemory      → PikoKit
+  ├── PikoMind        (the one memory file: schema, migrations, turn log; no dependencies)
+  ├── PikoMemory      → PikoKit, PikoMind
   ├── PikoBrain       → PikoKit, PikoMemory
   └── PikoUI          → PikoKit
 

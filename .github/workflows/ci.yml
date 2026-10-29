@@ -23,14 +23,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Keyboard target must stay light
-        # CONSTRAINTS C4. If PikoBrain, PikoAudio, PikoTranscribe or PikoMemory ever appear in
+        # CONSTRAINTS C4. If PikoBrain, PikoAudio, PikoTranscribe, PikoMemory or PikoMind ever appear in
         # the PikoKeyboard target, fail here rather than on a device with no crash log.
         run: |
           python3 - <<'PY'
           import re, sys
           spec = open('App/project.yml').read()
           block = spec.split('PikoKeyboard:')[1].split('PikoWidgets:')[0]
-          banned = ['PikoBrain', 'PikoAudio', 'PikoTranscribe', 'PikoMemory']
+          banned = ['PikoBrain', 'PikoAudio', 'PikoTranscribe', 'PikoMemory', 'PikoMind']
           found = [b for b in banned if b in block]
           if found:
               sys.exit(f"Keyboard target links heavy modules: {found} — see docs/CONSTRAINTS.md C4")

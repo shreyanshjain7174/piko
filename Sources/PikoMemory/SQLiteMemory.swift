@@ -1,82 +1,42 @@
 import Foundation
 import SQLite3
 import PikoKit
+import PikoMind
 
 // SQLite's destructor macros are C preprocessor tokens the Clang importer does not expose to
 // Swift. This is the same bitcast pattern used by stephencelis/SQLite.swift's Statement.swift.
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
 enum SQLiteMemoryError: Error, Sendable {
-    case openFailed(String)
     case prepareFailed(String)
     case stepFailed(String)
 }
 
-/// Local index. SQLite with FTS5.
+/// Local index. SQLite with FTS5, stored in PikoMind's file.
 ///
 /// Retrieval, never a growing prompt — the on-device context window is 8,192 tokens and months
 /// of sessions will not fit. `nearestEdits` is what makes Piko sound more like the user over
 /// time: the closest past corrections become few-shot examples for the next rewrite.
 public actor SQLiteMemory: Memory {
-    // OpaquePointer isn't Sendable; deinit is nonisolated, so this needs the escape hatch.
-    // Safe here: only ever mutated once (init) and read while the actor serializes all other
-    // access, or in deinit after the last reference (and thus all other access) is gone.
-    nonisolated(unsafe) private var db: OpaquePointer?
+    private let mind: MindDatabase
+    private var db: OpaquePointer { mind.handle }
 
+    /// Opens, and migrates if needed, the one memory file. The schema lives in PikoMind; this
+    /// type adapts it to the `Memory` and `ItemStore` protocols the rest of the app uses.
     public init(path: URL) throws {
-        var handle: OpaquePointer?
-        let openResult = sqlite3_open_v2(path.path, &handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nil)
-        guard openResult == SQLITE_OK else {
-            let message = handle.flatMap { String(cString: sqlite3_errmsg($0)) } ?? "unknown error"
-            sqlite3_close(handle)
-            throw SQLiteMemoryError.openFailed(message)
-        }
-        self.db = handle
-
-        // A synchronous, non-delegating actor init is nonisolated w.r.t. calling other
-        // actor-isolated instance methods, so the schema DDL is inlined here rather than
-        // routed through an isolated helper.
-        let schemaSQL = """
-        CREATE TABLE IF NOT EXISTS results (
-            id TEXT NOT NULL UNIQUE, raw TEXT NOT NULL, shipped TEXT NOT NULL,
-            route TEXT NOT NULL, profile TEXT NOT NULL, createdAt REAL NOT NULL,
-            firstWordMS INTEGER NOT NULL, transcribeMS INTEGER NOT NULL, brainMS INTEGER NOT NULL
-        );
-        CREATE VIRTUAL TABLE IF NOT EXISTS results_fts USING fts5(
-            raw, shipped, content='results', content_rowid='rowid'
-        );
-        CREATE TRIGGER IF NOT EXISTS results_ai AFTER INSERT ON results BEGIN
-            INSERT INTO results_fts(rowid, raw, shipped) VALUES (new.rowid, new.raw, new.shipped);
-        END;
-        CREATE TRIGGER IF NOT EXISTS results_ad AFTER DELETE ON results BEGIN
-            INSERT INTO results_fts(results_fts, rowid, raw, shipped)
-            VALUES ('delete', old.rowid, old.raw, old.shipped);
-        END;
-        CREATE TABLE IF NOT EXISTS items (
-            id TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, text TEXT NOT NULL,
-            due REAL, createdAt REAL NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS edits (
-            raw TEXT NOT NULL, shipped TEXT NOT NULL, final TEXT NOT NULL,
-            profile TEXT NOT NULL, createdAt REAL NOT NULL
-        );
-        """
-        guard sqlite3_exec(handle, schemaSQL, nil, nil, nil) == SQLITE_OK else {
-            let message = String(cString: sqlite3_errmsg(handle))
-            sqlite3_close(handle)
-            throw SQLiteMemoryError.stepFailed(message)
-        }
-    }
-
-    deinit {
-        sqlite3_close(db)
+        mind = try MindDatabase(path: path)
     }
 
     // MARK: - Write path
 
     public func record(_ result: CaptureResult) async {
         do {
-            try insert(result)
+            try mind.transaction {
+                try insert(result)
+                try mind.appendTurn(session: MindDatabase.dictationSession, role: .user,
+                                    text: result.shipped, createdAt: result.createdAt,
+                                    sourceID: result.id.uuidString)
+            }
         } catch {
             print("SQLiteMemory: record failed: \(error)")
         }
@@ -116,16 +76,23 @@ public actor SQLiteMemory: Memory {
         }
     }
 
+    /// Forgets a dictation everywhere it was remembered: the history row and its turn.
     public func delete(_ id: UUID) async {
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "DELETE FROM results WHERE id = ?", -1, &stmt, nil) == SQLITE_OK else {
-            print("SQLiteMemory: delete failed: \(String(cString: sqlite3_errmsg(db)))")
-            return
-        }
-        defer { sqlite3_finalize(stmt) }
-        sqlite3_bind_text(stmt, 1, id.uuidString, -1, SQLITE_TRANSIENT)
-        if sqlite3_step(stmt) != SQLITE_DONE {
-            print("SQLiteMemory: delete failed: \(String(cString: sqlite3_errmsg(db)))")
+        do {
+            try mind.transaction {
+                var stmt: OpaquePointer?
+                guard sqlite3_prepare_v2(db, "DELETE FROM results WHERE id = ?", -1, &stmt, nil) == SQLITE_OK else {
+                    throw SQLiteMemoryError.prepareFailed(String(cString: sqlite3_errmsg(db)))
+                }
+                defer { sqlite3_finalize(stmt) }
+                sqlite3_bind_text(stmt, 1, id.uuidString, -1, SQLITE_TRANSIENT)
+                guard sqlite3_step(stmt) == SQLITE_DONE else {
+                    throw SQLiteMemoryError.stepFailed(String(cString: sqlite3_errmsg(db)))
+                }
+                try mind.forgetTurns(sourceID: id.uuidString)
+            }
+        } catch {
+            print("SQLiteMemory: delete failed: \(error)")
         }
     }
 
