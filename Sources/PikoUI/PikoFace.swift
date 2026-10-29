@@ -7,12 +7,15 @@ import PikoKit
 public struct PikoFace: View {
     public var phase: SessionPhase
     public var skin: Skin
+    /// The frame of Piko's idle life (`SessionPhase.pose(beat:)`). Beat 0 is the phase's resting face.
+    public var beat: Int
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(phase: SessionPhase, skin: Skin = .cute) {
+    public init(phase: SessionPhase, skin: Skin = .cute, beat: Int = 0) {
         self.phase = phase
         self.skin = skin
+        self.beat = beat
     }
 
     public var body: some View {
@@ -37,7 +40,7 @@ public struct PikoFace: View {
 
     private func draw(in context: inout GraphicsContext) {
         let palette = skin.palette
-        let faceState = phase.faceState
+        let faceState = phase.pose(beat: reduceMotion ? 0 : beat)
 
         // Draw order mirrors web/index.html's document order — later elements paint over earlier.
         if skin == .hero {
@@ -72,7 +75,12 @@ public struct PikoFace: View {
             context.fill(Self.maskPath, with: .color(palette.spark))
         }
 
+        // A glance moves the eyes, or the cool skin's shades, a few points to one side.
+        var eyeContext = context
+        eyeContext.translateBy(x: faceState.gaze * 5, y: 0)
+
         if skin.showsEyes {
+            let context = eyeContext
             switch faceState.eye {
             case .open:
                 context.fill(Self.eyesOpenLeft, with: .color(palette.onPiko))
@@ -84,10 +92,15 @@ public struct PikoFace: View {
                 let happyStyle = StrokeStyle(lineWidth: 3.4, lineCap: .round)
                 context.stroke(Self.eyesHappyLeft, with: .color(palette.onPiko), style: happyStyle)
                 context.stroke(Self.eyesHappyRight, with: .color(palette.onPiko), style: happyStyle)
+            case .closed:
+                let lidStyle = StrokeStyle(lineWidth: 3.4, lineCap: .round)
+                context.stroke(Self.eyesClosedLeft, with: .color(palette.onPiko), style: lidStyle)
+                context.stroke(Self.eyesClosedRight, with: .color(palette.onPiko), style: lidStyle)
             }
         }
 
         if skin == .cool {
+            let context = eyeContext
             context.fill(Self.shadeLeft, with: .color(palette.onPiko))
             context.fill(Self.shadeBridge, with: .color(palette.onPiko))
             var reflectionContext = context
@@ -210,6 +223,21 @@ public struct PikoFace: View {
         return path
     }()
 
+    /// A blink: the happy arcs turned over, `M48 74 q7 7 14 0`.
+    private static let eyesClosedLeft: Path = {
+        var path = Path()
+        path.move(to: CGPoint(x: 48, y: 74))
+        path.addQuadCurve(to: CGPoint(x: 62, y: 74), control: CGPoint(x: 55, y: 81))
+        return path
+    }()
+
+    private static let eyesClosedRight: Path = {
+        var path = Path()
+        path.move(to: CGPoint(x: 78, y: 74))
+        path.addQuadCurve(to: CGPoint(x: 92, y: 74), control: CGPoint(x: 85, y: 81))
+        return path
+    }()
+
     private static let shadeLeft = Path(roundedRect: CGRect(x: 36, y: 64, width: 68, height: 17), cornerRadius: 7)
     private static let shadeBridge = Path(CGRect(x: 66, y: 68, width: 8, height: 5))
 
@@ -310,12 +338,12 @@ extension Skin {
 }
 
 /// The SVG's three `eyes-*` groups.
-public enum PikoEyeState: Equatable {
-    case open, wide, happy
+public enum PikoEyeState: Equatable, Sendable {
+    case open, wide, happy, closed
 }
 
 /// The SVG's three `m-*` mouth groups.
-public enum PikoMouthState: Equatable {
+public enum PikoMouthState: Equatable, Sendable {
     case idle, open, think
 }
 
@@ -329,5 +357,47 @@ extension SessionPhase {
         case .capturing: (.wide, .open)
         case .tidying:   (.open, .think)
         }
+    }
+}
+
+/// One frame of the character: eyes, mouth, and where Piko is looking (-1 left, 0 ahead, 1 right).
+public struct PikoPose: Equatable, Sendable {
+    public var eye: PikoEyeState
+    public var mouth: PikoMouthState
+    public var gaze: CGFloat
+
+    public init(_ eye: PikoEyeState, _ mouth: PikoMouthState, gaze: CGFloat = 0) {
+        self.eye = eye
+        self.mouth = mouth
+        self.gaze = gaze
+    }
+}
+
+extension SessionPhase {
+    /// Piko's little life in the Dynamic Island: a loop of frames per phase. Beat 0 is always the
+    /// phase's resting face, so the app's own screens (which never pass a beat) look unchanged.
+    var poses: [PikoPose] {
+        let rest = PikoPose(faceState.eye, faceState.mouth)
+        switch self {
+        case .idle:
+            return [rest]
+        case .armed:
+            // Waiting: looks about, blinks, now and then smiles at you.
+            return [rest, PikoPose(.closed, .idle), rest,
+                    PikoPose(.wide, .idle, gaze: -1), PikoPose(.wide, .idle, gaze: -1), rest,
+                    PikoPose(.wide, .idle, gaze: 1), PikoPose(.happy, .idle)]
+        case .capturing:
+            // Listening: an attentive "ooh", a nod, a happy squint.
+            return [rest, PikoPose(.wide, .idle), rest, PikoPose(.happy, .open)]
+        case .tidying:
+            // Thinking: eyes drift side to side and close for a moment.
+            return [rest, PikoPose(.open, .think, gaze: -1), PikoPose(.closed, .think),
+                    PikoPose(.open, .think, gaze: 1)]
+        }
+    }
+
+    public func pose(beat: Int) -> PikoPose {
+        let loop = poses
+        return loop[((beat % loop.count) + loop.count) % loop.count]
     }
 }

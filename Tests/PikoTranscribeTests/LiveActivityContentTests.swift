@@ -22,6 +22,13 @@ struct LiveActivityContentTests {
         #expect(LiveActivityContent.placeholderLevels().count == 8)
     }
 
+    @Test func heartbeatRunsOnlyWhileTheSessionIsLive() {
+        #expect(LiveActivityContent.beatInterval(for: .idle) == nil)
+        #expect(LiveActivityContent.beatInterval(for: .armed) == .seconds(3))
+        #expect(LiveActivityContent.beatInterval(for: .capturing)! < LiveActivityContent.beatInterval(for: .armed)!)
+        #expect(LiveActivityContent.beatInterval(for: .tidying)! < LiveActivityContent.beatInterval(for: .armed)!)
+    }
+
     @Test func shouldEndActivityOnlyForIdle() {
         #expect(LiveActivityContent.shouldEndActivity(for: .idle) == true)
     }
