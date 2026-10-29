@@ -5,7 +5,7 @@ import SwiftUI
 /// any target that links PikoUI.
 ///
 /// The island cannot run this: Live Activities show held frames only. This view is for the app
-/// and anywhere else SwiftUI is allowed to tick.
+/// and anywhere else SwiftUI is allowed to tick. Use `LopFrameView` for a held pose.
 public struct LopRigView: View {
     private let inputs: LopInputs
     private let fur: Color
@@ -68,12 +68,19 @@ final class LopSimulation {
 struct LopPainter {
     let fur: Color
     let soft: Bool
+    let ink: Color
 
-    private static let ink = Color(red: 0.12, green: 0.10, blue: 0.09)
+    init(fur: Color, soft: Bool, ink: Color = Color(red: 0.12, green: 0.10, blue: 0.09)) {
+        self.fur = fur
+        self.soft = soft
+        self.ink = ink
+    }
+
     private static let pink = Color(red: 0.97, green: 0.73, blue: 0.64)
     private static let coral = Color(red: 0.91, green: 0.57, blue: 0.48)
     private static let earWidth = 13.0
     private static let earLength = 44.0
+    private static let outline = StrokeStyle(lineWidth: 1.2, lineCap: .round)
 
     func draw(_ pose: LopPose, in context: inout GraphicsContext, size: CGSize) {
         context.scaleBy(x: size.width / 120, y: size.height / 120)
@@ -94,6 +101,9 @@ struct LopPainter {
         drawEar(at: CGPoint(x: 51, y: top + 10), angle: pose.earLeft, fold: pose.foldLeft, in: &context)
         drawEar(at: CGPoint(x: 69, y: top + 10), angle: pose.earRight, fold: pose.foldRight, in: &context)
         context.fill(Path(ellipseIn: body), with: furShading(in: body))
+        if !soft {
+            context.stroke(Path(ellipseIn: body), with: .color(ink), style: Self.outline)
+        }
 
         var face = context
         face.translateBy(x: 0, y: (1 - pose.squashY) * 18)
@@ -120,8 +130,9 @@ struct LopPainter {
         let root = soft ? fur.mix(with: Color(red: 0.6, green: 0.45, blue: 0.3), by: 0.22) : fur
         let joint = fur
         let end = soft ? fur.mix(with: .white, by: 0.45) : fur
-        let shading = GraphicsContext.Shading.linearGradient(
-            Gradient(colors: [root, joint]), startPoint: .zero, endPoint: CGPoint(x: 0, y: -base))
+        let shading: GraphicsContext.Shading = soft
+            ? .linearGradient(Gradient(colors: [root, joint]), startPoint: .zero, endPoint: CGPoint(x: 0, y: -base))
+            : .color(fur)
         let innerShading: GraphicsContext.Shading = soft
             ? .linearGradient(Gradient(colors: [Self.pink, Self.coral]), startPoint: CGPoint(x: 0, y: -base - tip), endPoint: .zero)
             : .color(Self.pink)
@@ -130,17 +141,29 @@ struct LopPainter {
         ear.fill(Path(ellipseIn: CGRect(x: -w / 2, y: -base + 1 - w / 2, width: w, height: w)), with: shading)
         ear.fill(Path(CGRect(x: -w * 0.22, y: -base, width: w * 0.44, height: base)), with: innerShading)
         ear.fill(Path(ellipseIn: CGRect(x: -w * 0.22, y: -base + 1 - w * 0.22, width: w * 0.44, height: w * 0.44)), with: innerShading)
+        if !soft {
+            var sides = Path()
+            for x in [-w / 2, w / 2] {
+                sides.move(to: CGPoint(x: x, y: 0))
+                sides.addLine(to: CGPoint(x: x, y: -base + 1))
+            }
+            ear.stroke(sides, with: .color(ink), style: Self.outline)
+        }
 
         var tipContext = ear
         tipContext.translateBy(x: 0, y: -base + 1)
         tipContext.rotate(by: .degrees(fold))
-        let tipShading = GraphicsContext.Shading.linearGradient(
-            Gradient(colors: [joint, end]), startPoint: .zero, endPoint: CGPoint(x: 0, y: -tip))
+        let tipShading: GraphicsContext.Shading = soft
+            ? .linearGradient(Gradient(colors: [joint, end]), startPoint: .zero, endPoint: CGPoint(x: 0, y: -tip))
+            : .color(fur)
         let tipInner: GraphicsContext.Shading = soft
             ? .linearGradient(Gradient(colors: [Self.pink, Self.coral]), startPoint: CGPoint(x: 0, y: -tip), endPoint: CGPoint(x: 0, y: base))
             : .color(Self.pink)
         tipContext.fill(Self.leaf(length: tip + 3, width: w), with: tipShading)
         tipContext.fill(Self.leaf(length: tip * 0.75, width: w * 0.44), with: tipInner)
+        if !soft {
+            tipContext.stroke(Self.leaf(length: tip + 3, width: w), with: .color(ink), style: Self.outline)
+        }
     }
 
     private static func leaf(length: Double, width: Double) -> Path {
@@ -157,7 +180,7 @@ struct LopPainter {
     }
 
     private func drawFace(_ pose: LopPose, in context: inout GraphicsContext) {
-        let ink = GraphicsContext.Shading.color(Self.ink)
+        let ink = GraphicsContext.Shading.color(ink)
         for x in [52.0, 68.0] {
             let eye = CGPoint(x: x + pose.gaze.x, y: 82 + pose.gaze.y)
             if pose.happyEyes {
@@ -178,8 +201,8 @@ struct LopPainter {
                 }
             }
         }
+        context.fill(Path(ellipseIn: CGRect(x: 57.8, y: 87.4 + pose.nose, width: 4.4, height: 3.2)), with: ink)
         if soft {
-            context.fill(Path(ellipseIn: CGRect(x: 57.8, y: 87.4 + pose.nose, width: 4.4, height: 3.2)), with: ink)
             var mouth = Path()
             mouth.move(to: CGPoint(x: 56.5, y: 93))
             mouth.addQuadCurve(to: CGPoint(x: 60, y: 93), control: CGPoint(x: 58.25, y: 95.5))

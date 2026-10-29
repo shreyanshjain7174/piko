@@ -116,6 +116,16 @@ Branch `spike/lop-rig` (PR #7). Debug-only lab screen: launch with `-PikoLopLab 
   where to look, mood). A pure value type with a seeded RNG, covered by 7 Swift Testing tests.
 - `Sources/PikoUI/LopRigView.swift`: draws the sketch-canvas geometry every frame, as either
   the soft app render or the flat island look. Stroking Lop pats it.
+- `Sources/PikoUI/LopFrameView.swift`: holds one deterministic `LopPose` using that same
+  painter, without simulation, timers or gestures. `LopFrameView(pose: .rest, style: .flat,
+  ink: .black)` uses cream fur and thin ink outlines; `.soft` keeps the shaded app finish.
+  `LopPose` presets are `rest`, `blink`, `earTwitch`, `glanceLeft`, `glanceRight`, `nose`,
+  `flop`, `earsUp(level:)`, `thump`, `tilt`, `swivelLeft`, `swivelRight`, `binky1`, `binky2`.
+  Ear levels are normalized to 0...1 and clamped (NaN means quiet).
+  Module tests rasterize both styles at 22/26/48/58pt with `ImageRenderer`, checking visible
+  cream/ink, transparency, custom ink, distinct poses and repeatability. These are macOS
+  module-render checks, not physical-device Live Activity evidence; that proof is still needed.
+  Production app/widget callers are unchanged.
 - `App/Piko/LopLab.swift`: every rig input on one screen, in both looks.
 - During the spike the lab also ran RiveRuntime 6.28.1 next to the Canvas rig, playing a sample
   file (`mascot.riv`, MIT, from rive-app/rive-ios), because a Lop `.riv` needs the Rive editor.
