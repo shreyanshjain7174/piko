@@ -79,30 +79,38 @@ package closure of the keyboard products; PikoMind must never reach the keyboard
 the `PikoMind.SQLiteStore` actor at the same app-container `history.sqlite` URL. There is no
 second database, new package dependency, or change to `EphemeralMemory`.
 
-Schema version 2 uses SQLite `user_version`. Opening an unversioned file adds `turns`, `facts`,
-`entities` and `embeddings`, retaining `results`, `results_fts`, `items` and `edits` in place.
+Schema version 1 uses SQLite `user_version`. The only migration is shipped version 0 → final
+version 1. Opening an unversioned file adds `turns`, `facts`, `entities` and `embeddings`,
+retaining `results`, `results_fts`, `items` and `edits` in place.
 The migration holds an immediate transaction through backfill, FTS rebuild and version update.
-Failure rolls everything back and throws from initialization; newer versions are rejected.
-Reopening version 2 does not backfill again or allocate LSNs. The initial version-1 foundation
-also upgrades in place, retaining active committed LSNs and existing foundation columns/data.
+Failure rolls everything back and throws from initialization; unsupported/future versions and
+nonfinal version-1 layouts are explicitly rejected without modification. There are no upgrade
+paths for unreleased PR schemas. Reopening version 1 does not backfill again or allocate LSNs.
 
-`turns` stores `lsn`, `session`, `role`, `text` and `ts`. Each capture UUID is its deterministic
-synthetic session: raw text becomes a user turn and shipped text an assistant turn, both with
-the exact original timestamp. Unversioned captures backfill in rowid order, user then assistant.
-Subsequent captures append both turns atomically via a trigger. The original `id`/`createdAt`
-columns remain for compatibility; `id` links both turns to history deletion.
+`turns` stores only `lsn`, `session`, `role`, `text` and `ts`. Each capture UUID is its own
+deterministic synthetic session; it cannot group multiple dictations. Dictation cleanup is
+the user's speech, not an assistant reply: each capture produces exactly one `user` turn with
+exact `results.shipped` text and the original timestamp. Raw text remains only in legacy
+results/FTS, not turns. Unversioned captures backfill in rowid order. Subsequent captures append
+one turn atomically with the result and FTS insertion via a trigger.
 
 Normal writes append rather than update or replace turns. Explicit history deletion atomically
-removes the result, FTS entry and both transcript-bearing turns. Direct turn deletion is allowed
-for future forgetting/expiry; no maintenance API is introduced here. AUTOINCREMENT preserves
-the committed LSN high-water mark even after all turn rows are deleted.
+removes the result, FTS entry and turns matching the capture's deterministic session. Direct
+turn deletion is allowed for future forgetting/expiry; no maintenance API is introduced here.
+AUTOINCREMENT preserves the committed LSN high-water mark even after all turn rows are deleted.
 
-Facts store unique keys and values, LSN, source-turn provenance, confidence and `lastUsed`;
-an optional entity ID links facts to entities. Source/entity foreign keys become null when their
-referenced row is deleted, so retaining facts cannot prevent raw-turn expiry. Entities include
-JSON-text aliases and an optional contact ID. Embeddings retain SQLite rowid-addressable vector
-blobs with dimensions, model/owner identity and a Float16/int8 encoding tag. These are storage
+Facts store only `key TEXT NOT NULL PRIMARY KEY` (no default), `value`, `lsn`, `sourceTurn`,
+`confidence`, `lastUsed` and `entityID`; there are no duplicate id/text/createdAt fields.
+An optional entity ID links facts to entities. Source/entity foreign keys become null when their
+referenced row is deleted, so retaining facts cannot prevent turn expiry. Entities include
+JSON-text aliases and an optional contact ID; alias indexing is deferred. Embeddings retain
+SQLite rowid-addressable vector blobs with dimensions, model/owner identity and a Float16/int8
+encoding tag. These are storage
 shapes only, with no extraction, inference, recall, photo, maintenance or settings API yet.
+Owner-scoped AFTER DELETE triggers remove every embedding model for deleted turns
+(`ownerKind = 'turn'`, `ownerID = CAST(old.lsn AS TEXT)`), facts (`'fact'`, `old.key`) and
+entities (`'entity'`, `old.id`). Other IDs and same-ID owners of other kinds are untouched;
+failure rolls back the enclosing history/turn/embedding deletion atomically.
 The nonthrowing compatibility operations retain best-effort behavior and print storage errors.
 
 ## Data contracts
