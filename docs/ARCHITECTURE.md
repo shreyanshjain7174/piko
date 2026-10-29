@@ -59,7 +59,8 @@ PikoKit        (types, protocols, no dependencies)
   ├── PikoBridge      → PikoKit
   ├── PikoAudio       → PikoKit
   ├── PikoTranscribe  → PikoKit
-  ├── PikoMemory      → PikoKit
+  ├── PikoMind        → PikoKit
+  ├── PikoMemory      → PikoKit, PikoMind
   ├── PikoBrain       → PikoKit, PikoMemory
   └── PikoUI          → PikoKit
 
@@ -69,7 +70,28 @@ App/PikoWidgets   → PikoKit, PikoUI
 ```
 
 The keyboard's dependency list is a build-time expression of C4. If someone adds PikoBrain to
-that target, the build should fail before the device does.
+that target, the build should fail before the device does. CI also checks the transitive Swift
+package closure of the keyboard products; PikoMind must never reach the keyboard.
+
+### App-only memory storage
+
+`PikoMemory.SQLiteMemory(path:)` remains the `Memory`/`ItemStore` entry point. It delegates to
+the `PikoMind.SQLiteStore` actor at the same app-container `history.sqlite` URL. There is no
+second database, new package dependency, or change to `EphemeralMemory`.
+
+Schema version 1 uses SQLite `user_version`. Opening an unversioned file adds `turns`, `facts`,
+`entities` and `embeddings`, retaining `results`, `results_fts`, `items` and `edits` in place.
+The migration holds an immediate transaction through backfill, FTS rebuild and version update.
+Failure rolls everything back and throws from initialization; newer versions are rejected.
+Reopening version 1 does not backfill again or allocate LSNs.
+
+`turns` is an append-only envelope of capture ID and original timestamp, ordered by an
+autoincrementing LSN. Legacy captures backfill in rowid order; subsequent capture inserts append
+atomically via a trigger. The transcript has only one copy, in `results`: deleting history still
+removes the transcript and its search entry, while the immutable ID/timestamp envelope remains.
+Deleting then recording the same capture ID appends a new LSN. Facts, entities and embeddings
+are schema foundations only, with no extraction, inference, recall or settings API yet.
+The nonthrowing compatibility operations retain best-effort behavior and print storage errors.
 
 ## Data contracts
 

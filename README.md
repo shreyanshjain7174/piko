@@ -192,7 +192,8 @@ metrics and actual phone integration tests remain necessary.
 | `Sources/PikoAudio` | The armed session — AVAudioEngine lifecycle, interruption recovery |
 | `Sources/PikoTranscribe` | Speech-to-text behind a protocol; SpeechAnalyzer implementation |
 | `Sources/PikoBrain` | Router + rewriter behind a protocol; Foundation Models and MLX implementations |
-| `Sources/PikoMemory` | Local index, edit pairs, personal lexicon |
+| `Sources/PikoMind` | App-only SQLite owner, versioned schema and in-place history migration |
+| `Sources/PikoMemory` | Memory/ItemStore compatibility adapter and ephemeral test store |
 | `Sources/PikoBridge` | Keyboard ↔ app IPC (Darwin notifications + App Group) |
 | `Sources/PikoUI` | The Piko character, skins, shared views |
 | `App/Piko` | Container app target |
