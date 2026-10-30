@@ -110,6 +110,12 @@ struct PikoCompanionInteractionTests {
         #expect(await model.submitTypedRequest("Make a note \(marker)"))
         #expect(model.isCelebrating)
         let outcome = model.assistant
+        #expect(!model.isExecutingTools)
+        #expect(model.phase != .capturing)
+        try await Task.sleep(for: .milliseconds(150))
+        model.refresh()
+        #expect(model.assistant == outcome)
+        #expect(model.phase != .capturing) // A typed success must not schedule delayed voice capture.
         model.setQuietMode(true)
         #expect(!model.isCelebrating)
         #expect(model.assistant == outcome)

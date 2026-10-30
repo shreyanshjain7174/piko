@@ -37,6 +37,7 @@ final class HomeViewModel: ObservableObject {
     private var captureStartupID = UUID()
     private var celebrationTask: Task<Void, Never>?
     private var conversation = Conversation()
+    private var followUpPolicy = FollowUpPolicy()
     private let speaker = Speaker()
     private let calendar = EventKitCalendar()
     private var pauseWatch: Task<Void, Never>?
@@ -70,11 +71,14 @@ final class HomeViewModel: ObservableObject {
             if !self.isFollowUp {
                 self.notice = "I didn’t catch that. Tap Talk to Piko and try again."
             }
-            Task { await self.finishTurn() }
+            let owner = self.responseID
+            Task { await self.finishTurn(requestID: owner) }
         }
         app.onTalkRequested = { [weak self] in await self?.talk() }
         app.onStopRequested = { [weak self] in
             guard let self else { return }
+            self.followUpPolicy.endVoiceTurn()
+            self.usesVoiceFollowUp = false
             self.captureStartupTask?.cancel()
             if self.isExecutingTools {
                 self.notice = "The approved action is finishing. Its result will stay visible."
@@ -110,7 +114,9 @@ final class HomeViewModel: ObservableObject {
         guard active != isCompanionActive else { return }
         isCompanionActive = active
         if !active {
-            captureStartupTask?.cancel()
+            followUpPolicy.endVoiceTurn()
+            usesVoiceFollowUp = false
+            cancelAutomaticCapture()
             greeting = nil
             speaker.stop()
             celebrationTask?.cancel()
@@ -120,6 +126,19 @@ final class HomeViewModel: ObservableObject {
             if assistant == nil, companionPreferences.shouldPresentRoutine(.greeting) {
                 greeting = companionPreferences.personality.greeting
             }
+        }
+    }
+
+    private func cancelAutomaticCapture() {
+        captureStartupTask?.cancel()
+        guard isFollowUp, app.session.currentPhase == .capturing else { return }
+        let owner = responseID
+        let captureID = captureStartupID
+        Task { [weak self] in
+            guard let self, self.responseID == owner, self.captureStartupID == captureID else { return }
+            await self.stopListeningQuietly()
+            guard self.responseID == owner, self.captureStartupID == captureID else { return }
+            await self.finishTurn(requestID: owner)
         }
     }
 
@@ -158,7 +177,10 @@ final class HomeViewModel: ObservableObject {
         var preferences = companionPreferences
         preferences.quietMode = quiet
         saveCompanionPreferences(preferences)
-        if companionPreferences.quietMode {
+        if quiet {
+            followUpPolicy.endVoiceTurn()
+            usesVoiceFollowUp = false
+            cancelAutomaticCapture()
             speaker.stop()
             greeting = nil
             celebrationTask?.cancel()
@@ -232,6 +254,8 @@ final class HomeViewModel: ObservableObject {
         speaker.stop()
         let typedRequestID = UUID()
         responseID = typedRequestID
+        followUpPolicy.endVoiceTurn()
+        usesVoiceFollowUp = false
         captureStartupTask?.cancel()
         responseTask?.cancel()
         responseTask = nil
@@ -321,20 +345,31 @@ final class HomeViewModel: ObservableObject {
 
     /// Starts listening and ends the turn on its own when the speaker pauses — no "I'm done" tap.
     private func listen(followUp: Bool, requestID: UUID? = nil) async {
-        guard !Task.isCancelled, isCompanionActive,
-              requestID.map({ $0 == responseID }) ?? true else { return }
+        guard !Task.isCancelled, requestID.map({ $0 == responseID }) ?? true else { return }
         let owner = requestID ?? UUID()
         if requestID == nil {
+            guard isCompanionActive, UIApplication.shared.applicationState == .active else { return }
+            followUpPolicy.beginVoiceTurn()
+            usesVoiceFollowUp = true
             responseID = owner
             responseTask?.cancel()
             responseTask = nil
+        } else if !followUpPolicy.takeAutomaticListen(
+            voiceInitiated: usesVoiceFollowUp, isQuiet: companionPreferences.quietMode,
+            isForeground: UIApplication.shared.applicationState == .active,
+            isCurrent: isCompanionActive && responseID == owner,
+            succeeded: true, isExecutingTools: isExecutingTools
+        ) {
+            await finishTurn(requestID: owner)
+            return
         }
         let captureID = UUID()
         captureStartupID = captureID
         captureStartupTask?.cancel()
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.performListen(followUp: followUp, requestID: owner, captureID: captureID)
+            await self.performListen(followUp: followUp, requestID: owner, captureID: captureID,
+                                     automatic: requestID != nil)
         }
         captureStartupTask = task
         await withTaskCancellationHandler {
@@ -345,29 +380,33 @@ final class HomeViewModel: ObservableObject {
         if captureStartupID == captureID { captureStartupTask = nil }
     }
 
-    private func checkCaptureStartup(requestID: UUID, captureID: UUID) throws {
+    private func checkCaptureStartup(requestID: UUID, captureID: UUID, automatic: Bool) throws {
         try Task.checkCancellation()
-        guard responseID == requestID, captureStartupID == captureID, isCompanionActive else {
+        guard responseID == requestID, captureStartupID == captureID, isCompanionActive,
+              UIApplication.shared.applicationState == .active,
+              !automatic || (followUpPolicy.isVoiceTurnActive && usesVoiceFollowUp
+                             && !companionPreferences.quietMode && !isExecutingTools) else {
             throw CancellationError()
         }
     }
 
-    private func performListen(followUp: Bool, requestID: UUID, captureID: UUID) async {
+    private func performListen(followUp: Bool, requestID: UUID, captureID: UUID,
+                               automatic: Bool) async {
         let wasIdle = app.session.currentPhase == .idle
         do {
-            try checkCaptureStartup(requestID: requestID, captureID: captureID)
+            try checkCaptureStartup(requestID: requestID, captureID: captureID, automatic: automatic)
             if greeting != nil { recordAttention(.engaged, for: .greeting); greeting = nil }
             speaker.stop()
             error = nil
-            notice = nil
+            if !followUp { notice = nil }
             try await prepareSession()
-            try checkCaptureStartup(requestID: requestID, captureID: captureID)
+            try checkCaptureStartup(requestID: requestID, captureID: captureID, automatic: automatic)
             text = ""
             discardNextResult = false
             await app.showLiveActivity()
-            try checkCaptureStartup(requestID: requestID, captureID: captureID)
+            try checkCaptureStartup(requestID: requestID, captureID: captureID, automatic: automatic)
             try await app.captureCoordinator.startCapture()
-            try checkCaptureStartup(requestID: requestID, captureID: captureID)
+            try checkCaptureStartup(requestID: requestID, captureID: captureID, automatic: automatic)
             isFollowUp = followUp
             lastDraftChange = .now
             watchForPause()
@@ -385,7 +424,7 @@ final class HomeViewModel: ObservableObject {
                 return
             }
             present(error)
-            await finishTurn()
+            await finishTurn(requestID: requestID)
         }
     }
 
@@ -422,6 +461,9 @@ final class HomeViewModel: ObservableObject {
         guard !isBusy, !app.captureCoordinator.isTidying else { return }
         isBusy = true
         defer { isBusy = false; refresh() }
+        followUpPolicy.endVoiceTurn()
+        usesVoiceFollowUp = false
+        captureStartupTask?.cancel()
         let app = self.app
         if app.session.currentPhase == .capturing { await app.captureCoordinator.stopCapture(endSession: true) }
         await app.session.disarm()
@@ -434,6 +476,10 @@ final class HomeViewModel: ObservableObject {
         if discardNextResult, voiceFollowUp {
             discardNextResult = false
             return
+        }
+        if !voiceFollowUp {
+            followUpPolicy.endVoiceTurn()
+            usesVoiceFollowUp = false
         }
         guard !isExecutingTools else {
             notice = "Let the approved action finish before starting another request."
@@ -458,13 +504,19 @@ final class HomeViewModel: ObservableObject {
         celebrationTask?.cancel()
         isCelebrating = false
         let app = self.app
-        if conversation.isWaiting,
+        let wasWaiting = conversation.isWaiting
+        if wasWaiting,
            let reply = await hear(result.shipped, requestID: requestID) {
             guard responseID == requestID else { return }
             await handle(reply, requestID: requestID)
             return
         }
         guard responseID == requestID, !Task.isCancelled else { return }
+        if voiceFollowUp, isFollowUp, !wasWaiting,
+           FollowUpPolicy.isClosing(result.shipped) {
+            await finishTurn(requestID: requestID)
+            return
+        }
         assistant = .thinking
         do {
             if result.route == .recall {
@@ -481,14 +533,14 @@ final class HomeViewModel: ObservableObject {
                 assistant = .answer(answer)
                 await speak(answer)
                 guard responseID == requestID else { return }
-                await finishTurn()
+                await listen(followUp: true, requestID: requestID)
             } else {
                 let plan = try await app.planner.plan(result.shipped, tools: app.harness.actionDescriptors, now: .now)
                 guard responseID == requestID else { return }
                 guard !plan.isEmpty else {
                     assistant = nil
                     notice = "I couldn’t find anything to do there."
-                    await finishTurn()
+                    await listen(followUp: true, requestID: requestID)
                     return
                 }
                 var talk = conversation
@@ -501,7 +553,7 @@ final class HomeViewModel: ObservableObject {
             guard responseID == requestID else { return }
             assistant = nil
             present(error)
-            await finishTurn()
+            await finishTurn(requestID: requestID)
         }
     }
 
@@ -524,11 +576,7 @@ final class HomeViewModel: ObservableObject {
             await speak(prompt)
             // The user may have tapped Do it or Discard while Piko was speaking.
             guard responseID == requestID, case .proposed = assistant, conversation.isWaiting else { return }
-            if usesVoiceFollowUp, isCompanionActive {
-                await listen(followUp: true, requestID: requestID)
-            } else {
-                await finishTurn()
-            }
+            await listen(followUp: true, requestID: requestID)
         case .run(let ack):
             await execute(conversation.plan, ack: ack, requestID: requestID)
         case .cancelled(let message):
@@ -536,7 +584,7 @@ final class HomeViewModel: ObservableObject {
             notice = message
             await speak(message)
             guard responseID == requestID else { return }
-            await finishTurn()
+            await listen(followUp: true, requestID: requestID)
         }
     }
 
@@ -546,11 +594,13 @@ final class HomeViewModel: ObservableObject {
         defer { isExecutingTools = false }
         assistant = .thinking
         let outcomes = await app.harness.run(plan, approve: { _ in true })
+        guard responseID == requestID else { return }
         app.dumpLog.record()
         weeklyDumps = app.dumpLog.countLastSevenDays()
         conversation = Conversation()
         assistant = .done(outcomes)
-        let allDone = outcomes.allSatisfy { if case .done = $0.status { true } else { false } }
+        let allDone = !outcomes.isEmpty && outcomes.count == plan.count
+            && outcomes.allSatisfy { if case .done = $0.status { true } else { false } }
         if allDone, companionPreferences.shouldPresentRoutine(.completion), isCompanionActive {
             isCelebrating = true
             celebrationTask?.cancel()
@@ -563,7 +613,12 @@ final class HomeViewModel: ObservableObject {
             await speak(allDone ? (ack == "Saved." ? "Saved." : "Done.") : "Some of that didn’t work. Have a look.")
         }
         guard responseID == requestID else { return }
-        await finishTurn()
+        isExecutingTools = false
+        if allDone {
+            await listen(followUp: true, requestID: requestID)
+        } else {
+            await finishTurn(requestID: requestID)
+        }
     }
 
     /// "Do it" on the card — the same as saying yes.
@@ -576,6 +631,8 @@ final class HomeViewModel: ObservableObject {
         defer { isBusy = false }
         let requestID = UUID()
         responseID = requestID
+        followUpPolicy.endVoiceTurn()
+        usesVoiceFollowUp = false
         captureStartupTask?.cancel()
         responseTask?.cancel()
         responseTask = nil
@@ -587,6 +644,8 @@ final class HomeViewModel: ObservableObject {
 
     func dismissAssistant(engaged: Bool = false) {
         guard !isExecutingTools else {
+            followUpPolicy.endVoiceTurn()
+            usesVoiceFollowUp = false
             notice = "The approved action is finishing. Its result will stay visible."
             return
         }
@@ -597,6 +656,8 @@ final class HomeViewModel: ObservableObject {
             }
         }
         responseID = UUID()
+        followUpPolicy.endVoiceTurn()
+        usesVoiceFollowUp = false
         captureStartupTask?.cancel()
         responseTask?.cancel()
         celebrationTask?.cancel()
@@ -610,7 +671,7 @@ final class HomeViewModel: ObservableObject {
             guard self.responseID == cleanupID, self.captureStartupID == captureID else { return }
             await stopListeningQuietly()
             guard self.responseID == cleanupID, self.captureStartupID == captureID else { return }
-            await finishTurn()
+            await finishTurn(requestID: cleanupID)
         }
     }
 
@@ -623,7 +684,9 @@ final class HomeViewModel: ObservableObject {
     }
 
     /// Ends the visible part of a turn: nothing left in the Dynamic Island or on the Lock Screen.
-    private func finishTurn() async {
+    private func finishTurn(requestID: UUID) async {
+        guard responseID == requestID else { return }
+        followUpPolicy.endVoiceTurn()
         pauseWatch?.cancel()
         isFollowUp = false
         await app.liveActivityController.end()
