@@ -17,6 +17,7 @@ public final class LiveActivityController {
     /// Steps Piko through blinks and glances while the session runs. The armed audio session keeps
     /// the app alive in the background, so these local updates keep coming with the app closed.
     private var heartbeat: Task<Void, Never>?
+    private var endingActivityIDs: Set<String> = []
 
     public init() {}
 
@@ -28,8 +29,11 @@ public final class LiveActivityController {
             currentWords = 0
         }
 
-        if activity != nil { return }
-        if let existing = Activity<PikoAttributes>.activities.first {
+        if let activity, activity.activityState == .active, !endingActivityIDs.contains(activity.id) { return }
+        activity = nil
+        if let existing = Activity<PikoAttributes>.activities.first(where: {
+            $0.activityState == .active && !endingActivityIDs.contains($0.id)
+        }) {
             activity = existing
             startHeartbeat()
             return
@@ -85,12 +89,15 @@ public final class LiveActivityController {
     public func end() async {
         heartbeat?.cancel()
         heartbeat = nil
+        let ending = Activity<PikoAttributes>.activities.filter { !endingActivityIDs.contains($0.id) }
+        endingActivityIDs.formUnion(ending.map(\.id))
+        activity = nil
         // Also end activities adopted from an earlier launch, so nothing is left behind.
-        for running in Activity<PikoAttributes>.activities {
+        for running in ending {
             // Immediate: a finished request should leave nothing behind on the Lock Screen.
             await running.end(nil, dismissalPolicy: .immediate)
+            endingActivityIDs.remove(running.id)
         }
-        self.activity = nil
     }
 
     private func startHeartbeat() {

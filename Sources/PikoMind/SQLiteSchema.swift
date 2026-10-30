@@ -12,11 +12,7 @@ enum SQLiteSchema {
             let current = try currentVersion(db)
             switch current {
             case 0:
-                try execute(compatibilitySchema, on: db)
-                try execute(foundationSchema, on: db)
-                try execute(contentTriggers, on: db)
-                try execute("INSERT INTO results_fts(results_fts) VALUES ('rebuild')", on: db)
-                try execute("PRAGMA user_version = 1", on: db)
+                try installFoundation(db)
             case version:
                 // Version one means only the final schema, never an unreleased PR layout.
                 guard try hasFinalSchema(db) else {
@@ -39,6 +35,14 @@ enum SQLiteSchema {
         }
     }
 
+    static func installFoundation(_ db: OpaquePointer) throws {
+        try execute(compatibilitySchema, on: db)
+        try execute(foundationSchema, on: db)
+        try execute(contentTriggers, on: db)
+        try execute("INSERT INTO results_fts(results_fts) VALUES ('rebuild')", on: db)
+        try execute("PRAGMA user_version = 1", on: db)
+    }
+
     private static func currentVersion(_ db: OpaquePointer) throws -> Int {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, "PRAGMA user_version", -1, &statement, nil) == SQLITE_OK else {
@@ -57,7 +61,7 @@ enum SQLiteSchema {
         }
     }
 
-    private static func hasFinalSchema(_ db: OpaquePointer) throws -> Bool {
+    static func hasFinalSchema(_ db: OpaquePointer) throws -> Bool {
         let sql = """
             SELECT
                 (SELECT group_concat(name, ',') FROM

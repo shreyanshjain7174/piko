@@ -82,6 +82,7 @@ public final class SessionCoordinator: ArmedSession {
     }
 
     public func arm() async throws {
+        try Task.checkCancellation()
         guard isForeground() else { throw PikoError.notForeground }
         guard currentPhase == .idle else { return }
 
@@ -94,6 +95,7 @@ public final class SessionCoordinator: ArmedSession {
             (buffers, buffersContinuation) = AsyncStream.makeStream()
         }
 
+        try Task.checkCancellation()
         try audioSession.activate()
         do {
             try startAudioInput()
@@ -178,6 +180,7 @@ public final class SessionCoordinator: ArmedSession {
     }
 
     public func startCapture() async throws {
+        try Task.checkCancellation()
         guard currentPhase == .armed else { throw PikoError.notArmed }
         idleTask?.cancel()
         idleTask = nil

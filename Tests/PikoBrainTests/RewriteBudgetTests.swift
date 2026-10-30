@@ -33,11 +33,12 @@ struct RewriteBudgetTests {
         let start = clock.now
         do {
             _ = try await withRewriteBudget(budget) {
-                let innerStart = ContinuousClock().now
-                while ContinuousClock().now - innerStart < Duration.milliseconds(800) {
-                    await Task.yield()
-                }
-                return "ignored"
+                // Cancelling the waiter does not cancel this unstructured worker.
+                // Suspend instead of busy-yielding on the shared CI executor.
+                try await Task.detached {
+                    try await Task.sleep(for: .milliseconds(800))
+                    return "ignored"
+                }.value
             }
             Issue.record("expected PikoError.brainBudgetExceeded")
         } catch PikoError.brainBudgetExceeded {

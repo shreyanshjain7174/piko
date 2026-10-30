@@ -1,5 +1,51 @@
 # Spikes
 
+## Quiet-sidekick native renderer
+
+The app's small companion now uses original procedural RealityKit geometry in virtual nonAR
+mode. It does not use a WebView, camera session or downloaded character asset. Rendering stays
+inside the app target; the keyboard's light dependency closure is unchanged.
+
+Host module tests exercise finite motion, live-level clamping, short pat/completion reactions,
+Reduce Motion, bounded attention feedback, preference persistence/reset and stale speech callbacks.
+An iPhone 17 Simulator run exercised the real app: typed note saving and Filed persistence,
+an external reminder waiting for confirmation, dismissal without microphone activation,
+personality selection, Quiet mode, learning reset and relaunch persistence.
+
+These are simulator UI results, not physical-device memory, background-audio or FPS measurements.
+No 60-fps, CPU or residency target is claimed by this first slice.
+
+### Native interaction regressions
+
+App-hosted Swift Testing on iPhone 17 Simulator reproduced 2 defects:
+pats retained the idle accessibility value, and Quiet left an active celebration running.
+Both are fixed. Four native test declarations cover both Reduce Motion settings, all busy states,
+renderer release/reactivation and the actual Home Quiet setter with a real local note outcome.
+
+An idle pat now reports "Enjoying a pat" for its existing brief reaction.
+Listening, thinking, speech and completion retain priority. Hiding the renderer clears the reaction.
+Quiet cancels celebration immediately and leaves the task outcome visible.
+These are Simulator results, not physical VoiceOver, hardware-touch or performance measurements.
+
+### Physical Piko and development-history recovery
+
+The full app now launches with native 3D Piko on iPhone 17, iOS 27.2. Two public
+accessibility activations exercised its real pat path without starting capture.
+This is not hardware-touch UI automation or a physical speech-duration measurement.
+
+That phone held the unreleased development-v2 history. A DEBUG-only, explicitly requested
+repair retained a complete SQLite backup on the phone and verified every result, correction,
+filed item and rowid before committing final v1. The backup includes WAL and is excluded
+from cloud backup. Production startup still rejects v2.
+
+The repair requires both `--piko-reconcile-development-history` and
+`--keep-original-history-on-device`. It refuses unknown layouts, manual turns and nonempty
+experimental memory. Original files remain under
+`history.sqlite.development-backups/<uuid>/original.sqlite` beside the active database.
+Do not install an older development-v2-only binary over the reconciled final-v1 store.
+
+Normal Piko was relaunched without repair/test flags. No private history was exported or reset.
+
 Five experiments, roughly a day each. Run them in order. Stop at the first failure and rethink
 the product rather than routing around it — each of these can invalidate the design.
 

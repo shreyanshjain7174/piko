@@ -1,16 +1,38 @@
 import SwiftUI
 import PikoKit
+import PikoMemory
 
 @main
 struct PikoApp: App {
     @Environment(\.scenePhase) private var scenePhase
     #if DEBUG
     @State private var benchmarkStarted = false
+
+    init() {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard arguments.contains("--piko-reconcile-development-history") else { return }
+        guard arguments.contains("--keep-original-history-on-device") else {
+            print("PIKO_HISTORY_RECOVERY_FAILED: explicit on-device backup confirmation required")
+            return
+        }
+        do {
+            switch try SQLiteMemory.reconcileDevelopmentHistory(path: AppComposition.historyURL()) {
+            case .alreadyCurrent:
+                print("PIKO_HISTORY_RECOVERY_ALREADY_CURRENT")
+            case .reconciled:
+                print("PIKO_HISTORY_RECOVERY_COMPLETE: original retained on device; history preservation verified")
+            }
+        } catch {
+            print("PIKO_HISTORY_RECOVERY_FAILED: \(error)")
+        }
+    }
     #endif
 
     @ViewBuilder private var rootView: some View {
         #if DEBUG
-        if UserDefaults.standard.bool(forKey: "PikoLopLab") {
+        if ProcessInfo.processInfo.arguments.contains("--piko-unit-test-host") {
+            Color.clear
+        } else if UserDefaults.standard.bool(forKey: "PikoLopLab") {
             LopLab()
         } else {
             RootView()
@@ -38,6 +60,9 @@ struct PikoApp: App {
         }
             .onChange(of: scenePhase, initial: true) { _, newPhase in
                 guard newPhase == .active else { return }
+                #if DEBUG
+                guard !ProcessInfo.processInfo.arguments.contains("--piko-unit-test-host") else { return }
+                #endif
                 if case .success(let app) = AppComposition.shared {
                     #if DEBUG
                     let defaults = UserDefaults.standard

@@ -15,6 +15,7 @@ struct RootView: View {
                 Text((error as? PikoError)?.userMessage
                      ?? PikoError.storageUnavailable.userMessage)
             }
+            .onAppear { print("Piko startup failed: \(error)") }
         }
     }
 }
@@ -51,16 +52,28 @@ private struct PikoRootContent: View {
         }
         .pikoThemed(model.skin)
         .task(id: scenePhase) {
+            model.setCompanionActive(scenePhase == .active && selection == .home)
             guard scenePhase == .active else { return }
             await model.observe()
         }
-        .onChange(of: selection) { _, _ in model.refresh() }
+        .onChange(of: selection) { _, screen in
+            model.refresh()
+            model.setCompanionActive(scenePhase == .active && screen == .home)
+        }
+        .onAppear {
+            let homeTab = $selection
+            app.onTalkRequested = { [weak model] in
+                homeTab.wrappedValue = .home
+                await model?.talk()
+            }
+        }
     }
 }
 
 private struct SettingsView: View {
     @ObservedObject var model: HomeViewModel
     @State private var showSetup = false
+    @State private var showResetLearning = false
     @Environment(\.pikoTheme) private var theme
     @AppStorage(KeyboardPreferences.autoListenKey, store: UserDefaults(suiteName: AppGroup.identifier))
     private var autoListen = true
@@ -68,6 +81,40 @@ private struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    Picker("Personality", selection: Binding(
+                        get: { model.companionPreferences.personality },
+                        set: { model.setPersonality($0) }
+                    )) {
+                        ForEach(PikoPersonality.allCases, id: \.self) { personality in
+                            Text(personality.displayName).tag(personality)
+                        }
+                    }
+                    Toggle("Quiet mode", isOn: Binding(
+                        get: { model.companionPreferences.quietMode },
+                        set: { model.setQuietMode($0) }
+                    ))
+                    Toggle("Spoken replies", isOn: Binding(
+                        get: { model.spokenRepliesEnabled },
+                        set: { model.setSpokenReplies($0) }
+                    ))
+                    LabeledContent("Greeting feedback",
+                                   value: "\(model.companionPreferences.greetings.engagedCount) accepted / \(model.companionPreferences.greetings.dismissedCount) dismissed")
+                    LabeledContent("Result feedback",
+                                   value: "\(model.companionPreferences.completions.engagedCount) accepted / \(model.companionPreferences.completions.dismissedCount) dismissed")
+                    if let message = model.companionPreferenceError {
+                        Text(message).font(.footnote).foregroundStyle(theme.ink2)
+                    }
+                    Button(model.companionPreferenceError == nil ? "Reset learned attention" : "Reset damaged companion preferences") {
+                        showResetLearning = true
+                    }
+                        .accessibilityIdentifier("companion.resetLearning")
+                } header: {
+                    Text("Your quiet sidekick")
+                } footer: {
+                    Text("Piko keeps the last 8 explicit responses to greetings and results on this iPhone. Repeated dismissals quiet routine nudges. Results, approvals and errors stay visible. Piko does not watch other apps or guess your mood.")
+                }
+
                 Section {
                     SkinPicker(selection: model.skin, phase: model.phase) { model.selectSkin($0) }
                         .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
@@ -139,6 +186,17 @@ private struct SettingsView: View {
             .pikoForm()
             .navigationTitle("Settings")
             .sheet(isPresented: $showSetup) { OnboardingView(isPresented: $showSetup) }
+            .alert(model.companionPreferenceError == nil ? "Reset Piko's learned attention?" : "Reset Piko's companion preferences?",
+                   isPresented: $showResetLearning) {
+                Button(model.companionPreferenceError == nil ? "Reset patterns" : "Reset preferences", role: .destructive) {
+                    model.resetCompanionLearning()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(model.companionPreferenceError == nil
+                     ? "This clears only companion feedback. Your personality, quiet choice and history stay unchanged."
+                     : "This replaces unreadable companion preferences with the choices currently shown. Your history and keyboard settings are unchanged.")
+            }
         }
     }
 }
