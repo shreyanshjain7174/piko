@@ -161,6 +161,8 @@ final class HomeViewModel: ObservableObject {
         if companionPreferences.quietMode {
             speaker.stop()
             greeting = nil
+            celebrationTask?.cancel()
+            isCelebrating = false
         }
     }
 

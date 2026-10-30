@@ -54,6 +54,24 @@ make open                   # opens it
 Review and safely scan third-party tooling before running setup; it registers external MCP
 packages. Setup is not required for `make project` or the existing local test commands.
 
+## Native companion tests
+
+`make test` covers the shared modules. Test the actual app renderer and Home state separately:
+
+```bash
+make project
+xcodebuild -project App/Piko.xcodeproj -scheme Piko \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -only-testing:PikoAppTests -parallel-testing-enabled NO test
+```
+
+The Test action uses a Debug-only empty root while tests create the actual renderer.
+This keeps the normal Home animation from holding the test process open.
+Run and Profile still open normal Piko. The test-host switch is absent from Release.
+
+Checks cover brief pat feedback, busy-state priority, Reduce Motion, renderer teardown and immediate Quiet cancellation.
+Quiet stops routine celebrations without hiding task results.
+
 ## Developer engine comparison
 
 The normal iPhone build still uses Apple speech pending the measured engine decision.

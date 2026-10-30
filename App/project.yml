@@ -62,6 +62,21 @@ targets:
       properties:
         com.apple.security.application-groups: [group.dev.piko.shared]
 
+  PikoAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [../Tests/PikoAppTests]
+    dependencies:
+      - target: Piko
+      - package: Piko
+        product: PikoKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.shreyansh.Piko.AppTests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Piko.app/Piko"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+
   PikoKeyboard:
     type: app-extension
     platform: iOS
@@ -119,3 +134,22 @@ targets:
       path: PikoWidgets/PikoWidgets.entitlements
       properties:
         com.apple.security.application-groups: [group.dev.piko.shared]
+
+schemes:
+  Piko:
+    build:
+      targets:
+        Piko: all
+        PikoAppTests: [test]
+    test:
+      targets: [PikoAppTests]
+      commandLineArguments:
+        --piko-unit-test-host: true
+  PikoKeyboard:
+    build:
+      targets:
+        PikoKeyboard: all
+  PikoWidgets:
+    build:
+      targets:
+        PikoWidgets: all

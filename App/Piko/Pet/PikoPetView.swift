@@ -115,14 +115,18 @@ final class PikoPetSurface: UIView {
         self.onPat = onPat
         backgroundColor = room
         renderView?.environment.background = .color(room)
+        updateAccessibilityValue()
+        reconcile()
+    }
+
+    private func updateAccessibilityValue() {
         switch activity {
-        case .idle: accessibilityValue = "Quietly here"
+        case .idle: accessibilityValue = patStarted == nil ? "Quietly here" : "Enjoying a pat"
         case .listening: accessibilityValue = "Listening"
         case .thinking: accessibilityValue = "Thinking"
         case .speaking: accessibilityValue = "Speaking"
         case .happy: accessibilityValue = "Happy"
         }
-        reconcile()
     }
 
     override func didMoveToWindow() {
@@ -238,6 +242,7 @@ final class PikoPetSurface: UIView {
     private func pat() {
         guard shouldRender else { return }
         patStarted = ProcessInfo.processInfo.systemUptime
+        updateAccessibilityValue()
         patResetTask?.cancel()
         patResetTask = Task { @MainActor [weak self] in
             do {
@@ -254,6 +259,7 @@ final class PikoPetSurface: UIView {
     private func finishPat() {
         patStarted = nil
         patResetTask = nil
+        updateAccessibilityValue()
         _ = renderFrame()
     }
 
@@ -273,6 +279,7 @@ final class PikoPetSurface: UIView {
         patResetTask?.cancel()
         patResetTask = nil
         patStarted = nil
+        updateAccessibilityValue()
         touchX = 0
         touchY = 0
         isStroking = false

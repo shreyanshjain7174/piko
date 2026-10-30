@@ -15,6 +15,18 @@ personality selection, Quiet mode, learning reset and relaunch persistence.
 These are simulator UI results, not physical-device memory, background-audio or FPS measurements.
 No 60-fps, CPU or residency target is claimed by this first slice.
 
+### Native interaction regressions
+
+App-hosted Swift Testing on iPhone 17 Simulator reproduced 2 defects:
+pats retained the idle accessibility value, and Quiet left an active celebration running.
+Both are fixed. Four native test declarations cover both Reduce Motion settings, all busy states,
+renderer release/reactivation and the actual Home Quiet setter with a real local note outcome.
+
+An idle pat now reports "Enjoying a pat" for its existing brief reaction.
+Listening, thinking, speech and completion retain priority. Hiding the renderer clears the reaction.
+Quiet cancels celebration immediately and leaves the task outcome visible.
+These are Simulator results, not physical VoiceOver, hardware-touch or performance measurements.
+
 ### Physical Piko and development-history recovery
 
 The full app now launches with native 3D Piko on iPhone 17, iOS 27.2. Two public

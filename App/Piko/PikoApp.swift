@@ -30,7 +30,9 @@ struct PikoApp: App {
 
     @ViewBuilder private var rootView: some View {
         #if DEBUG
-        if UserDefaults.standard.bool(forKey: "PikoLopLab") {
+        if ProcessInfo.processInfo.arguments.contains("--piko-unit-test-host") {
+            Color.clear
+        } else if UserDefaults.standard.bool(forKey: "PikoLopLab") {
             LopLab()
         } else {
             RootView()
@@ -58,6 +60,9 @@ struct PikoApp: App {
         }
             .onChange(of: scenePhase, initial: true) { _, newPhase in
                 guard newPhase == .active else { return }
+                #if DEBUG
+                guard !ProcessInfo.processInfo.arguments.contains("--piko-unit-test-host") else { return }
+                #endif
                 if case .success(let app) = AppComposition.shared {
                     #if DEBUG
                     let defaults = UserDefaults.standard
