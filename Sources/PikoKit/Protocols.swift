@@ -53,8 +53,7 @@ public protocol Memory: Sendable {
     func turn(lsn: Int64) async throws -> MemoryTurn?
     /// Includes the capture's user turn; newest first, bounded by `limit`.
     func turns(in session: UUID, limit: Int) async throws -> [MemoryTurn]
-    /// Nil expected LSN means insert-only; updates require the revision returned by a read.
-    /// Final-v1 cannot guard against a stale revision reused after deletion and re-creation.
+    /// Nil expected LSN means insert-only; updates require the globally unique revision returned by a read.
     func setFact(_ input: MemoryFactInput, ifLSN: Int64?) async throws -> MemoryFact
     func fact(forKey key: String) async throws -> MemoryFact?
     /// Search keys, values and linked entity names/aliases; nil query lists facts.

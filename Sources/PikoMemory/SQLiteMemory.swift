@@ -146,8 +146,9 @@ public actor EphemeralMemory: Memory {
             )
         }
         if expected == Int64.max { throw PersonalMemoryError.revisionExhausted }
+        let revision = recordFactMutation("memory.fact.set")
         let fact = MemoryFact(
-            key: input.key, value: input.value, lsn: (expected ?? 0) + 1,
+            key: input.key, value: input.value, lsn: revision,
             sourceTurn: input.sourceTurn, confidence: input.confidence,
             lastUsed: max(prior?.lastUsed ?? input.lastUsed, input.lastUsed), entityID: input.entityID
         )
@@ -184,8 +185,9 @@ public actor EphemeralMemory: Memory {
                 key: key, expectedLSN: expected, actualLSN: savedFacts[key]?.lsn
             )
         }
+        let revision = recordFactMutation("memory.fact.used")
         let touched = MemoryFact(
-            key: key, value: prior.value, lsn: expected + 1, sourceTurn: prior.sourceTurn,
+            key: key, value: prior.value, lsn: revision, sourceTurn: prior.sourceTurn,
             confidence: prior.confidence, lastUsed: max(prior.lastUsed, at), entityID: prior.entityID
         )
         savedFacts[key] = touched
@@ -200,6 +202,7 @@ public actor EphemeralMemory: Memory {
                 key: key, expectedLSN: expected, actualLSN: savedFacts[key]?.lsn
             )
         }
+        _ = recordFactMutation("memory.fact.forget")
         savedFacts.removeValue(forKey: key)
     }
 
@@ -234,12 +237,20 @@ public actor EphemeralMemory: Memory {
         guard savedEntities.removeValue(forKey: id) != nil else {
             throw PersonalMemoryError.entityMissing(id)
         }
-        for (key, fact) in savedFacts where fact.entityID == id {
+        for (key, fact) in savedFacts.filter({ $0.value.entityID == id }).sorted(by: { $0.key < $1.key }) {
+            let revision = recordFactMutation("memory.fact.unlinked")
             savedFacts[key] = MemoryFact(
-                key: fact.key, value: fact.value, lsn: fact.lsn + 1, sourceTurn: fact.sourceTurn,
+                key: fact.key, value: fact.value, lsn: revision, sourceTurn: fact.sourceTurn,
                 confidence: fact.confidence, lastUsed: fact.lastUsed, entityID: nil
             )
         }
+    }
+
+    private func recordFactMutation(_ operation: String) -> Int64 {
+        let revision = nextTurnLSN
+        turns[revision] = MemoryTurn(lsn: revision, session: UUID(), role: .tool, text: operation, at: .now)
+        nextTurnLSN += 1
+        return revision
     }
 
     private func validateExpectedLSN(_ expected: Int64?) throws {

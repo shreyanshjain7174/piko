@@ -73,7 +73,7 @@ private final class RawDatabase {
         )
         let saved = try await store.setFact(input, ifLSN: nil)
         #expect(saved.key == input.key && saved.value == input.value)
-        #expect(saved.sourceTurn == turn.lsn && saved.lsn == 1)
+        #expect(saved.sourceTurn == turn.lsn && saved.lsn > turn.lsn)
         #expect(saved.confidence == 0.875 && saved.lastUsed == input.lastUsed)
         #expect(saved.entityID == entity.id)
 
@@ -99,7 +99,7 @@ private final class RawDatabase {
         let key = "owner/sister/name"
 
         for generation in 0..<4 {
-            let expected: Int64? = generation == 0 ? nil : Int64(generation)
+            let expected: Int64? = generation == 0 ? nil : Int64(generation + 1)
             let outcomes = await withTaskGroup(of: String.self, returning: [String].self) { group in
                 for index in 0..<16 {
                     group.addTask {
@@ -120,9 +120,9 @@ private final class RawDatabase {
                 }
                 return await group.reduce(into: []) { $0.append($1) }
             }
-            #expect(outcomes.filter { $0 == "saved:\(generation + 1)" }.count == 1)
+            #expect(outcomes.filter { $0 == "saved:\(generation + 2)" }.count == 1)
             #expect(outcomes.filter { $0 == "conflict" }.count == 15, "\(outcomes)")
-            #expect(try await second.fact(forKey: key)?.lsn == Int64(generation + 1))
+            #expect(try await second.fact(forKey: key)?.lsn == Int64(generation + 2))
         }
         let reopened = try SQLiteStore(path: path)
         #expect(try await reopened.facts(matching: nil, limit: 10).count == 1)
@@ -141,6 +141,7 @@ private final class RawDatabase {
             ifLSN: nil
         )
         let db = try RawDatabase(path)
+        let turnsBeforeFailure = try db.rows("SELECT lsn,role,text FROM turns ORDER BY lsn")
         try db.execute("""
             INSERT INTO embeddings(ownerKind,ownerID,model,dimensions,vector)
             VALUES ('fact','owner/sister/name','a',2,x'0000'),
@@ -158,15 +159,18 @@ private final class RawDatabase {
         } catch is SQLiteStoreError {}
         #expect(try await memory.fact(forKey: input.key) == first)
         #expect(try db.rows("SELECT count(*) FROM embeddings") == [["4"]])
+        #expect(try db.rows("SELECT lsn,role,text FROM turns ORDER BY lsn") == turnsBeforeFailure)
         do {
             try await memory.forgetFact(forKey: first.key, ifLSN: first.lsn)
             Issue.record("Expected an injected vector-delete failure")
         } catch is SQLiteStoreError {}
         #expect(try await memory.fact(forKey: first.key) == first)
+        #expect(try db.rows("SELECT lsn,role,text FROM turns ORDER BY lsn") == turnsBeforeFailure)
         try db.execute("DROP TRIGGER reject_vector_delete")
 
         let updated = try await memory.setFact(changed, ifLSN: first.lsn)
-        #expect(updated.lsn == first.lsn + 1 && updated.value == changed.value)
+        #expect(updated.lsn == keeper.lsn + 1, "Failed transactions must not consume a turn LSN")
+        #expect(updated.lsn > first.lsn && updated.value == changed.value)
         #expect(try db.rows("SELECT ownerKind, ownerID FROM embeddings ORDER BY 1, 2") == [
             ["fact", keeper.key], ["turn", String(turn.lsn)],
         ])
@@ -188,6 +192,135 @@ private final class RawDatabase {
         #expect(try db.rows("SELECT ownerKind, ownerID FROM embeddings ORDER BY 1, 2") == [
             ["fact", keeper.key], ["turn", String(turn.lsn)],
         ])
+    }
+
+    @Test("Deleting and recreating a key never accepts a stale confirmed forget or update")
+    func deleteRecreateABA() async throws {
+        let path = temporaryFactsURL()
+        defer { try? FileManager.default.removeItem(at: path) }
+        let memory = try SQLiteMemory(path: path)
+        let originalTurn = try await memory.appendTurn(
+            session: UUID(), role: .user, text: "My sister is Riya", at: Date(timeIntervalSince1970: 123)
+        )
+        let key = "my/sister"
+        let first = try await memory.setFact(
+            MemoryFactInput(key: key, value: "Riya", sourceTurn: originalTurn.lsn, confidence: 1), ifLSN: nil
+        )
+        try await memory.forgetFact(forKey: key, ifLSN: first.lsn)
+        let newTurn = try await memory.appendTurn(
+            session: UUID(), role: .user, text: "My sister is Anya", at: Date(timeIntervalSince1970: 124)
+        )
+        let second = try await memory.setFact(
+            MemoryFactInput(key: key, value: "Anya", sourceTurn: newTurn.lsn, confidence: 1), ifLSN: nil
+        )
+        #expect(second.lsn > first.lsn && second.sourceTurn == newTurn.lsn)
+        await #expect(throws: PersonalMemoryError.factConflict(
+            key: key, expectedLSN: first.lsn, actualLSN: second.lsn
+        )) {
+            try await memory.forgetFact(forKey: key, ifLSN: first.lsn)
+        }
+        await #expect(throws: PersonalMemoryError.factConflict(
+            key: key, expectedLSN: first.lsn, actualLSN: second.lsn
+        )) {
+            try await memory.setFact(
+                MemoryFactInput(key: key, value: "stale", sourceTurn: originalTurn.lsn, confidence: 1),
+                ifLSN: first.lsn
+            )
+        }
+        #expect(try await SQLiteMemory(path: path).fact(forKey: key) == second)
+        let db = try RawDatabase(path)
+        #expect(try db.rows("SELECT role,text FROM turns WHERE lsn = \(second.lsn)") == [
+            ["tool", "memory.fact.set"],
+        ])
+        #expect(try db.rows("SELECT role,text FROM turns WHERE lsn = \(originalTurn.lsn)") == [
+            ["user", "My sister is Riya"],
+        ])
+    }
+
+    @Test("Fact revisions are globally increasing across different keys and reopen")
+    func globalFactRevisions() async throws {
+        let path = temporaryFactsURL()
+        defer { try? FileManager.default.removeItem(at: path) }
+        let store = try SQLiteStore(path: path)
+        let source = try await store.appendTurn(
+            session: UUID(), role: .user, text: "My city is Pune and my sister is Riya",
+            at: Date(timeIntervalSince1970: 123)
+        )
+        let city = try await store.setFact(
+            MemoryFactInput(key: "my/city", value: "Pune", sourceTurn: source.lsn, confidence: 1), ifLSN: nil
+        )
+        let reopened = try SQLiteMemory(path: path)
+        let sister = try await reopened.setFact(
+            MemoryFactInput(key: "my/sister", value: "Riya", sourceTurn: source.lsn, confidence: 1),
+            ifLSN: nil
+        )
+        let used = try await store.touchFact(
+            forKey: city.key, ifLSN: city.lsn, at: Date(timeIntervalSince1970: 200)
+        )
+        #expect(source.lsn < city.lsn && city.lsn < sister.lsn && sister.lsn < used.lsn)
+        #expect(try await reopened.turn(lsn: used.lsn)?.role == .tool)
+        #expect(try await reopened.fact(forKey: city.key)?.sourceTurn == source.lsn)
+        #expect(try await reopened.fact(forKey: sister.key)?.sourceTurn == source.lsn)
+    }
+
+    @Test("A failed fact insert rolls back its tool result and does not consume an LSN")
+    func insertionRollbackIncludesMutationTurn() async throws {
+        let path = temporaryFactsURL()
+        defer { try? FileManager.default.removeItem(at: path) }
+        let store = try SQLiteStore(path: path)
+        let source = try await store.appendTurn(
+            session: UUID(), role: .user, text: "My sister is Riya", at: Date(timeIntervalSince1970: 123)
+        )
+        let input = MemoryFactInput(key: "my/sister", value: "Riya", sourceTurn: source.lsn, confidence: 1)
+        let db = try RawDatabase(path)
+        try db.execute("""
+            CREATE TRIGGER reject_fact_insert BEFORE INSERT ON facts
+            BEGIN SELECT RAISE(ABORT, 'synthetic fact failure'); END;
+            """)
+        do {
+            _ = try await store.setFact(input, ifLSN: nil)
+            Issue.record("Expected an injected fact-insert failure")
+        } catch is SQLiteStoreError {}
+        #expect(try db.rows("SELECT lsn,role,text FROM turns") == [
+            [String(source.lsn), "user", source.text],
+        ])
+        #expect(try await store.fact(forKey: input.key) == nil)
+        try db.execute("DROP TRIGGER reject_fact_insert")
+        let created = try await store.setFact(input, ifLSN: nil)
+        #expect(created.lsn == source.lsn + 1)
+        #expect(try db.rows("SELECT role,text FROM turns WHERE lsn = \(created.lsn)") == [
+            ["tool", "memory.fact.set"],
+        ])
+    }
+
+    @Test("An inherited fact revision ahead of the actual turn log is rejected, never rewritten")
+    func rejectsUnbackedLegacyRevision() async throws {
+        let path = temporaryFactsURL()
+        defer { try? FileManager.default.removeItem(at: path) }
+        let store = try SQLiteStore(path: path)
+        let source = try await store.appendTurn(
+            session: UUID(), role: .user, text: "My sister is Riya", at: Date(timeIntervalSince1970: 123)
+        )
+        let db = try RawDatabase(path)
+        try db.execute("""
+            INSERT INTO facts(key,value,lsn,sourceTurn,confidence)
+            VALUES ('legacy','Riya',99,\(source.lsn),1);
+            """)
+        do {
+            _ = try await store.setFact(
+                MemoryFactInput(key: "my/city", value: "Pune", sourceTurn: source.lsn, confidence: 1),
+                ifLSN: nil
+            )
+            Issue.record("Expected the unsupported pre-API revision to be refused")
+        } catch let error as SQLiteStoreError {
+            guard case .revisionNotAhead(let allocated, let existing) = error else {
+                Issue.record("Wrong storage error: \(error)")
+                return
+            }
+            #expect(allocated == source.lsn + 1 && existing == 99)
+        }
+        #expect(try db.rows("SELECT lsn,role FROM turns") == [[String(source.lsn), "user"]])
+        #expect(try await store.facts(matching: nil, limit: 10).map(\.key) == ["legacy"])
     }
 
     @Test("Queries are bounded; invalid sources, keys, confidence, timestamps and entity links fail without writes")
@@ -235,6 +368,13 @@ private final class RawDatabase {
         #expect(try await memory.facts(matching: nil, limit: 10).isEmpty)
         let input = MemoryFactInput(key: "owner/city", value: "Pune", sourceTurn: user.lsn, confidence: 1)
         let fact = try await memory.setFact(input, ifLSN: nil)
+        await #expect(throws: PersonalMemoryError.sourceTurnNotUser(fact.lsn)) {
+            try await memory.setFact(
+                MemoryFactInput(key: "owner/false-source", value: "false",
+                                sourceTurn: fact.lsn, confidence: 1),
+                ifLSN: nil
+            )
+        }
         #expect(try await memory.facts(matching: "' OR 1=1 --", limit: 5).isEmpty)
         #expect(try await memory.facts(matching: "Pune", limit: 1) == [fact])
         let latest = try await memory.setFact(
@@ -253,11 +393,12 @@ private final class RawDatabase {
             forKey: input.key, ifLSN: fact.lsn, at: Date(timeIntervalSince1970: 1_800_000_000)
         )
         #expect(touched.lastUsed == Date(timeIntervalSince1970: 1_800_000_000))
-        #expect(touched.lsn == fact.lsn + 1 && touched.sourceTurn == user.lsn)
+        #expect(touched.lsn > oldest.lsn && touched.sourceTurn == user.lsn)
         #expect(try await memory.facts(matching: nil, limit: 2).map(\.key) == [fact.key, latest.key])
         let db = try RawDatabase(path)
         #expect(try db.rows("SELECT count(*) FROM facts") == [["3"]])
-        #expect(try db.rows("SELECT lsn,role FROM turns ORDER BY lsn") == [["1", "user"], ["2", "assistant"]])
+        #expect(try db.rows("SELECT lsn,role FROM turns WHERE lsn <= 2 ORDER BY lsn")
+                == [["1", "user"], ["2", "assistant"]])
     }
 
     @Test("Deleting an entity cleans its vectors and linked fact vectors, retaining facts without a false link")
@@ -342,9 +483,9 @@ private final class RawDatabase {
             MemoryFactInput(key: original.key, value: "Riya Jain", sourceTurn: source.lsn, confidence: 1),
             ifLSN: original.lsn
         )
-        #expect(updated.lsn == 1 && updated.value == "Riya Jain")
+        #expect(updated.lsn > source.lsn && updated.value == "Riya Jain")
         #expect(try db.rows("SELECT lsn,sourceTurn,confidence FROM facts") == [
-            ["1", String(source.lsn), "1.0"],
+            [String(updated.lsn), String(source.lsn), "1.0"],
         ])
     }
 

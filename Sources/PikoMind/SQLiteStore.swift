@@ -14,6 +14,7 @@ public enum SQLiteStoreError: Error, Sendable {
     case unsupportedSchemaVersion(Int)
     case rollbackFailed(migration: String, rollback: String)
     case transactionRollbackFailed(operation: String, rollback: String)
+    case revisionNotAhead(allocated: Int64, existing: Int64)
 }
 
 /// App-only owner of the existing history SQLite file and its versioned memory schema.
@@ -393,20 +394,28 @@ extension SQLiteStore {
             if let entityID = input.entityID, try readEntity(id: entityID) == nil {
                 throw PersonalMemoryError.entityMissing(entityID)
             }
+            let current = try readFact(key: input.key)
+            guard current?.lsn == expected else {
+                throw PersonalMemoryError.factConflict(
+                    key: input.key, expectedLSN: expected, actualLSN: current?.lsn
+                )
+            }
             if let expected {
                 guard expected < Int64.max else { throw PersonalMemoryError.revisionExhausted }
+                let revision = try appendFactMutation("memory.fact.set")
                 try personalStatement("""
-                    UPDATE facts SET value = ?, lsn = lsn + 1, sourceTurn = ?, confidence = ?,
+                    UPDATE facts SET value = ?, lsn = ?, sourceTurn = ?, confidence = ?,
                                      lastUsed = max(lastUsed, ?), entityID = ?
                     WHERE key = ? AND lsn = ?
                     """) { stmt in
                     try bind(input.value, at: 1, in: stmt)
-                    try bind(input.sourceTurn, at: 2, in: stmt)
-                    try bind(input.confidence, at: 3, in: stmt)
-                    try bind(input.lastUsed.timeIntervalSince1970, at: 4, in: stmt)
-                    try bind(input.entityID, at: 5, in: stmt)
-                    try bind(input.key, at: 6, in: stmt)
-                    try bind(expected, at: 7, in: stmt)
+                    try bind(revision, at: 2, in: stmt)
+                    try bind(input.sourceTurn, at: 3, in: stmt)
+                    try bind(input.confidence, at: 4, in: stmt)
+                    try bind(input.lastUsed.timeIntervalSince1970, at: 5, in: stmt)
+                    try bind(input.entityID, at: 6, in: stmt)
+                    try bind(input.key, at: 7, in: stmt)
+                    try bind(expected, at: 8, in: stmt)
                     try stepDone(stmt)
                 }
                 guard sqlite3_changes(db) == 1 else {
@@ -417,21 +426,18 @@ extension SQLiteStore {
                 // A vector of the old value is stale after overwriting the fact.
                 try deleteFactEmbeddings(key: input.key)
             } else {
-                if let current = try readFact(key: input.key) {
-                    throw PersonalMemoryError.factConflict(
-                        key: input.key, expectedLSN: nil, actualLSN: current.lsn
-                    )
-                }
+                let revision = try appendFactMutation("memory.fact.set")
                 try personalStatement("""
                     INSERT INTO facts (key,value,lsn,sourceTurn,confidence,lastUsed,entityID)
-                    VALUES (?,?,1,?,?,?,?)
+                    VALUES (?,?,?,?,?,?,?)
                     """) { stmt in
                     try bind(input.key, at: 1, in: stmt)
                     try bind(input.value, at: 2, in: stmt)
-                    try bind(input.sourceTurn, at: 3, in: stmt)
-                    try bind(input.confidence, at: 4, in: stmt)
-                    try bind(input.lastUsed.timeIntervalSince1970, at: 5, in: stmt)
-                    try bind(input.entityID, at: 6, in: stmt)
+                    try bind(revision, at: 3, in: stmt)
+                    try bind(input.sourceTurn, at: 4, in: stmt)
+                    try bind(input.confidence, at: 5, in: stmt)
+                    try bind(input.lastUsed.timeIntervalSince1970, at: 6, in: stmt)
+                    try bind(input.entityID, at: 7, in: stmt)
                     try stepDone(stmt)
                 }
             }
@@ -470,13 +476,19 @@ extension SQLiteStore {
         guard at.timeIntervalSince1970.isFinite else { throw PersonalMemoryError.invalidTimestamp }
         guard expected < Int64.max else { throw PersonalMemoryError.revisionExhausted }
         return try personalTransaction {
+            let current = try readFact(key: key)
+            guard current?.lsn == expected else {
+                throw PersonalMemoryError.factConflict(key: key, expectedLSN: expected, actualLSN: current?.lsn)
+            }
+            let revision = try appendFactMutation("memory.fact.used")
             try personalStatement("""
-                UPDATE facts SET lastUsed = max(lastUsed, ?), lsn = lsn + 1
+                UPDATE facts SET lastUsed = max(lastUsed, ?), lsn = ?
                 WHERE key = ? AND lsn = ?
                 """) { stmt in
                 try bind(at.timeIntervalSince1970, at: 1, in: stmt)
-                try bind(key, at: 2, in: stmt)
-                try bind(expected, at: 3, in: stmt)
+                try bind(revision, at: 2, in: stmt)
+                try bind(key, at: 3, in: stmt)
+                try bind(expected, at: 4, in: stmt)
                 try stepDone(stmt)
             }
             guard sqlite3_changes(db) == 1 else {
@@ -495,6 +507,11 @@ extension SQLiteStore {
         try MemoryFact.validateKey(key)
         try validateExpectedLSN(expected)
         try personalTransaction {
+            let current = try readFact(key: key)
+            guard current?.lsn == expected else {
+                throw PersonalMemoryError.factConflict(key: key, expectedLSN: expected, actualLSN: current?.lsn)
+            }
+            _ = try appendFactMutation("memory.fact.forget")
             try personalStatement("DELETE FROM facts WHERE key = ? AND lsn = ?") { stmt in
                 try bind(key, at: 1, in: stmt)
                 try bind(expected, at: 2, in: stmt)
@@ -553,14 +570,10 @@ extension SQLiteStore {
         try MemoryEntity.validateID(id)
         try personalTransaction {
             guard try readEntity(id: id) != nil else { throw PersonalMemoryError.entityMissing(id) }
-            let exhausted = try personalStatement(
-                "SELECT 1 FROM facts WHERE entityID = ? AND lsn = ? LIMIT 1"
-            ) { stmt in
+            let keys = try personalStatement("SELECT key FROM facts WHERE entityID = ? ORDER BY key") { stmt in
                 try bind(id, at: 1, in: stmt)
-                try bind(Int64.max, at: 2, in: stmt)
-                return try firstRow(stmt, decode: { _ in true }) != nil
+                return try allRows(stmt, decode: { try text($0, column: 0) })
             }
-            if exhausted { throw PersonalMemoryError.revisionExhausted }
             // Removing a link changes the fact's meaning; its old vector cannot be reused.
             try personalStatement("""
                 DELETE FROM embeddings WHERE ownerKind = 'fact'
@@ -569,11 +582,17 @@ extension SQLiteStore {
                 try bind(id, at: 1, in: stmt)
                 try stepDone(stmt)
             }
-            try personalStatement("""
-                UPDATE facts SET entityID = NULL, lsn = lsn + 1 WHERE entityID = ?
-                """) { stmt in
-                try bind(id, at: 1, in: stmt)
-                try stepDone(stmt)
+            for key in keys {
+                let revision = try appendFactMutation("memory.fact.unlinked")
+                try personalStatement("UPDATE facts SET entityID = NULL, lsn = ? WHERE key = ? AND entityID = ?") { stmt in
+                    try bind(revision, at: 1, in: stmt)
+                    try bind(key, at: 2, in: stmt)
+                    try bind(id, at: 3, in: stmt)
+                    try stepDone(stmt)
+                }
+                guard sqlite3_changes(db) == 1 else {
+                    throw SQLiteStoreError.invalidRow("fact disappeared during entity unlink")
+                }
             }
             try personalStatement("DELETE FROM entities WHERE id = ?") { stmt in
                 try bind(id, at: 1, in: stmt)
@@ -617,6 +636,31 @@ extension SQLiteStore {
             try bind(key, at: 1, in: stmt)
             try stepDone(stmt)
         }
+    }
+
+    /// One actual, committed storage-tool result per fact mutation. Its keyless text preserves
+    /// the operation without retaining personal values after a fact is forgotten. The isolated
+    /// UUID session keeps internal results out of the user's bounded voice conversation.
+    private func appendFactMutation(_ operation: String) throws -> Int64 {
+        try personalStatement("INSERT INTO turns (session,role,text,ts) VALUES (?,'tool',?,?)") { stmt in
+            try bind(UUID().uuidString, at: 1, in: stmt)
+            try bind(operation, at: 2, in: stmt)
+            try bind(Date.now.timeIntervalSince1970, at: 3, in: stmt)
+            try stepDone(stmt)
+        }
+        let revision = sqlite3_last_insert_rowid(db)
+        let existing = try personalStatement("SELECT coalesce(max(lsn),0) FROM facts") { stmt in
+            guard sqlite3_step(stmt) == SQLITE_ROW else {
+                throw SQLiteStoreError.stepFailed(String(cString: sqlite3_errmsg(db)))
+            }
+            return sqlite3_column_int64(stmt, 0)
+        }
+        // A pre-API fact may carry an arbitrary larger revision. Never lower it or reuse it;
+        // roll back this turn and require real turns to advance the durable AUTOINCREMENT log.
+        guard revision > existing else {
+            throw SQLiteStoreError.revisionNotAhead(allocated: revision, existing: existing)
+        }
+        return revision
     }
 
     private func validateExpectedLSN(_ expected: Int64?) throws {

@@ -84,9 +84,8 @@ public struct MemoryFactInput: Equatable, Sendable {
     }
 }
 
-/// `lsn` is a per-key optimistic revision, not the LSN of the source turn.
-/// Final-v1 has no fact tombstone or global fact sequence: forgetting and re-creating
-/// the same key resets its revision. Do not reuse a cached revision across a forget.
+/// `lsn` is the globally increasing LSN of the committed storage-tool result in `turns`.
+/// It is distinct from the LSN of the originating user turn (`sourceTurn`).
 /// A retained fact may have no source if its turn was expired by the existing FK policy.
 public struct MemoryFact: Equatable, Sendable {
     public let key: String
