@@ -43,6 +43,8 @@ public struct ToolHarness: Sendable {
             }
             do {
                 outcomes.append(.init(call: call, status: .done(try await tool.run(call))))
+            } catch let error as PersonalFactToolError {
+                outcomes.append(.init(call: call, status: .failed(error.userMessage)))
             } catch {
                 outcomes.append(.init(call: call, status: .failed("That didn't work")))
             }

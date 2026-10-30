@@ -18,6 +18,8 @@ enum AssistantTools {
             CheckInTool(),
             ShortcutTool(),
             SearchTool(memory: memory),
+            PersonalWriteTool(name: ToolName.remember, memory: memory),
+            PersonalWriteTool(name: ToolName.forget, memory: memory),
         ]
     }
 
@@ -29,6 +31,8 @@ enum AssistantTools {
         case ToolName.checkIn: "bell.badge"
         case ToolName.shortcut: "square.stack.3d.up"
         case ToolName.search: "magnifyingglass"
+        case ToolName.remember: "brain.head.profile"
+        case ToolName.forget: "trash"
         default: "note.text"
         }
     }
@@ -131,5 +135,54 @@ private struct SearchTool: PikoTool {
             }
         }
         return try await RuleOrganizer().answer(call.text, from: found)
+    }
+}
+
+/// Not offered to planners. A confirmed call must still match its real recorded user utterance.
+private struct PersonalWriteTool: PikoTool {
+    let name: String
+    let memory: any Memory
+
+    var descriptor: ToolDescriptor {
+        ToolDescriptor(name: name, summary: "Change a confirmed personal fact", risk: .local)
+    }
+
+    func run(_ call: ToolCall) async throws -> String {
+        guard call.tool == name, call.when == nil, call.timeKnown,
+              let captureID = call.sourceCaptureID,
+              let intent = PersonalIntent.parse(call.text) else {
+            throw PersonalFactToolError.unverifiedOrigin
+        }
+        let source: MemoryTurn
+        do {
+            source = try await memory.captureTurn(forCapture: captureID)
+        } catch PersonalMemoryError.sourceCaptureMissing {
+            throw PersonalFactToolError.unverifiedOrigin
+        }
+        guard source.role == .user, source.session == captureID,
+              PersonalIntent.parse(source.text) == intent else {
+            throw PersonalFactToolError.unverifiedOrigin
+        }
+        do {
+            switch intent {
+            case .remember(let key, let subject, let value) where name == ToolName.remember:
+                _ = try await memory.setFact(
+                    MemoryFactInput(key: key, value: value, sourceTurn: source.lsn,
+                                    confidence: 1, lastUsed: .now),
+                    ifLSN: call.expectedFactLSN
+                )
+                return "Remembered: your \(subject) is \(value)"
+            case .forget(let key, let subject) where name == ToolName.forget:
+                guard let revision = call.expectedFactLSN else {
+                    throw PersonalFactToolError.unverifiedOrigin
+                }
+                try await memory.forgetFact(forKey: key, ifLSN: revision)
+                return "Forgot what I saved about your \(subject)"
+            default:
+                throw PersonalFactToolError.unverifiedOrigin
+            }
+        } catch PersonalMemoryError.factConflict {
+            throw PersonalFactToolError.changedSinceConfirmation
+        }
     }
 }

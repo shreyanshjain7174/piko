@@ -101,4 +101,38 @@ private struct FakeCalendar: CalendarContext {
         guard case .ask = await talk.hear("hmm", context: nil, now: now) else { Issue.record("expected retry"); return }
         #expect(await talk.hear("whatever", context: nil, now: now) == .cancelled("Okay, I won't do that."))
     }
+
+    @Test func personalWritesAlwaysReadBackAndNoCancelsWithoutRunning() async {
+        for (tool, text, readback) in [
+            (ToolName.remember, "Remember my sister is Riya.", "remember that your sister is Riya"),
+            (ToolName.forget, "Forget my sister.", "forget what I saved about your sister"),
+        ] {
+            var talk = Conversation()
+            let call = ToolCall(tool: tool, text: text, sourceCaptureID: UUID(), expectedFactLSN: 12)
+            let reply = await talk.begin([call], context: nil, now: now)
+            guard case .confirm(let prompt) = reply else { Issue.record("Expected read-back"); return }
+            #expect(prompt.contains(readback))
+            #expect(talk.plan == [call])
+            #expect(await talk.hear("no thanks", context: nil, now: now)
+                    == .cancelled("Okay, I won't do that."))
+            #expect(talk.plan.isEmpty)
+            #expect(!talk.isWaiting)
+            _ = await talk.begin([call], context: nil, now: now)
+            #expect(await talk.hear("nothing", context: nil, now: now)
+                    == .cancelled("Okay, I won't do that."))
+            #expect(talk.plan.isEmpty)
+        }
+    }
+
+    @Test func personalYesKeepsTheOriginalOriginAndRevision() async {
+        var talk = Conversation()
+        let captureID = UUID()
+        let call = ToolCall(tool: ToolName.remember, text: "Remember my sister is Riya",
+                            sourceCaptureID: captureID, expectedFactLSN: 5)
+        _ = await talk.begin([call], context: nil, now: now)
+        #expect(await talk.hear("yes", context: nil, now: now) == .run("On it."))
+        #expect(talk.plan == [call])
+        #expect(talk.plan[0].sourceCaptureID == captureID)
+        #expect(talk.plan[0].expectedFactLSN == 5)
+    }
 }

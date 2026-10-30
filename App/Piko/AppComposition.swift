@@ -38,7 +38,14 @@ final class AppComposition {
     var onStopRequested: (@MainActor () -> Void)?
     private(set) var lastCaptureLaunchError: String?
 
-    private init() throws {
+    #if DEBUG
+    /// App-native tests use a unique SQLite file; never read or write the owner's real history.
+    static func isolatedForTests(historyPath: URL) throws -> AppComposition {
+        try AppComposition(historyPath: historyPath)
+    }
+    #endif
+
+    private init(historyPath: URL? = nil) throws {
         guard let channel = DarwinChannel() else { throw PikoError.sharedContainerUnavailable }
         self.channel = channel
         session = SessionCoordinator(channel: channel, interruptions: AVAudioSessionInterruptionSource(), audioLevels: channel, isForeground: { UIApplication.shared.applicationState == .active })
@@ -67,7 +74,7 @@ final class AppComposition {
         #endif
         self.brain = brain
 
-        let sqlite = try SQLiteMemory(path: Self.historyURL())
+        let sqlite = try SQLiteMemory(path: historyPath ?? Self.historyURL())
         let memory: any Memory = sqlite
         self.memory = memory
         self.items = sqlite

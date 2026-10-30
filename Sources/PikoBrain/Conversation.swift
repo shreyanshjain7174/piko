@@ -26,7 +26,9 @@ public struct Conversation: Sendable {
     }
 
     /// Tools that change something outside Piko and so are read back before running.
-    public static let confirmable: Set<String> = [ToolName.reminder, ToolName.calendar, ToolName.shortcut]
+    public static let confirmable: Set<String> = [
+        ToolName.reminder, ToolName.calendar, ToolName.shortcut, ToolName.remember, ToolName.forget,
+    ]
 
     public private(set) var plan: [ToolCall] = []
     public private(set) var waiting: Waiting = .none
@@ -146,6 +148,16 @@ public struct Conversation: Sendable {
             case ToolName.checkIn: return "check in with you\(when)"
             case ToolName.shortcut: return "run your \(step.text) shortcut"
             case ToolName.journal: return "save a journal entry"
+            case ToolName.remember:
+                if case .remember(_, let subject, let value)? = PersonalIntent.parse(step.text) {
+                    return "remember that your \(subject) is \(value)"
+                }
+                return "save a personal fact"
+            case ToolName.forget:
+                if case .forget(_, let subject)? = PersonalIntent.parse(step.text) {
+                    return "forget what I saved about your \(subject)"
+                }
+                return "forget a personal fact"
             default: return "save a note"
             }
         }
@@ -185,7 +197,9 @@ struct Answer {
         "right", "fine", "anyway", "still", "perfect", "great",
     ]
     private static let yesPhrases = ["go ahead", "do it", "sounds good", "add it", "keep it", "that works", "of course"]
-    private static let noWords: Set<String> = ["no", "nope", "nah", "cancel", "don't", "dont", "stop", "nahi", "skip"]
+    private static let noWords: Set<String> = [
+        "no", "nope", "nah", "nothing", "cancel", "don't", "dont", "stop", "nahi", "skip",
+    ]
     private static let noPhrases = ["never mind", "nevermind", "leave it", "forget it", "not now"]
 
     init(_ text: String) {

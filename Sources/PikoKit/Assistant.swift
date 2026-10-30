@@ -78,7 +78,25 @@ public enum ToolName {
     public static let checkIn = "checkin.schedule"
     public static let shortcut = "shortcut.run"
     public static let search = "memory.search"
+    public static let remember = "memory.remember"
+    public static let forget = "memory.forget"
+    /// Personal writes are intentionally absent: the model must never propose them.
     public static let all = [reminder, calendar, note, journal, checkIn, shortcut, search]
+}
+
+/// User-visible failures of an explicit, confirmed personal-memory action.
+public enum PersonalFactToolError: Error, Equatable, Sendable {
+    case unverifiedOrigin
+    case changedSinceConfirmation
+
+    public var userMessage: String {
+        switch self {
+        case .unverifiedOrigin:
+            "I couldn't verify the original request. Please say it again."
+        case .changedSinceConfirmation:
+            "That saved fact changed. Please ask again and confirm the latest version."
+        }
+    }
 }
 
 /// One step of a plan. A single shape for every tool keeps planners model-agnostic.
@@ -91,13 +109,20 @@ public struct ToolCall: Codable, Sendable, Equatable, Identifiable {
     public var when: Date?
     /// False when only a day was said ("Friday"); Piko asks for the time instead of guessing.
     public var timeKnown: Bool
+    /// The persisted user capture that explicitly requested a personal-memory change.
+    public var sourceCaptureID: UUID?
+    /// Revision read before confirmation; nil means insert-only, never "overwrite anything".
+    public var expectedFactLSN: Int64?
 
-    public init(id: UUID = UUID(), tool: String, text: String, when: Date? = nil, timeKnown: Bool = true) {
+    public init(id: UUID = UUID(), tool: String, text: String, when: Date? = nil, timeKnown: Bool = true,
+                sourceCaptureID: UUID? = nil, expectedFactLSN: Int64? = nil) {
         self.id = id
         self.tool = tool
         self.text = text
         self.when = when
         self.timeKnown = timeKnown
+        self.sourceCaptureID = sourceCaptureID
+        self.expectedFactLSN = expectedFactLSN
     }
 }
 

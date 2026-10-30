@@ -518,6 +518,10 @@ final class HomeViewModel: ObservableObject {
             return
         }
         assistant = .thinking
+        if let intent = PersonalIntent.parse(result.shipped) {
+            await respondToPersonal(intent, capture: result, requestID: requestID)
+            return
+        }
         do {
             if result.route == .recall {
                 var history: [CaptureResult] = []
@@ -553,6 +557,78 @@ final class HomeViewModel: ObservableObject {
             guard responseID == requestID else { return }
             assistant = nil
             present(error)
+            await finishTurn(requestID: requestID)
+        }
+    }
+
+    private func respondToPersonal(_ intent: PersonalIntent, capture: CaptureResult, requestID: UUID) async {
+        do {
+            switch intent {
+            case .ask(let key, let subject):
+                let fact = try await app.memory.fact(forKey: key)
+                guard responseID == requestID, !Task.isCancelled else { return }
+                let source: MemoryTurn?
+                if let sourceTurn = fact?.sourceTurn {
+                    source = try await app.memory.turn(lsn: sourceTurn)
+                } else {
+                    source = nil
+                }
+                guard responseID == requestID, !Task.isCancelled else { return }
+                let answer = PersonalAnswer.reply(subject: subject, fact: fact)
+                let sourceLabel = source.flatMap {
+                    $0.role == .user
+                        ? "From what you told Piko on \($0.at.formatted(date: .abbreviated, time: .omitted))"
+                        : nil
+                }
+                assistant = .personalAnswer(answer, source: sourceLabel)
+                await speak(answer)
+                guard responseID == requestID, !Task.isCancelled else { return }
+                await listen(followUp: true, requestID: requestID)
+
+            case .remember, .forget:
+                let origin = try await app.memory.captureTurn(forCapture: capture.id)
+                guard responseID == requestID, !Task.isCancelled else { return }
+                guard origin.role == .user, origin.session == capture.id,
+                      PersonalIntent.parse(origin.text) == intent else {
+                    throw PersonalFactToolError.unverifiedOrigin
+                }
+                let existing = try await app.memory.fact(forKey: intent.key)
+                guard responseID == requestID, !Task.isCancelled else { return }
+                if case .forget = intent, existing == nil {
+                    let answer = "I don't have a saved fact about your \(intent.subject) to forget."
+                    assistant = .personalAnswer(answer, source: nil)
+                    await speak(answer)
+                    guard responseID == requestID, !Task.isCancelled else { return }
+                    await listen(followUp: true, requestID: requestID)
+                    return
+                }
+                let tool = if case .remember = intent { ToolName.remember } else { ToolName.forget }
+                let call = ToolCall(tool: tool, text: origin.text, sourceCaptureID: capture.id,
+                                    expectedFactLSN: existing?.lsn)
+                var talk = conversation
+                let reply = await talk.begin([call], context: nil, now: .now)
+                guard responseID == requestID, !Task.isCancelled else { return }
+                conversation = talk
+                if let existing, case .confirm(let prompt) = reply {
+                    await handle(.confirm("I have your \(intent.subject) saved as \(existing.value). \(prompt)"),
+                                 requestID: requestID)
+                } else {
+                    await handle(reply, requestID: requestID)
+                }
+            }
+        } catch {
+            guard responseID == requestID, !Task.isCancelled else { return }
+            assistant = .personalAnswer(
+                (error as? PersonalFactToolError)?.userMessage
+                    ?? (error as? PersonalMemoryError).flatMap {
+                        if case .sourceCaptureMissing = $0 {
+                            return PersonalFactToolError.unverifiedOrigin.userMessage
+                        }
+                        return nil
+                    }
+                    ?? "I couldn't check your saved facts just now. Please try again.",
+                source: nil
+            )
             await finishTurn(requestID: requestID)
         }
     }
@@ -595,8 +671,10 @@ final class HomeViewModel: ObservableObject {
         assistant = .thinking
         let outcomes = await app.harness.run(plan, approve: { _ in true })
         guard responseID == requestID else { return }
-        app.dumpLog.record()
-        weeklyDumps = app.dumpLog.countLastSevenDays()
+        if !plan.allSatisfy({ $0.tool == ToolName.remember || $0.tool == ToolName.forget }) {
+            app.dumpLog.record()
+            weeklyDumps = app.dumpLog.countLastSevenDays()
+        }
         conversation = Conversation()
         assistant = .done(outcomes)
         let allDone = !outcomes.isEmpty && outcomes.count == plan.count
@@ -610,7 +688,12 @@ final class HomeViewModel: ObservableObject {
             }
         }
         if !allDone || companionPreferences.shouldPresentRoutine(.completion) {
-            await speak(allDone ? (ack == "Saved." ? "Saved." : "Done.") : "Some of that didn’t work. Have a look.")
+            let memoryOutcome: String? = plan.count == 1
+                && (plan[0].tool == ToolName.remember || plan[0].tool == ToolName.forget)
+                ? outcomes.first.flatMap { if case .done(let text) = $0.status { text } else { nil } }
+                : nil
+            await speak(allDone ? (memoryOutcome ?? (ack == "Saved." ? "Saved." : "Done."))
+                                : "Some of that didn’t work. Have a look.")
         }
         guard responseID == requestID else { return }
         isExecutingTools = false
@@ -651,7 +734,8 @@ final class HomeViewModel: ObservableObject {
         }
         if let assistant {
             switch assistant {
-            case .answer, .done: recordAttention(engaged ? .engaged : .dismissed, for: .completion)
+            case .answer, .personalAnswer, .done:
+                recordAttention(engaged ? .engaged : .dismissed, for: .completion)
             default: break
             }
         }
@@ -732,6 +816,7 @@ enum AssistantState: Equatable {
     case thinking
     case proposed([ToolCall], prompt: String, canConfirm: Bool)
     case answer(String)
+    case personalAnswer(String, source: String?)
     case done([ToolOutcome])
 }
 
@@ -1012,6 +1097,16 @@ struct ArmView: View {
                         .font(.body)
                         .foregroundStyle(theme.ink)
                         .fixedSize(horizontal: false, vertical: true)
+                    Button("Thanks, Piko") { model.dismissAssistant(engaged: true) }
+                        .buttonStyle(.pikoQuiet)
+                case .personalAnswer(let answer, let source):
+                    Text(answer)
+                        .font(.body)
+                        .foregroundStyle(theme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let source {
+                        Text(source).font(.caption).foregroundStyle(theme.ink2)
+                    }
                     Button("Thanks, Piko") { model.dismissAssistant(engaged: true) }
                         .buttonStyle(.pikoQuiet)
                 case .done(let outcomes):
