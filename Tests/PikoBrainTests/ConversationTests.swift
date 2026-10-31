@@ -135,4 +135,47 @@ private struct FakeCalendar: CalendarContext {
         #expect(talk.plan[0].sourceCaptureID == captureID)
         #expect(talk.plan[0].expectedFactLSN == 5)
     }
+
+    @Test func descriptorRiskRequiresConfirmationForAnUnlistedExternalTool() async {
+        let external = ToolCall(tool: "export.send", text: "This week's notes")
+        let local = ToolCall(tool: ToolName.note, text: "Keep it here")
+        let descriptors = [
+            ToolDescriptor(name: "export.send", summary: "Send notes", risk: .external),
+            ToolDescriptor(name: ToolName.note, summary: "Save a note", risk: .local),
+        ]
+        var talk = Conversation()
+        guard case .confirm = await talk.begin([external, local], context: nil, now: now,
+                                                descriptors: descriptors) else {
+            Issue.record("An external descriptor must trigger confirmation"); return
+        }
+        #expect(talk.confirmedPlan.isEmpty)
+        #expect(await talk.hear("no", context: nil, now: now) == .cancelled("Okay, I won't do that."))
+        #expect(talk.confirmedPlan.isEmpty)
+        _ = await talk.begin([external, local], context: nil, now: now, descriptors: descriptors)
+        #expect(await talk.hear("yes", context: nil, now: now) == .run("On it."))
+        #expect(talk.confirmedPlan == [external, local])
+        #expect(talk.isConfirmed(external))
+        var changed = external
+        changed.text = "Different notes"
+        #expect(!talk.isConfirmed(changed))
+        changed = external
+        changed.id = UUID()
+        #expect(!talk.isConfirmed(changed))
+        _ = await talk.begin([local], context: nil, now: now, descriptors: descriptors)
+        #expect(talk.confirmedPlan.isEmpty)
+        #expect(!talk.isConfirmed(external))
+        #expect(talk.waiting == .none)
+    }
+
+    @Test func personalWritesConfirmEvenWhenRegisteredAsLocal() async {
+        var talk = Conversation()
+        let call = ToolCall(tool: ToolName.forget, text: "Forget my city", sourceCaptureID: UUID())
+        let registered = [ToolDescriptor(name: ToolName.forget, summary: "Forget fact", risk: .local)]
+        guard case .confirm = await talk.begin([call], context: nil, now: now, descriptors: registered) else {
+            Issue.record("Personal memory must always read back"); return
+        }
+        #expect(talk.confirmedPlan.isEmpty)
+        _ = await talk.hear("yes", context: nil, now: now)
+        #expect(talk.isConfirmed(call))
+    }
 }

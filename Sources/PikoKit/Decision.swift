@@ -23,11 +23,15 @@ public struct DecisionContext: Sendable, Equatable {
     public let facts: [MemoryFact]
     public let history: [CaptureResult]
     public let recent: [AssistantExchange]
+    /// Trusted app preference; changes reply tone, never evidence or tool authorization.
+    public let personality: PikoPersonality
 
-    public init(facts: [MemoryFact] = [], history: [CaptureResult] = [], recent: [AssistantExchange] = []) {
+    public init(facts: [MemoryFact] = [], history: [CaptureResult] = [],
+                recent: [AssistantExchange] = [], personality: PikoPersonality = .warm) {
         self.facts = facts
         self.history = history
         self.recent = recent
+        self.personality = personality
     }
 }
 
