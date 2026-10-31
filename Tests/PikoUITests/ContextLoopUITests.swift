@@ -7,7 +7,9 @@ final class ContextLoopUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 20))
         field.tap()
         field.typeText(text)
-        app.buttons["home.send"].tap()
+        let send = app.buttons["home.send"]
+        XCTAssertTrue(send.waitForExistence(timeout: 10))
+        send.tap()
     }
 
     func testContextLoopAndSettingsEdit() {
@@ -25,7 +27,9 @@ final class ContextLoopUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "You said on")).firstMatch.exists)
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Riya’s usual is a flat white")).firstMatch.exists)
 
-        app.buttons["Settings"].tap()
+        let settings = app.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
         let knowledge = app.buttons["What Piko knows"]
         XCTAssertTrue(knowledge.waitForExistence(timeout: 20))
         knowledge.tap()
@@ -35,35 +39,55 @@ final class ContextLoopUITests: XCTestCase {
         let usual = app.staticTexts["person/riya/usual"]
         XCTAssertTrue(usual.waitForExistence(timeout: 20))
         let row = app.otherElements["settings.fact.person/riya/usual"]
-        app.swipeUp() // Bring the action above the bottom tab bar.
-        let edit = row.buttons["Edit saved fact"]
-        XCTAssertTrue(edit.exists)
+        XCTAssertTrue(row.waitForExistence(timeout: 20))
+        let edit = app.buttons["settings.edit.person/riya/usual"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 20))
+        app.swipeUp() // Move the row above the tab bar before tapping.
         edit.tap()
-        let value = app.descendants(matching: .any)["settings.editValue"]
-        if !value.waitForExistence(timeout: 10) { print(app.debugDescription) }
-        XCTAssertTrue(value.exists)
+        let value = app.textFields["settings.editValue"]
+        if !value.waitForExistence(timeout: 3) {
+            XCTAssertTrue(edit.waitForExistence(timeout: 10))
+            edit.tap() // Retry after the navigation transition finishes.
+        }
+        XCTAssertTrue(value.waitForExistence(timeout: 20))
         value.tap()
         value.press(forDuration: 1)
         let selectAll = app.menuItems["Select All"]
         if selectAll.waitForExistence(timeout: 3) { selectAll.tap() }
         else { value.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.value.map { String(describing: $0).count } ?? 20)) }
         value.typeText("oat latte")
-        app.buttons["Save change"].tap()
+        let saveChange = app.buttons["settings.editSave"]
+        XCTAssertTrue(saveChange.waitForExistence(timeout: 10))
+        saveChange.tap()
         XCTAssertTrue(app.staticTexts["oat latte"].waitForExistence(timeout: 20))
-        app.buttons["Home"].tap()
+        let home = app.buttons["Home"]
+        XCTAssertTrue(home.waitForExistence(timeout: 20))
+        home.tap()
         send("what does Riya drink?", in: app)
-        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Update usual to oat latte")).firstMatch.waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "oat latte")).firstMatch.waitForExistence(timeout: 30))
+        XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Update usual to oat latte")).firstMatch.waitForExistence(timeout: 20))
 
-        app.buttons["Settings"].tap()
-        app.buttons["What Piko knows"].tap()
+        XCTAssertTrue(settings.waitForExistence(timeout: 20))
+        settings.tap()
+        // Tab selection preserves the Settings navigation stack on return.
+        if knowledge.waitForExistence(timeout: 3) { knowledge.tap() }
         XCTAssertTrue(app.staticTexts["person/riya/usual"].waitForExistence(timeout: 20))
-        app.swipeUp()
-        app.otherElements["settings.fact.person/riya/usual"].buttons["Forget saved fact"].tap()
-        app.alerts.buttons["Forget saved fact"].tap()
+        let forget = app.buttons["settings.forget.person/riya/usual"]
+        XCTAssertTrue(forget.waitForExistence(timeout: 20))
+        if !forget.isHittable { app.swipeUp() }
+        forget.tap()
+        let confirmForget = app.alerts.buttons["Forget saved fact"]
+        if !confirmForget.waitForExistence(timeout: 3) {
+            XCTAssertTrue(forget.waitForExistence(timeout: 10))
+            forget.tap() // Retry after the preserved tab transition settles.
+        }
+        XCTAssertTrue(confirmForget.waitForExistence(timeout: 10))
+        confirmForget.tap()
         let dropped = NSPredicate(format: "label == %@", "Suggestions: 1")
         expectation(for: dropped, evaluatedWith: app.staticTexts["suggestions-count"])
         waitForExpectations(timeout: 20)
-        app.buttons["Home"].tap()
+        XCTAssertTrue(home.waitForExistence(timeout: 20))
+        home.tap()
         send("what does Riya drink?", in: app)
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "know that yet")).firstMatch.waitForExistence(timeout: 20))
     }

@@ -1,9 +1,20 @@
 import Foundation
+import PikoBrain
 import PikoKit
 import RealityKit
 import Testing
 import UIKit
 @testable import Piko
+
+#if targetEnvironment(simulator)
+private struct NoteDecider: AssistantDeciding {
+    func decide(_ request: String, context: DecisionContext, tools: [ToolDescriptor],
+                now: Date) async throws -> DecisionResult {
+        .init(decision: .act([ToolCall(tool: ToolName.note, text: request)]),
+              source: .rules(reason: "Companion fixture"))
+    }
+}
+#endif
 
 @Suite("Native companion interactions", .serialized)
 @MainActor
@@ -88,9 +99,13 @@ struct PikoCompanionInteractionTests {
     #if targetEnvironment(simulator)
     @Test("Enabling Quiet stops an active celebration without hiding the real outcome")
     func quietStopsCelebration() async throws {
-        guard case .success(let app) = AppComposition.shared else {
-            Issue.record("The real app composition did not start")
-            return
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sqlite")
+        let app = try AppComposition.isolatedForTests(historyPath: path, decider: NoteDecider())
+        defer {
+            for suffix in ["", "-wal", "-shm"] {
+                try? FileManager.default.removeItem(atPath: path.path + suffix)
+            }
+            try? FileManager.default.removeItem(at: path.appendingPathExtension("suggestions"))
         }
         let defaults = UserDefaults.standard
         let stored = defaults.object(forKey: PikoCompanionStore.preferencesKey)
@@ -121,10 +136,7 @@ struct PikoCompanionInteractionTests {
         #expect(!model.isCelebrating)
         #expect(model.assistant == outcome)
         #expect(model.phase != .capturing)
-        for result in await app.memory.search(marker, limit: 5)
-        where result.raw == "Make a note \(marker)" {
-            await app.memory.delete(result.id)
-        }
+        #expect(await app.memory.search(marker, limit: 5).contains { $0.raw == "Make a note \(marker)" })
     }
     #endif
 }

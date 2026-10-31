@@ -246,6 +246,7 @@ struct PersonalMemoryView: View {
                                 model.selectForEdit(fact)
                                 if model.editingFact != nil { editValue = fact.value; showEdit = true }
                             }
+                            .accessibilityIdentifier("settings.edit.\(fact.key)")
                             .disabled(model.isLoading || model.isForgetting || model.isEditing)
                             Button(role: .destructive) {
                                 model.selectForForget(fact)
@@ -253,6 +254,7 @@ struct PersonalMemoryView: View {
                             } label: {
                                 Label("Forget saved fact", systemImage: "trash")
                             }
+                            .accessibilityIdentifier("settings.forget.\(fact.key)")
                             .disabled(model.isLoading || model.isForgetting)
                         }
                         .padding(.vertical, 6)
@@ -284,12 +286,14 @@ struct PersonalMemoryView: View {
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") { showEdit = false }
+                            .accessibilityIdentifier("settings.editCancel")
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Save change") {
                             let value = editValue
                             Task { await model.confirmEdit(value); showEdit = false }
                         }
+                        .accessibilityIdentifier("settings.editSave")
                     }
                 }
             }
