@@ -103,7 +103,7 @@ import Testing
         let prefix = "23456789012"
         let aadhaar = prefix + String(verhoeffDigit(prefix))
         let separators = [" ", "  ", "-", " - ", ".", "/", "_", "\u{00a0}",
-                          ",", "–", "—", "‐", "−", "•", "·"]
+                          ",", "–", "—", "‐", "−", "•", "·", "~", "|", "+"]
         let fixtures: [(String, [String], SensitiveContent.Category)] = [
             ("4111111111111111", ["4111", "1111", "1111", "1111"], .payment),
             (aadhaar, [String(aadhaar.prefix(4)), String(aadhaar.dropFirst(4).prefix(4)),
@@ -199,6 +199,89 @@ import Testing
             for value in ["+91 " + local, "91 " + local] {
                 #expect(SensitiveContent.verdict(label: "usual", value: value) == .safe)
             }
+        }
+    }
+
+    @Test func followUpOverblocking() {
+        let safe = ["98450 12345, 98765 43210", "visited in 2019, 2021, 2023",
+                    "2019 2020 2021", "10.30-11.30, 14.00-15.00",
+                    "2,500 rupees", "₹1,25,000.50", "12,50,000",
+                    "31/10/2026", "MH 12 AB 1234", "560001", "flat white",
+                    "Riya", "Fridays", "riya@gmail.com", "UPI app", "+1 (415) 555-0132",
+                    "+91 98450 12345, +91 98765 43210",
+                    "09845012345, 09876543210", "919845012345, 919876543210",
+                    "+919845012345, +919876543210",
+                    "0 98450 12345, 91 98765 43210"]
+        for value in safe {
+            #expect(SensitiveContent.verdict(label: "usual", value: value) == .safe, "\(value)")
+        }
+        // Deterministic generated pairs cover accidental Verhoeff-valid windows.
+        for left in 0..<20 {
+            for right in 0..<20 {
+                let a = String(format: "98450%05d", left * 37 + 123)
+                let b = String(format: "98765%05d", right * 41 + 456)
+                let first = String(a.prefix(5)) + " " + String(a.suffix(5))
+                let second = String(b.prefix(5)) + " " + String(b.suffix(5))
+                for value in [first + ", " + second,
+                              "+91 " + first, "+91 " + first + ", +91 " + second] {
+                    #expect(SensitiveContent.verdict(label: "usual", value: value) == .safe, "\(value)")
+                }
+            }
+        }
+        for first in 1990..<2010 {
+            for last in 2010..<2030 {
+                let years = "\(first) 2021 \(last)"
+                #expect(SensitiveContent.verdict(label: "usual", value: years) == .safe, "\(years)")
+                let fourYears = years + " 2024"
+                #expect(SensitiveContent.verdict(label: "usual", value: fourYears) == .safe, "\(fourYears)")
+            }
+        }
+        #expect(SensitiveContent.verdict(label: "usual", value: "2019 2021 2023, 2345 6789 0124") == .blocked(.governmentID))
+        #expect(SensitiveContent.verdict(label: "usual", value: "4111 1111 1111 1111 CVV 123") == .blocked(.payment))
+    }
+
+    @Test func followUpLeaks() {
+        let cases: [(String, String, SensitiveContent.Category)] = [
+            ("usual", "+91 98450 12345, 123-45-6789", .governmentID),
+            ("usual", "+1 415 555 0132, 234567890124", .governmentID),
+            ("usual", "+234567890124", .governmentID),
+            ("usual", "91 234567890124", .governmentID),
+            ("usual", "+91 98450 12345, 2345 6789 0124", .governmentID),
+            ("usual", "919845012345, 234567890124", .governmentID),
+            ("usual", "4111~1111~1111~1111", .payment),
+            ("usual", "4111|1111|1111|1111", .payment),
+            ("usual", "4111+1111+1111+1111", .payment),
+            ("usual", "2345~6789~0124", .governmentID),
+            ("usual", "2345|6789|0124", .governmentID),
+            ("usual", "2345+6789+0124", .governmentID),
+            ("usual", "the 6-digit number they sent me is 482193", .authCode),
+            ("usual", "the 4 digit code they sent is 1234", .authCode),
+            ("netflix-login", "hunter2", .password),
+            ("signin", "hunter2", .password),
+            ("credentials", "hunter2", .password),
+            ("usual", "mother maiden name is Patel", .password),
+            ("usual", "mother's maiden name is Patel", .password),
+            ("usual", "first pet was Momo", .password),
+            ("usual", "first school was Central", .password),
+            ("usual", "ABC1234567", .governmentID),
+            ("voter id", "ABC1234567", .governmentID),
+            ("usual", "MH0120230012345", .governmentID),
+            ("dl", "MH-01-20230012345", .governmentID),
+            ("usual", "riya@okhdfc", .payment),
+            ("usual", "riya@ybl", .payment),
+            ("upi", "riya@mybank", .payment),
+            ("usual", "send using UPI to riya@mybank", .payment),
+            ("usual", "CVV2 123", .payment),
+            ("usual", "expires 08/29", .payment),
+            ("usual", "valid thru 08/29", .payment),
+            ("pw", "hunter2", .password),
+            ("pswd", "hunter2", .password),
+            ("usual", "pass word hunter2", .password),
+            ("ipin", "1234", .authCode),
+            ("usual", "otp482193", .authCode),
+        ]
+        for (label, value, category) in cases {
+            #expect(SensitiveContent.verdict(label: label, value: value) == .blocked(category), "\(label): \(value)")
         }
     }
 
