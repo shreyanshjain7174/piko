@@ -18,6 +18,7 @@ import PikoKit
 /// it ignores cancellation.
 func withRewriteBudget<T: Sendable>(
     _ budget: Duration,
+    clock: some Clock<Duration> = ContinuousClock(),
     operation: @escaping @Sendable () async throws -> T
 ) async throws -> T {
     let milliseconds = Int(
@@ -38,7 +39,7 @@ func withRewriteBudget<T: Sendable>(
                 }
             }
             let timer = Task {
-                try? await Task.sleep(for: budget)
+                try? await clock.sleep(for: budget)
                 guard !Task.isCancelled else { return }
                 state.finish(.failure(PikoError.brainBudgetExceeded(milliseconds: milliseconds)))
             }
