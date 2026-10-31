@@ -45,6 +45,25 @@ public protocol Memory: Sendable {
     func nearestEdits(to text: String, limit: Int) async -> [EditPair]
     func search(_ query: String, limit: Int) async -> [CaptureResult]
     func delete(_ id: UUID) async
+
+    /// Append real conversation evidence; capture results already insert their own user turn.
+    func appendTurn(session: UUID, role: MemoryTurn.Role, text: String, at: Date) async throws -> MemoryTurn
+    /// Resolve a real persisted capture, not merely an unverified session UUID or fabricated turn.
+    func captureTurn(forCapture id: UUID) async throws -> MemoryTurn
+    func turn(lsn: Int64) async throws -> MemoryTurn?
+    /// Includes the capture's user turn; newest first, bounded by `limit`.
+    func turns(in session: UUID, limit: Int) async throws -> [MemoryTurn]
+    /// Nil expected LSN means insert-only; updates require the globally unique revision returned by a read.
+    func setFact(_ input: MemoryFactInput, ifLSN: Int64?) async throws -> MemoryFact
+    func fact(forKey key: String) async throws -> MemoryFact?
+    /// Search keys, values and linked entity names/aliases; nil query lists facts.
+    func facts(matching query: String?, limit: Int) async throws -> [MemoryFact]
+    func touchFact(forKey key: String, ifLSN: Int64, at: Date) async throws -> MemoryFact
+    func forgetFact(forKey key: String, ifLSN: Int64) async throws
+    func createEntity(_ entity: MemoryEntity) async throws
+    func entity(id: String) async throws -> MemoryEntity?
+    func entities(matching query: String?, limit: Int) async throws -> [MemoryEntity]
+    func forgetEntity(id: String) async throws
 }
 
 public enum PikoError: Error, Sendable {

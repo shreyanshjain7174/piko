@@ -26,10 +26,16 @@ public struct Conversation: Sendable {
     }
 
     /// Tools that change something outside Piko and so are read back before running.
-    public static let confirmable: Set<String> = [ToolName.reminder, ToolName.calendar, ToolName.shortcut]
+    public static let confirmable: Set<String> = [
+        ToolName.reminder, ToolName.calendar, ToolName.shortcut, ToolName.remember, ToolName.forget,
+    ]
 
     public private(set) var plan: [ToolCall] = []
     public private(set) var waiting: Waiting = .none
+    /// Only the exact plan read back and explicitly accepted by the user may authorize writes.
+    public private(set) var confirmedPlan: [ToolCall] = []
+    private var descriptorRisks: [String: ToolRisk]?
+    private var requiresExplicitConfirmation = false
     private var acceptedClashes: Set<UUID> = []
     private var retried = false
 
@@ -37,11 +43,30 @@ public struct Conversation: Sendable {
 
     public init() {}
 
-    public mutating func begin(_ plan: [ToolCall], context: (any CalendarContext)?, now: Date) async -> Reply {
+    public mutating func begin(_ plan: [ToolCall], context: (any CalendarContext)?, now: Date,
+                               descriptors: [ToolDescriptor]? = nil,
+                               requiresExplicitConfirmation: Bool = false) async -> Reply {
         self.plan = plan
+        self.requiresExplicitConfirmation = requiresExplicitConfirmation
+        confirmedPlan = []
+        descriptorRisks = descriptors.map { descriptors in
+            Dictionary(descriptors.map { ($0.name, $0.risk) }, uniquingKeysWith: { first, _ in first })
+        }
         acceptedClashes = []
         retried = false
         return await review(context: context, now: now)
+    }
+
+    /// A matching ID alone is insufficient: the title, date, origin and fact revision must match.
+    public func isConfirmed(_ call: ToolCall) -> Bool {
+        requiresConfirmation(call) && plan.contains(call) && confirmedPlan.contains(call)
+    }
+
+    public func requiresConfirmation(_ call: ToolCall) -> Bool {
+        if requiresExplicitConfirmation || call.tool == ToolName.remember || call.tool == ToolName.forget { return true }
+        guard let descriptorRisks else { return Self.confirmable.contains(call.tool) }
+        // Unknown tools are never an automatic local fast path.
+        return descriptorRisks[call.tool] != .local && descriptorRisks[call.tool] != .read
     }
 
     /// Handles a follow-up. Returns nil when the speech is not an answer — treat it as a new request.
@@ -74,6 +99,7 @@ public struct Conversation: Sendable {
                 setTime(time, on: timed[0], now: now)
             } else if answer.isYes {
                 waiting = .none
+                confirmedPlan = plan
                 return .run("On it.")
             } else if answer.isNo {
                 return cancel()
@@ -89,6 +115,7 @@ public struct Conversation: Sendable {
     // MARK: - Review
 
     private mutating func review(context: (any CalendarContext)?, now: Date) async -> Reply {
+        confirmedPlan = []
         guard !plan.isEmpty else { return cancel() }
         for (index, step) in plan.enumerated() where step.tool == ToolName.calendar {
             guard let when = step.when, step.timeKnown else {
@@ -103,7 +130,7 @@ public struct Conversation: Sendable {
                             + "Should I still add \(step.text), or pick another time?")
             }
         }
-        guard plan.contains(where: { Self.confirmable.contains($0.tool) }) else {
+        guard plan.contains(where: requiresConfirmation) else {
             waiting = .none
             return .run("Saved.")
         }
@@ -112,6 +139,7 @@ public struct Conversation: Sendable {
     }
 
     private mutating func setTime(_ time: (hour: Int, minute: Int), on index: Int, now: Date) {
+        confirmedPlan = []
         let calendar = Calendar.current
         let day = plan[index].when ?? calendar.startOfDay(for: now)
         guard var date = calendar.date(bySettingHour: time.hour, minute: time.minute, second: 0, of: day) else { return }
@@ -132,6 +160,7 @@ public struct Conversation: Sendable {
     private mutating func cancel() -> Reply {
         waiting = .none
         plan = []
+        confirmedPlan = []
         return .cancelled("Okay, I won't do that.")
     }
 
@@ -146,7 +175,18 @@ public struct Conversation: Sendable {
             case ToolName.checkIn: return "check in with you\(when)"
             case ToolName.shortcut: return "run your \(step.text) shortcut"
             case ToolName.journal: return "save a journal entry"
-            default: return "save a note"
+            case ToolName.remember:
+                if case .remember(_, let subject, let value)? = PersonalIntent.parse(step.text) {
+                    return "remember that your \(subject) is \(value)"
+                }
+                return "save a personal fact"
+            case ToolName.forget:
+                if case .forget(_, let subject)? = PersonalIntent.parse(step.text) {
+                    return "forget what I saved about your \(subject)"
+                }
+                return "forget a personal fact"
+            case ToolName.note: return "save a note"
+            default: return "\(step.tool): \(step.text)"
             }
         }
         return ListFormatter.localizedString(byJoining: parts)
@@ -185,7 +225,9 @@ struct Answer {
         "right", "fine", "anyway", "still", "perfect", "great",
     ]
     private static let yesPhrases = ["go ahead", "do it", "sounds good", "add it", "keep it", "that works", "of course"]
-    private static let noWords: Set<String> = ["no", "nope", "nah", "cancel", "don't", "dont", "stop", "nahi", "skip"]
+    private static let noWords: Set<String> = [
+        "no", "nope", "nah", "nothing", "cancel", "don't", "dont", "stop", "nahi", "skip",
+    ]
     private static let noPhrases = ["never mind", "nevermind", "leave it", "forget it", "not now"]
 
     init(_ text: String) {

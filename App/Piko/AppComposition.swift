@@ -24,6 +24,7 @@ final class AppComposition {
     let reminders = ReminderWriter()
     let dumpLog = DumpLog()
     let planner: any Planner = ModelPlanner()
+    let decider: any AssistantDeciding
     private(set) lazy var harness = ToolHarness(
         tools: AssistantTools.all(memory: memory, items: items, reminders: reminders))
     private let captureLaunchRequestStore: CaptureLaunchRequestStore?
@@ -38,7 +39,15 @@ final class AppComposition {
     var onStopRequested: (@MainActor () -> Void)?
     private(set) var lastCaptureLaunchError: String?
 
-    private init() throws {
+    #if DEBUG
+    /// App-native tests use a unique SQLite file; never read or write the owner's real history.
+    static func isolatedForTests(historyPath: URL, decider: any AssistantDeciding = ModelDecider()) throws -> AppComposition {
+        try AppComposition(historyPath: historyPath, decider: decider)
+    }
+    #endif
+
+    private init(historyPath: URL? = nil, decider: any AssistantDeciding = ModelDecider()) throws {
+        self.decider = decider
         guard let channel = DarwinChannel() else { throw PikoError.sharedContainerUnavailable }
         self.channel = channel
         session = SessionCoordinator(channel: channel, interruptions: AVAudioSessionInterruptionSource(), audioLevels: channel, isForeground: { UIApplication.shared.applicationState == .active })
@@ -67,7 +76,7 @@ final class AppComposition {
         #endif
         self.brain = brain
 
-        let sqlite = try SQLiteMemory(path: Self.historyURL())
+        let sqlite = try SQLiteMemory(path: historyPath ?? Self.historyURL())
         let memory: any Memory = sqlite
         self.memory = memory
         self.items = sqlite

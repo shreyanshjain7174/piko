@@ -47,7 +47,7 @@ private struct PikoRootContent: View {
                 NavigationStack { HistoryView(app: app) }
             }
             Tab("Settings", systemImage: "slider.horizontal.3", value: .settings) {
-                SettingsView(model: model)
+                SettingsView(model: model, memory: app.memory)
             }
         }
         .pikoThemed(model.skin)
@@ -72,6 +72,7 @@ private struct PikoRootContent: View {
 
 private struct SettingsView: View {
     @ObservedObject var model: HomeViewModel
+    let memory: any Memory
     @State private var showSetup = false
     @State private var showResetLearning = false
     @Environment(\.pikoTheme) private var theme
@@ -81,6 +82,18 @@ private struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section {
+                    NavigationLink {
+                        PersonalMemoryView(memory: memory)
+                    } label: {
+                        Label("What Piko knows", systemImage: "brain.head.profile")
+                    }
+                } header: {
+                    Text("Personal memory")
+                } footer: {
+                    Text("Inspect and forget facts you explicitly asked Piko to remember. This does not reset your dictation history.")
+                }
+
                 Section {
                     Picker("Personality", selection: Binding(
                         get: { model.companionPreferences.personality },

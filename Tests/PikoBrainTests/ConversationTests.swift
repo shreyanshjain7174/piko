@@ -101,4 +101,97 @@ private struct FakeCalendar: CalendarContext {
         guard case .ask = await talk.hear("hmm", context: nil, now: now) else { Issue.record("expected retry"); return }
         #expect(await talk.hear("whatever", context: nil, now: now) == .cancelled("Okay, I won't do that."))
     }
+
+    @Test func personalWritesAlwaysReadBackAndNoCancelsWithoutRunning() async {
+        for (tool, text, readback) in [
+            (ToolName.remember, "Remember my sister is Riya.", "remember that your sister is Riya"),
+            (ToolName.forget, "Forget my sister.", "forget what I saved about your sister"),
+        ] {
+            var talk = Conversation()
+            let call = ToolCall(tool: tool, text: text, sourceCaptureID: UUID(), expectedFactLSN: 12)
+            let reply = await talk.begin([call], context: nil, now: now)
+            guard case .confirm(let prompt) = reply else { Issue.record("Expected read-back"); return }
+            #expect(prompt.contains(readback))
+            #expect(talk.plan == [call])
+            #expect(await talk.hear("no thanks", context: nil, now: now)
+                    == .cancelled("Okay, I won't do that."))
+            #expect(talk.plan.isEmpty)
+            #expect(!talk.isWaiting)
+            _ = await talk.begin([call], context: nil, now: now)
+            #expect(await talk.hear("nothing", context: nil, now: now)
+                    == .cancelled("Okay, I won't do that."))
+            #expect(talk.plan.isEmpty)
+        }
+    }
+
+    @Test func personalYesKeepsTheOriginalOriginAndRevision() async {
+        var talk = Conversation()
+        let captureID = UUID()
+        let call = ToolCall(tool: ToolName.remember, text: "Remember my sister is Riya",
+                            sourceCaptureID: captureID, expectedFactLSN: 5)
+        _ = await talk.begin([call], context: nil, now: now)
+        #expect(await talk.hear("yes", context: nil, now: now) == .run("On it."))
+        #expect(talk.plan == [call])
+        #expect(talk.plan[0].sourceCaptureID == captureID)
+        #expect(talk.plan[0].expectedFactLSN == 5)
+    }
+
+    @Test func descriptorRiskRequiresConfirmationForAnUnlistedExternalTool() async {
+        let external = ToolCall(tool: "export.send", text: "This week's notes")
+        let local = ToolCall(tool: ToolName.note, text: "Keep it here")
+        let descriptors = [
+            ToolDescriptor(name: "export.send", summary: "Send notes", risk: .external),
+            ToolDescriptor(name: ToolName.note, summary: "Save a note", risk: .local),
+        ]
+        var talk = Conversation()
+        guard case .confirm = await talk.begin([external, local], context: nil, now: now,
+                                                descriptors: descriptors) else {
+            Issue.record("An external descriptor must trigger confirmation"); return
+        }
+        #expect(talk.confirmedPlan.isEmpty)
+        #expect(await talk.hear("no", context: nil, now: now) == .cancelled("Okay, I won't do that."))
+        #expect(talk.confirmedPlan.isEmpty)
+        _ = await talk.begin([external, local], context: nil, now: now, descriptors: descriptors)
+        #expect(await talk.hear("yes", context: nil, now: now) == .run("On it."))
+        #expect(talk.confirmedPlan == [external, local])
+        #expect(talk.isConfirmed(external))
+        var changed = external
+        changed.text = "Different notes"
+        #expect(!talk.isConfirmed(changed))
+        changed = external
+        changed.id = UUID()
+        #expect(!talk.isConfirmed(changed))
+        _ = await talk.begin([local], context: nil, now: now, descriptors: descriptors)
+        #expect(talk.confirmedPlan.isEmpty)
+        #expect(!talk.isConfirmed(external))
+        #expect(talk.waiting == .none)
+    }
+
+    @Test func aLocalActionAfterModelClarificationNeedsANewConfirmation() async {
+        let local = ToolCall(tool: ToolName.note, text: "Stretching")
+        let descriptors = [ToolDescriptor(name: ToolName.note, summary: "Save note", risk: .local)]
+        var talk = Conversation()
+        guard case .confirm = await talk.begin([local], context: nil, now: now,
+                                                descriptors: descriptors, requiresExplicitConfirmation: true) else {
+            Issue.record("local follow-up acted without a read-back"); return
+        }
+        #expect(talk.confirmedPlan.isEmpty)
+        #expect(!talk.isConfirmed(local))
+        #expect(await talk.hear("yes", context: nil, now: now) == .run("On it."))
+        #expect(talk.isConfirmed(local))
+        _ = await talk.begin([local], context: nil, now: now, descriptors: descriptors)
+        #expect(!talk.requiresConfirmation(local))
+    }
+
+    @Test func personalWritesConfirmEvenWhenRegisteredAsLocal() async {
+        var talk = Conversation()
+        let call = ToolCall(tool: ToolName.forget, text: "Forget my city", sourceCaptureID: UUID())
+        let registered = [ToolDescriptor(name: ToolName.forget, summary: "Forget fact", risk: .local)]
+        guard case .confirm = await talk.begin([call], context: nil, now: now, descriptors: registered) else {
+            Issue.record("Personal memory must always read back"); return
+        }
+        #expect(talk.confirmedPlan.isEmpty)
+        _ = await talk.hear("yes", context: nil, now: now)
+        #expect(talk.isConfirmed(call))
+    }
 }

@@ -6,6 +6,50 @@ import PikoKit
 import PikoBrain
 import PikoUI
 
+/// Owned by one explicit voice turn, not by the changing ID of each capture/response.
+/// Only actual replies and outcomes are retained, and never more than two exchanges.
+struct VoiceSession {
+    private(set) var owner: UUID?
+    private(set) var recent: [AssistantExchange] = []
+
+    @discardableResult
+    mutating func begin() -> UUID {
+        end()
+        let id = UUID()
+        owner = id
+        return id
+    }
+
+    mutating func append(user: String, reply: String, owner id: UUID) {
+        guard owner == id, !reply.isEmpty else { return }
+        func bounded(_ text: String) -> String {
+            String(String.UnicodeScalarView(text.unicodeScalars.prefix(240)))
+        }
+        recent.append(.init(user: bounded(user), reply: bounded(reply)))
+        if recent.count > 2 { recent.removeFirst(recent.count - 2) }
+    }
+
+    mutating func appendOutcome(user: String, outcomes: [ToolOutcome], owner id: UUID) {
+        let summary = outcomes.map { outcome -> String in
+            switch outcome.status {
+            case .done(let text): return text
+            case .skipped(let reason), .failed(let reason): return "\(outcome.call.text): \(reason)"
+            }
+        }.joined(separator: "; ")
+        append(user: user, reply: summary, owner: id)
+    }
+
+    mutating func end() {
+        owner = nil
+        recent.removeAll()
+    }
+
+    /// A confirmed fact mutation invalidates prior personal evidence without ending the voice turn.
+    mutating func clearEvidence() {
+        recent.removeAll()
+    }
+}
+
 /// App-only presentation state. All capture and persistence still use the existing coordinators.
 @MainActor
 final class HomeViewModel: ObservableObject {
@@ -28,6 +72,7 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var isExecutingTools = false
     @Published private(set) var isCelebrating = false
     @Published private(set) var spokenRepliesEnabled = true
+    @Published private(set) var engineCaption: String?
     private var companionStore: PikoCompanionStore?
     private var hasOfferedGreeting = false
     private var usesVoiceFollowUp = true
@@ -37,11 +82,28 @@ final class HomeViewModel: ObservableObject {
     private var captureStartupID = UUID()
     private var celebrationTask: Task<Void, Never>?
     private var conversation = Conversation()
+    private var followUpPolicy = FollowUpPolicy()
+    var voiceSession = VoiceSession()
+    #if DEBUG
+    /// Isolated app tests exercise follow-up decisions without activating the microphone.
+    var suppressAutomaticCaptureForTests = false
+    #endif
+    private struct Clarification {
+        let original: String
+        let question: String
+        let session: UUID?
+    }
+    private var clarification: Clarification?
+    private var actionRequest: String?
+    private var actionSession: UUID?
     private let speaker = Speaker()
     private let calendar = EventKitCalendar()
     private var pauseWatch: Task<Void, Never>?
     private var lastDraftChange = Date()
     private var isFollowUp = false
+    #if DEBUG
+    func simulateFollowUpForTests() { isFollowUp = true }
+    #endif
     /// Set when listening is cancelled by a tap, so the clipped words are not treated as speech.
     private var discardNextResult = false
     let activity = VoiceActivityModel()
@@ -70,23 +132,33 @@ final class HomeViewModel: ObservableObject {
             if !self.isFollowUp {
                 self.notice = "I didn’t catch that. Tap Talk to Piko and try again."
             }
-            Task { await self.finishTurn() }
+            let owner = self.responseID
+            Task { await self.finishTurn(requestID: owner) }
         }
         app.onTalkRequested = { [weak self] in await self?.talk() }
         app.onStopRequested = { [weak self] in
             guard let self else { return }
+            self.followUpPolicy.endVoiceTurn()
+            self.usesVoiceFollowUp = false
+            self.voiceSession.end()
+            self.clarification = nil
+            self.actionSession = nil
             self.captureStartupTask?.cancel()
+            self.responseID = UUID()
+            self.responseTask?.cancel()
+            self.responseTask = nil
             if self.isExecutingTools {
-                self.notice = "The approved action is finishing. Its result will stay visible."
+                self.notice = "The approved action may finish after Stop. Check its destination before retrying."
+                self.assistant = nil
+                self.engineCaption = nil
                 self.speaker.stop()
                 return
             }
-            self.responseID = UUID()
-            self.responseTask?.cancel()
             self.speaker.stop()
             self.pauseWatch?.cancel()
             self.conversation = Conversation()
             self.assistant = nil
+            self.engineCaption = nil
         }
         refresh()
         weeklyDumps = app.dumpLog.countLastSevenDays()
@@ -110,7 +182,26 @@ final class HomeViewModel: ObservableObject {
         guard active != isCompanionActive else { return }
         isCompanionActive = active
         if !active {
-            captureStartupTask?.cancel()
+            followUpPolicy.endVoiceTurn()
+            usesVoiceFollowUp = false
+            voiceSession.end()
+            clarification = nil
+            responseID = UUID()
+            responseTask?.cancel()
+            responseTask = nil
+            if isExecutingTools {
+                assistant = nil
+                engineCaption = nil
+                notice = "The approved action may finish while Piko is inactive. Check its destination before retrying."
+            } else {
+                conversation = Conversation()
+                actionRequest = nil
+                actionSession = nil
+                if assistant == .thinking { assistant = nil; engineCaption = nil }
+                if case .proposed = assistant { assistant = nil; engineCaption = nil }
+                if case .clarifying = assistant { assistant = nil; engineCaption = nil }
+            }
+            cancelAutomaticCapture()
             greeting = nil
             speaker.stop()
             celebrationTask?.cancel()
@@ -120,6 +211,19 @@ final class HomeViewModel: ObservableObject {
             if assistant == nil, companionPreferences.shouldPresentRoutine(.greeting) {
                 greeting = companionPreferences.personality.greeting
             }
+        }
+    }
+
+    private func cancelAutomaticCapture() {
+        captureStartupTask?.cancel()
+        guard isFollowUp, app.session.currentPhase == .capturing else { return }
+        let owner = responseID
+        let captureID = captureStartupID
+        Task { [weak self] in
+            guard let self, self.responseID == owner, self.captureStartupID == captureID else { return }
+            await self.stopListeningQuietly()
+            guard self.responseID == owner, self.captureStartupID == captureID else { return }
+            await self.finishTurn(requestID: owner)
         }
     }
 
@@ -158,7 +262,27 @@ final class HomeViewModel: ObservableObject {
         var preferences = companionPreferences
         preferences.quietMode = quiet
         saveCompanionPreferences(preferences)
-        if companionPreferences.quietMode {
+        if quiet {
+            followUpPolicy.endVoiceTurn()
+            usesVoiceFollowUp = false
+            voiceSession.end()
+            clarification = nil
+            responseID = UUID()
+            responseTask?.cancel()
+            responseTask = nil
+            if isExecutingTools {
+                assistant = nil
+                engineCaption = nil
+                notice = "The approved action may finish while Piko is inactive. Check its destination before retrying."
+            } else {
+                conversation = Conversation()
+                actionRequest = nil
+                actionSession = nil
+                if assistant == .thinking { assistant = nil; engineCaption = nil }
+                if case .proposed = assistant { assistant = nil; engineCaption = nil }
+                if case .clarifying = assistant { assistant = nil; engineCaption = nil }
+            }
+            cancelAutomaticCapture()
             speaker.stop()
             greeting = nil
             celebrationTask?.cancel()
@@ -215,6 +339,14 @@ final class HomeViewModel: ObservableObject {
         await speaker.say(text, personality: companionPreferences.personality)
     }
 
+    /// Also used when Control Center delivers a result before Home initiated capture.
+    func beginVoiceTurn() {
+        followUpPolicy.beginVoiceTurn()
+        usesVoiceFollowUp = true
+        voiceSession.begin()
+        clarification = nil
+    }
+
     func submitTypedRequest(_ request: String) async -> Bool {
         let request = request.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !request.isEmpty else {
@@ -232,6 +364,11 @@ final class HomeViewModel: ObservableObject {
         speaker.stop()
         let typedRequestID = UUID()
         responseID = typedRequestID
+        followUpPolicy.endVoiceTurn()
+        usesVoiceFollowUp = false
+        voiceSession.end()
+        if clarification?.session != nil { clarification = nil }
+        actionSession = nil
         captureStartupTask?.cancel()
         responseTask?.cancel()
         responseTask = nil
@@ -321,20 +458,33 @@ final class HomeViewModel: ObservableObject {
 
     /// Starts listening and ends the turn on its own when the speaker pauses — no "I'm done" tap.
     private func listen(followUp: Bool, requestID: UUID? = nil) async {
-        guard !Task.isCancelled, isCompanionActive,
-              requestID.map({ $0 == responseID }) ?? true else { return }
+        guard !Task.isCancelled, requestID.map({ $0 == responseID }) ?? true else { return }
         let owner = requestID ?? UUID()
         if requestID == nil {
+            guard isCompanionActive, UIApplication.shared.applicationState == .active else { return }
+            beginVoiceTurn()
             responseID = owner
             responseTask?.cancel()
             responseTask = nil
+        } else if !followUpPolicy.takeAutomaticListen(
+            voiceInitiated: usesVoiceFollowUp, isQuiet: companionPreferences.quietMode,
+            isForeground: UIApplication.shared.applicationState == .active,
+            isCurrent: isCompanionActive && responseID == owner,
+            succeeded: true, isExecutingTools: isExecutingTools
+        ) {
+            await finishTurn(requestID: owner)
+            return
         }
+        #if DEBUG
+        if requestID != nil && suppressAutomaticCaptureForTests { return }
+        #endif
         let captureID = UUID()
         captureStartupID = captureID
         captureStartupTask?.cancel()
         let task = Task { [weak self] in
             guard let self else { return }
-            await self.performListen(followUp: followUp, requestID: owner, captureID: captureID)
+            await self.performListen(followUp: followUp, requestID: owner, captureID: captureID,
+                                     automatic: requestID != nil)
         }
         captureStartupTask = task
         await withTaskCancellationHandler {
@@ -345,29 +495,33 @@ final class HomeViewModel: ObservableObject {
         if captureStartupID == captureID { captureStartupTask = nil }
     }
 
-    private func checkCaptureStartup(requestID: UUID, captureID: UUID) throws {
+    private func checkCaptureStartup(requestID: UUID, captureID: UUID, automatic: Bool) throws {
         try Task.checkCancellation()
-        guard responseID == requestID, captureStartupID == captureID, isCompanionActive else {
+        guard responseID == requestID, captureStartupID == captureID, isCompanionActive,
+              UIApplication.shared.applicationState == .active,
+              !automatic || (followUpPolicy.isVoiceTurnActive && usesVoiceFollowUp
+                             && !companionPreferences.quietMode && !isExecutingTools) else {
             throw CancellationError()
         }
     }
 
-    private func performListen(followUp: Bool, requestID: UUID, captureID: UUID) async {
+    private func performListen(followUp: Bool, requestID: UUID, captureID: UUID,
+                               automatic: Bool) async {
         let wasIdle = app.session.currentPhase == .idle
         do {
-            try checkCaptureStartup(requestID: requestID, captureID: captureID)
+            try checkCaptureStartup(requestID: requestID, captureID: captureID, automatic: automatic)
             if greeting != nil { recordAttention(.engaged, for: .greeting); greeting = nil }
             speaker.stop()
             error = nil
-            notice = nil
+            if !followUp { notice = nil }
             try await prepareSession()
-            try checkCaptureStartup(requestID: requestID, captureID: captureID)
+            try checkCaptureStartup(requestID: requestID, captureID: captureID, automatic: automatic)
             text = ""
             discardNextResult = false
             await app.showLiveActivity()
-            try checkCaptureStartup(requestID: requestID, captureID: captureID)
+            try checkCaptureStartup(requestID: requestID, captureID: captureID, automatic: automatic)
             try await app.captureCoordinator.startCapture()
-            try checkCaptureStartup(requestID: requestID, captureID: captureID)
+            try checkCaptureStartup(requestID: requestID, captureID: captureID, automatic: automatic)
             isFollowUp = followUp
             lastDraftChange = .now
             watchForPause()
@@ -385,7 +539,7 @@ final class HomeViewModel: ObservableObject {
                 return
             }
             present(error)
-            await finishTurn()
+            await finishTurn(requestID: requestID)
         }
     }
 
@@ -422,6 +576,19 @@ final class HomeViewModel: ObservableObject {
         guard !isBusy, !app.captureCoordinator.isTidying else { return }
         isBusy = true
         defer { isBusy = false; refresh() }
+        followUpPolicy.endVoiceTurn()
+        usesVoiceFollowUp = false
+        voiceSession.end()
+        clarification = nil
+        if !isExecutingTools {
+            responseID = UUID()
+            responseTask?.cancel()
+            responseTask = nil
+            conversation = Conversation()
+            actionRequest = nil
+            actionSession = nil
+        }
+        captureStartupTask?.cancel()
         let app = self.app
         if app.session.currentPhase == .capturing { await app.captureCoordinator.stopCapture(endSession: true) }
         await app.session.disarm()
@@ -434,6 +601,18 @@ final class HomeViewModel: ObservableObject {
         if discardNextResult, voiceFollowUp {
             discardNextResult = false
             return
+        }
+        if !voiceFollowUp {
+            followUpPolicy.endVoiceTurn()
+            usesVoiceFollowUp = false
+            voiceSession.end()
+            if clarification?.session != nil { clarification = nil }
+            actionSession = nil
+        } else if voiceSession.owner == nil {
+            // A capture launched from Control Center may arrive without Home having called listen.
+            guard isCompanionActive, !companionPreferences.quietMode,
+                  UIApplication.shared.applicationState == .active else { return }
+            beginVoiceTurn()
         }
         guard !isExecutingTools else {
             notice = "Let the approved action finish before starting another request."
@@ -452,56 +631,274 @@ final class HomeViewModel: ObservableObject {
         if responseID == requestID { responseTask = nil }
     }
 
+    private func isCurrent(_ requestID: UUID, session: UUID?) -> Bool {
+        guard responseID == requestID, !Task.isCancelled else { return false }
+        guard let session else { return true }
+        return voiceSession.owner == session && followUpPolicy.isVoiceTurnActive
+            && usesVoiceFollowUp && isCompanionActive
+            && UIApplication.shared.applicationState == .active
+    }
+
+    private func recordExchange(user: String, reply: String, requestID: UUID, session: UUID?) {
+        guard let session, isCurrent(requestID, session: session) else { return }
+        voiceSession.append(user: user, reply: reply, owner: session)
+    }
+
+    private static func caption(for source: EngineSource) -> String {
+        switch source {
+        case .model: "On-device model"
+        case .rules(let reason): "Rules · \(reason.replacingOccurrences(of: "\n", with: " "))"
+        }
+    }
+
+    /// Only confirmed facts are offered to general decisions. Raw dictations are searched
+    /// separately for explicit history quotes, never as generic evidence after a fact was forgotten.
+    private func decisionContext(for result: CaptureResult, request: String,
+                                 requestID: UUID, session: UUID?) async throws -> DecisionContext {
+        let origin = try await app.memory.captureTurn(forCapture: result.id)
+        guard isCurrent(requestID, session: session) else { throw CancellationError() }
+        guard origin.role == .user, origin.session == result.id, origin.text == result.shipped else {
+            throw PikoError.storageUnavailable
+        }
+        let keywords = Array(RecallQuery.keywords(from: request).prefix(4))
+        var facts: [MemoryFact] = []
+        if keywords.isEmpty {
+            // Still test the throwing read path instead of silently treating a broken store as empty.
+            _ = try await app.memory.facts(matching: nil, limit: 1)
+            guard isCurrent(requestID, session: session) else { throw CancellationError() }
+        }
+        for keyword in keywords {
+            let matches = try await app.memory.facts(matching: keyword, limit: 5)
+            guard isCurrent(requestID, session: session) else { throw CancellationError() }
+            for fact in matches where !facts.contains(where: { $0.key == fact.key }) {
+                facts.append(fact)
+                if facts.count == 5 { break }
+            }
+            if facts.count == 5 { break }
+        }
+        return DecisionContext(facts: facts, recent: session != nil && session == voiceSession.owner
+                               ? voiceSession.recent : [], personality: companionPreferences.personality)
+    }
+
+    private func quotedHistory(for result: CaptureResult, requestID: UUID,
+                               session: UUID?) async throws -> [CaptureResult] {
+        let origin = try await app.memory.captureTurn(forCapture: result.id)
+        guard isCurrent(requestID, session: session) else { throw CancellationError() }
+        guard origin.role == .user, origin.session == result.id, origin.text == result.shipped else {
+            throw PikoError.storageUnavailable
+        }
+        var history: [CaptureResult] = []
+        for keyword in RecallQuery.keywords(from: result.shipped).prefix(4) {
+            let matches = await app.memory.search(keyword, limit: 5)
+            guard isCurrent(requestID, session: session) else { throw CancellationError() }
+            for match in matches where match.id != result.id
+                && !history.contains(where: { $0.id == match.id }) {
+                let source = try await app.memory.captureTurn(forCapture: match.id)
+                guard isCurrent(requestID, session: session) else { throw CancellationError() }
+                guard source.role == .user, source.session == match.id,
+                      source.text == match.shipped else { throw PikoError.storageUnavailable }
+                history.append(match)
+                if history.count == 5 { break }
+            }
+            if history.count == 5 { break }
+        }
+        return history
+    }
+
     private func performResponse(to result: CaptureResult, voiceFollowUp: Bool, requestID: UUID) async {
-        guard responseID == requestID, !Task.isCancelled else { return }
+        let session = voiceFollowUp ? voiceSession.owner : nil
+        guard isCurrent(requestID, session: session) else { return }
         usesVoiceFollowUp = voiceFollowUp
         celebrationTask?.cancel()
         isCelebrating = false
         let app = self.app
-        if conversation.isWaiting,
+        let wasWaiting = conversation.isWaiting
+        // A closing voice turn leaves the prior answer visible; keep its source label.
+        if !wasWaiting, !(voiceFollowUp && isFollowUp && FollowUpPolicy.isClosing(result.shipped)) {
+            engineCaption = nil
+        }
+        if wasWaiting,
            let reply = await hear(result.shipped, requestID: requestID) {
-            guard responseID == requestID else { return }
-            await handle(reply, requestID: requestID)
+            guard isCurrent(requestID, session: session) else { return }
+            await handle(reply, requestID: requestID, userText: result.shipped)
             return
         }
-        guard responseID == requestID, !Task.isCancelled else { return }
+        guard isCurrent(requestID, session: session) else { return }
+        if wasWaiting {
+            conversation = Conversation()
+            actionRequest = nil
+            actionSession = nil
+            engineCaption = nil
+        }
+        if voiceFollowUp, isFollowUp, !wasWaiting,
+           FollowUpPolicy.isClosing(result.shipped) {
+            await finishTurn(requestID: requestID)
+            return
+        }
         assistant = .thinking
+        if let intent = PersonalIntent.parse(result.shipped) {
+            clarification = nil
+            engineCaption = nil
+            await respondToPersonal(intent, capture: result, requestID: requestID)
+            return
+        }
         do {
             if result.route == .recall {
-                var history: [CaptureResult] = []
-                for keyword in RecallQuery.keywords(from: result.shipped) {
-                    for match in await app.memory.search(keyword, limit: 5)
-                    where match.id != result.id && !history.contains(where: { $0.id == match.id }) {
-                        history.append(match)
-                    }
-                }
-                guard responseID == requestID, !Task.isCancelled else { return }
-                let answer = try await app.organizer.answer(result.shipped, from: Array(history.prefix(8)))
-                guard responseID == requestID else { return }
+                clarification = nil
+                let history = try await quotedHistory(for: result, requestID: requestID, session: session)
+                guard isCurrent(requestID, session: session) else { return }
+                let answer = try await RuleOrganizer().answer(result.shipped, from: history)
+                guard isCurrent(requestID, session: session) else { return }
+                engineCaption = "Rules · Quoted dictation history"
                 assistant = .answer(answer)
+                // A history quote may contain a previously forgotten value. Do not retain it
+                // as implicit evidence for the next general model request.
                 await speak(answer)
-                guard responseID == requestID else { return }
-                await finishTurn()
+                guard isCurrent(requestID, session: session) else { return }
+                await listen(followUp: true, requestID: requestID)
             } else {
-                let plan = try await app.planner.plan(result.shipped, tools: app.harness.actionDescriptors, now: .now)
-                guard responseID == requestID else { return }
-                guard !plan.isEmpty else {
-                    assistant = nil
-                    notice = "I couldn’t find anything to do there."
-                    await finishTurn()
-                    return
+                let pending = clarification?.session == session ? clarification : nil
+                // Only actual user words can ground an action. The prior model question stays
+                // separately quoted in context, never in the current request.
+                let request = pending.map { "\($0.original)\n\(result.shipped)" } ?? result.shipped
+                clarification = nil
+                let baseContext = try await decisionContext(for: result, request: request,
+                                                        requestID: requestID, session: session)
+                guard isCurrent(requestID, session: session) else { return }
+                let context = DecisionContext(facts: baseContext.facts, history: baseContext.history,
+                                              recent: baseContext.recent, personality: baseContext.personality,
+                                              pendingClarification: pending.map {
+                                                  PendingClarification(originalRequest: $0.original,
+                                                                       question: $0.question)
+                                              })
+                let tools = app.harness.actionDescriptors
+                let decision = try await app.decider.decide(request, context: context, tools: tools, now: .now)
+                guard isCurrent(requestID, session: session) else { return }
+                engineCaption = Self.caption(for: decision.source)
+                switch decision.decision {
+                case .answer(let answer), .unknown(let answer):
+                    assistant = .answer(answer)
+                    recordExchange(user: result.shipped, reply: answer, requestID: requestID, session: session)
+                    await speak(answer)
+                    guard isCurrent(requestID, session: session) else { return }
+                    await listen(followUp: true, requestID: requestID)
+                case .ask(let question):
+                    clarification = Clarification(original: request, question: question, session: session)
+                    assistant = .clarifying(question)
+                    recordExchange(user: result.shipped, reply: question, requestID: requestID, session: session)
+                    await speak(question)
+                    guard isCurrent(requestID, session: session) else { return }
+                    await listen(followUp: true, requestID: requestID)
+                case .act(let plan):
+                    guard !plan.isEmpty, plan.count <= app.harness.maxSteps,
+                          plan.allSatisfy({ call in
+                              tools.contains(where: { $0.name == call.tool })
+                                  && !call.tool.lowercased().hasPrefix("memory.")
+                          }) else {
+                        engineCaption = "Rules · Unregistered model action"
+                        assistant = .answer("I couldn't safely run that action. Please try again.")
+                        await finishTurn(requestID: requestID)
+                        return
+                    }
+                    var talk = Conversation()
+                    let reply = await talk.begin(plan, context: calendar, now: .now,
+                                                 descriptors: app.harness.descriptors,
+                                                 requiresExplicitConfirmation: pending != nil)
+                    guard isCurrent(requestID, session: session) else { return }
+                    conversation = talk
+                    actionRequest = request
+                    actionSession = session
+                    await handle(reply, requestID: requestID, userText: result.shipped)
                 }
-                var talk = conversation
-                let reply = await talk.begin(plan, context: calendar, now: .now)
-                guard responseID == requestID else { return }
-                conversation = talk
-                await handle(reply, requestID: requestID)
             }
         } catch {
-            guard responseID == requestID else { return }
+            guard isCurrent(requestID, session: session) else { return }
             assistant = nil
-            present(error)
-            await finishTurn()
+            engineCaption = nil
+            self.error = "I couldn't check your saved information just now. Please try again."
+            await finishTurn(requestID: requestID)
+        }
+    }
+
+    private func respondToPersonal(_ intent: PersonalIntent, capture: CaptureResult, requestID: UUID) async {
+        let session = usesVoiceFollowUp ? voiceSession.owner : nil
+        do {
+            switch intent {
+            case .ask(let key, let subject):
+                let fact = try await app.memory.fact(forKey: key)
+                guard isCurrent(requestID, session: session) else { return }
+                let source: MemoryTurn?
+                if let sourceTurn = fact?.sourceTurn {
+                    source = try await app.memory.turn(lsn: sourceTurn)
+                } else {
+                    source = nil
+                }
+                guard isCurrent(requestID, session: session) else { return }
+                let answer = PersonalAnswer.reply(subject: subject, fact: fact)
+                let sourceLabel = source.flatMap {
+                    $0.role == .user
+                        ? "From what you told Piko on \($0.at.formatted(date: .abbreviated, time: .omitted))"
+                        : nil
+                }
+                engineCaption = "Rules · Personal fact lookup"
+                assistant = .personalAnswer(answer, source: sourceLabel)
+                recordExchange(user: capture.shipped, reply: answer, requestID: requestID, session: session)
+                await speak(answer)
+                guard isCurrent(requestID, session: session) else { return }
+                await listen(followUp: true, requestID: requestID)
+
+            case .remember, .forget:
+                let origin = try await app.memory.captureTurn(forCapture: capture.id)
+                guard isCurrent(requestID, session: session) else { return }
+                guard origin.role == .user, origin.session == capture.id,
+                      PersonalIntent.parse(origin.text) == intent else {
+                    throw PersonalFactToolError.unverifiedOrigin
+                }
+                let existing = try await app.memory.fact(forKey: intent.key)
+                guard isCurrent(requestID, session: session) else { return }
+                if case .forget = intent, existing == nil {
+                    let answer = "I don't have a saved fact about your \(intent.subject) to forget."
+                    engineCaption = "Rules · No saved personal fact"
+                    assistant = .personalAnswer(answer, source: nil)
+                    recordExchange(user: capture.shipped, reply: answer, requestID: requestID, session: session)
+                    await speak(answer)
+                    guard isCurrent(requestID, session: session) else { return }
+                    await listen(followUp: true, requestID: requestID)
+                    return
+                }
+                let tool = if case .remember = intent { ToolName.remember } else { ToolName.forget }
+                let call = ToolCall(tool: tool, text: origin.text, sourceCaptureID: capture.id,
+                                    expectedFactLSN: existing?.lsn)
+                var talk = conversation
+                let reply = await talk.begin([call], context: nil, now: .now,
+                                             descriptors: app.harness.descriptors)
+                guard isCurrent(requestID, session: session) else { return }
+                conversation = talk
+                engineCaption = "Rules · Explicit personal memory"
+                actionRequest = origin.text
+                actionSession = session
+                if let existing, case .confirm(let prompt) = reply {
+                    await handle(.confirm("I have your \(intent.subject) saved as \(existing.value). \(prompt)"),
+                                 requestID: requestID)
+                } else {
+                    await handle(reply, requestID: requestID)
+                }
+            }
+        } catch {
+            guard isCurrent(requestID, session: session) else { return }
+            engineCaption = "Rules · Personal memory unavailable"
+            assistant = .personalAnswer(
+                (error as? PersonalFactToolError)?.userMessage
+                    ?? (error as? PersonalMemoryError).flatMap {
+                        if case .sourceCaptureMissing = $0 {
+                            return PersonalFactToolError.unverifiedOrigin.userMessage
+                        }
+                        return nil
+                    }
+                    ?? "I couldn't check your saved facts just now. Please try again.",
+                source: nil
+            )
+            await finishTurn(requestID: requestID)
         }
     }
 
@@ -515,42 +912,80 @@ final class HomeViewModel: ObservableObject {
         return reply
     }
 
-    private func handle(_ reply: Conversation.Reply, requestID: UUID) async {
+    private func handle(_ reply: Conversation.Reply, requestID: UUID, userText: String? = nil) async {
         guard responseID == requestID else { return }
+        let session = actionSession
+        let personalWrite = conversation.plan.allSatisfy {
+            $0.tool == ToolName.remember || $0.tool == ToolName.forget
+        }
         switch reply {
         case .ask(let prompt), .confirm(let prompt):
             let canConfirm = conversation.waiting == .confirm
             assistant = .proposed(conversation.plan, prompt: prompt, canConfirm: canConfirm)
+            if !personalWrite {
+                recordExchange(user: userText ?? actionRequest ?? "", reply: prompt,
+                               requestID: requestID, session: session)
+            }
             await speak(prompt)
             // The user may have tapped Do it or Discard while Piko was speaking.
             guard responseID == requestID, case .proposed = assistant, conversation.isWaiting else { return }
-            if usesVoiceFollowUp, isCompanionActive {
-                await listen(followUp: true, requestID: requestID)
-            } else {
-                await finishTurn()
-            }
+            await listen(followUp: true, requestID: requestID)
         case .run(let ack):
-            await execute(conversation.plan, ack: ack, requestID: requestID)
+            await execute(conversation.plan, ack: ack, requestID: requestID,
+                          userText: userText ?? actionRequest ?? "")
         case .cancelled(let message):
             assistant = nil
             notice = message
+            if !personalWrite {
+                recordExchange(user: userText ?? actionRequest ?? "", reply: message,
+                               requestID: requestID, session: session)
+            }
+            conversation = Conversation()
+            actionRequest = nil
+            actionSession = nil
             await speak(message)
             guard responseID == requestID else { return }
-            await finishTurn()
+            await listen(followUp: true, requestID: requestID)
         }
     }
 
-    private func execute(_ plan: [ToolCall], ack: String, requestID: UUID) async {
-        guard responseID == requestID else { return }
+    private func execute(_ plan: [ToolCall], ack: String, requestID: UUID, userText: String) async {
+        guard responseID == requestID, plan == conversation.plan,
+              plan.allSatisfy({ !conversation.requiresConfirmation($0) || conversation.isConfirmed($0) }) else {
+            notice = "That action needs a fresh confirmation."
+            return
+        }
+        let confirmed = conversation.confirmedPlan
+        let session = actionSession
+        let personalWrite = plan.allSatisfy {
+            $0.tool == ToolName.remember || $0.tool == ToolName.forget
+        }
+        if personalWrite {
+            voiceSession.clearEvidence()
+            clarification = nil
+        }
         isExecutingTools = true
         defer { isExecutingTools = false }
         assistant = .thinking
-        let outcomes = await app.harness.run(plan, approve: { _ in true })
-        app.dumpLog.record()
-        weeklyDumps = app.dumpLog.countLastSevenDays()
+        let outcomes = await app.harness.run(plan, approve: { confirmed.contains($0) })
+        guard isCurrent(requestID, session: session) else { return }
+        if !personalWrite, outcomes.contains(where: {
+            if case .done = $0.status { true } else { false }
+        }) {
+            app.dumpLog.record()
+            weeklyDumps = app.dumpLog.countLastSevenDays()
+        }
+        if !personalWrite {
+            if let session, isCurrent(requestID, session: session) {
+                voiceSession.appendOutcome(user: userText, outcomes: outcomes, owner: session)
+            }
+        }
         conversation = Conversation()
+        actionRequest = nil
+        actionSession = nil
         assistant = .done(outcomes)
-        let allDone = outcomes.allSatisfy { if case .done = $0.status { true } else { false } }
+        let allDone = !outcomes.isEmpty && outcomes.count == plan.count
+            && outcomes.allSatisfy { if case .done = $0.status { true } else { false } }
         if allDone, companionPreferences.shouldPresentRoutine(.completion), isCompanionActive {
             isCelebrating = true
             celebrationTask?.cancel()
@@ -560,10 +995,20 @@ final class HomeViewModel: ObservableObject {
             }
         }
         if !allDone || companionPreferences.shouldPresentRoutine(.completion) {
-            await speak(allDone ? (ack == "Saved." ? "Saved." : "Done.") : "Some of that didn’t work. Have a look.")
+            let memoryOutcome: String? = plan.count == 1
+                && (plan[0].tool == ToolName.remember || plan[0].tool == ToolName.forget)
+                ? outcomes.first.flatMap { if case .done(let text) = $0.status { text } else { nil } }
+                : nil
+            await speak(allDone ? (memoryOutcome ?? (ack == "Saved." ? "Saved." : "Done."))
+                                : "Some of that didn’t work. Have a look.")
         }
         guard responseID == requestID else { return }
-        await finishTurn()
+        isExecutingTools = false
+        if allDone {
+            await listen(followUp: true, requestID: requestID)
+        } else {
+            await finishTurn(requestID: requestID)
+        }
     }
 
     /// "Do it" on the card — the same as saying yes.
@@ -572,10 +1017,20 @@ final class HomeViewModel: ObservableObject {
             notice = "The current action is still finishing."
             return
         }
+        guard case .proposed(let visible, _, true) = assistant,
+              conversation.waiting == .confirm, visible == conversation.plan else {
+            notice = "That action needs a fresh confirmation."
+            return
+        }
         isBusy = true
         defer { isBusy = false }
         let requestID = UUID()
         responseID = requestID
+        followUpPolicy.endVoiceTurn()
+        usesVoiceFollowUp = false
+        voiceSession.end()
+        if clarification?.session != nil { clarification = nil }
+        actionSession = nil
         captureStartupTask?.cancel()
         responseTask?.cancel()
         responseTask = nil
@@ -587,16 +1042,28 @@ final class HomeViewModel: ObservableObject {
 
     func dismissAssistant(engaged: Bool = false) {
         guard !isExecutingTools else {
+            followUpPolicy.endVoiceTurn()
+            usesVoiceFollowUp = false
+            voiceSession.end()
+            clarification = nil
+            actionSession = nil
             notice = "The approved action is finishing. Its result will stay visible."
             return
         }
         if let assistant {
             switch assistant {
-            case .answer, .done: recordAttention(engaged ? .engaged : .dismissed, for: .completion)
+            case .answer, .personalAnswer, .done:
+                recordAttention(engaged ? .engaged : .dismissed, for: .completion)
             default: break
             }
         }
         responseID = UUID()
+        followUpPolicy.endVoiceTurn()
+        usesVoiceFollowUp = false
+        voiceSession.end()
+        clarification = nil
+        actionRequest = nil
+        actionSession = nil
         captureStartupTask?.cancel()
         responseTask?.cancel()
         celebrationTask?.cancel()
@@ -604,13 +1071,14 @@ final class HomeViewModel: ObservableObject {
         speaker.stop()
         conversation = Conversation()
         assistant = nil
+        engineCaption = nil
         let cleanupID = responseID
         let captureID = captureStartupID
         Task {
             guard self.responseID == cleanupID, self.captureStartupID == captureID else { return }
             await stopListeningQuietly()
             guard self.responseID == cleanupID, self.captureStartupID == captureID else { return }
-            await finishTurn()
+            await finishTurn(requestID: cleanupID)
         }
     }
 
@@ -623,7 +1091,14 @@ final class HomeViewModel: ObservableObject {
     }
 
     /// Ends the visible part of a turn: nothing left in the Dynamic Island or on the Lock Screen.
-    private func finishTurn() async {
+    private func finishTurn(requestID: UUID) async {
+        guard responseID == requestID else { return }
+        followUpPolicy.endVoiceTurn()
+        if let session = voiceSession.owner {
+            if clarification?.session == session { clarification = nil }
+            if actionSession == session { actionSession = nil }
+            voiceSession.end()
+        }
         pauseWatch?.cancel()
         isFollowUp = false
         await app.liveActivityController.end()
@@ -669,7 +1144,16 @@ enum AssistantState: Equatable {
     case thinking
     case proposed([ToolCall], prompt: String, canConfirm: Bool)
     case answer(String)
+    case clarifying(String)
+    case personalAnswer(String, source: String?)
     case done([ToolOutcome])
+
+    var showsEngineCaption: Bool {
+        switch self {
+        case .proposed, .answer, .clarifying, .personalAnswer, .done: true
+        case .thinking: false
+        }
+    }
 }
 
 /// The work leads; a small Piko stays nearby without taking over the screen.
@@ -682,6 +1166,8 @@ struct ArmView: View {
     @FocusState private var isEditing: Bool
     @FocusState private var isTypingRequest: Bool
     @Environment(\.pikoTheme) private var theme
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var isHomeVisible = false
 
     var body: some View {
         NavigationStack {
@@ -796,6 +1282,14 @@ struct ArmView: View {
             .toolbarVisibility(.hidden, for: .navigationBar)
             .sheet(isPresented: $showSetup) { OnboardingView(isPresented: $showSetup) }
             .onChange(of: model.text) { _, _ in copiedText = nil }
+            .onAppear { isHomeVisible = true }
+            .onDisappear {
+                isHomeVisible = false
+                model.setCompanionActive(false)
+            }
+            .onChange(of: showSetup) { _, showing in
+                model.setCompanionActive(!showing && isHomeVisible && scenePhase == .active)
+            }
         }
     }
 
@@ -951,6 +1445,26 @@ struct ArmView: View {
                         .fixedSize(horizontal: false, vertical: true)
                     Button("Thanks, Piko") { model.dismissAssistant(engaged: true) }
                         .buttonStyle(.pikoQuiet)
+                case .clarifying(let question):
+                    Text(question)
+                        .font(.headline)
+                        .foregroundStyle(theme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Tell Piko the answer to continue.")
+                        .font(.subheadline)
+                        .foregroundStyle(theme.ink2)
+                    Button("Not now") { model.dismissAssistant() }
+                        .buttonStyle(.pikoQuiet)
+                case .personalAnswer(let answer, let source):
+                    Text(answer)
+                        .font(.body)
+                        .foregroundStyle(theme.ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let source {
+                        Text(source).font(.caption).foregroundStyle(theme.ink2)
+                    }
+                    Button("Thanks, Piko") { model.dismissAssistant(engaged: true) }
+                        .buttonStyle(.pikoQuiet)
                 case .done(let outcomes):
                     VStack(alignment: .leading, spacing: 10) {
                         ForEach(outcomes, id: \.call.id) { outcome in
@@ -968,6 +1482,12 @@ struct ArmView: View {
                     .font(.body)
                     Button("All good") { model.dismissAssistant(engaged: true) }
                         .buttonStyle(.pikoQuiet)
+                }
+                if state.showsEngineCaption, let caption = model.engineCaption {
+                    Text(caption)
+                        .font(.caption)
+                        .foregroundStyle(theme.ink2)
+                        .accessibilityIdentifier("assistant.engine")
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
