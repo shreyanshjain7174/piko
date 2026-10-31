@@ -101,6 +101,9 @@ final class HomeViewModel: ObservableObject {
     private var pauseWatch: Task<Void, Never>?
     private var lastDraftChange = Date()
     private var isFollowUp = false
+    #if DEBUG
+    func simulateFollowUpForTests() { isFollowUp = true }
+    #endif
     /// Set when listening is cancelled by a tap, so the clipped words are not treated as speech.
     private var discardNextResult = false
     let activity = VoiceActivityModel()
@@ -710,7 +713,10 @@ final class HomeViewModel: ObservableObject {
         isCelebrating = false
         let app = self.app
         let wasWaiting = conversation.isWaiting
-        if !wasWaiting { engineCaption = nil }
+        // A closing voice turn leaves the prior answer visible; keep its source label.
+        if !wasWaiting, !(voiceFollowUp && isFollowUp && FollowUpPolicy.isClosing(result.shipped)) {
+            engineCaption = nil
+        }
         if wasWaiting,
            let reply = await hear(result.shipped, requestID: requestID) {
             guard isCurrent(requestID, session: session) else { return }

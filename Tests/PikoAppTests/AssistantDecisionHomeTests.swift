@@ -122,6 +122,28 @@ struct AssistantDecisionHomeTests {
         #expect(requests[1].1.pendingClarification?.question == "Should I save a note about stretching?")
     }
 
+    @Test func closingVoicePhraseKeepsTheVisibleAnswerCaption() async throws {
+        let fixture = DecisionFixture([.init(decision: .answer("Take it gently."), source: .model)])
+        let (path, app, model) = try makeFixture(FixtureDecider(fixture: fixture))
+        defer { clean(path) }
+        model.suppressAutomaticCaptureForTests = true
+        let spoken = model.spokenRepliesEnabled
+        model.setSpokenReplies(false)
+        defer { model.setSpokenReplies(spoken) }
+        model.setQuietMode(false)
+        model.setCompanionActive(true)
+        defer { model.setCompanionActive(false) }
+        await voice("What should I do?", model: model, app: app)
+        #expect(model.assistant == .answer("Take it gently."))
+        #expect(model.engineCaption == "On-device model")
+        // Simulate the automatic follow-up listener without opening a microphone in this test.
+        model.simulateFollowUpForTests()
+        await voice("thanks", model: model, app: app)
+        #expect(model.assistant == .answer("Take it gently."))
+        #expect(model.engineCaption == "On-device model")
+        #expect(await fixture.requests.count == 1)
+    }
+
     @Test func voiceKeepsTwoRealExchangesAcrossResponseIDsButTypedDoesNot() async throws {
         let fixture = DecisionFixture((0..<4).map {
             .init(decision: .answer("Actual answer \($0)"), source: .model)
