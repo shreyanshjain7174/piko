@@ -322,14 +322,48 @@ private actor CountingDecider: AssistantDeciding {
     @Test func keyboardDictationProducesNoCard() async throws {
         let (path, container, app, model, decider) = try fixture()
         defer { clean(path, container) }
-        try? await app.captureCoordinator.startCapture(fromKeyboard: true)
-        app.channel.writeResult(CaptureResult(raw: "Riya\u{27}s usual is tea", shipped: "Riya\u{27}s usual is tea"))
-        let observer = Task { await model.observe() }
-        await Task.yield()
-        observer.cancel()
+        model.suppressAutomaticCaptureForTests = true
+        model.setSpokenReplies(false)
+        model.setQuietMode(false)
+        model.setCompanionActive(true)
+        defer { model.setCompanionActive(false) }
+        try await app.session.arm()
+        try await app.captureCoordinator.startCapture(fromKeyboard: true)
+        let keyboardText = "Riya\u{27}s usual is tea"
+        let keyboardCapture = CaptureResult(raw: keyboardText, shipped: keyboardText)
+        await app.memory.record(keyboardCapture)
+        app.channel.writeResult(keyboardCapture)
+        let keyboardObserver = Task { await model.observe() }
+        for _ in 0..<50 {
+            if model.text == keyboardText { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(model.text == keyboardText)
+        // Give the keyboard result the same one-second window as the control below.
+        try await Task.sleep(for: .seconds(1))
+        keyboardObserver.cancel()
         #expect(model.assistant == nil)
         #expect(await decider.calls == 0)
         #expect(try await app.memory.fact(forKey: "person/riya/usual") == nil)
+
+        await app.session.disarm()
+        try await app.session.arm()
+        try await app.captureCoordinator.startCapture(fromKeyboard: false)
+        let controlText = "Riya\u{27}s usual is coffee"
+        let controlCapture = CaptureResult(raw: controlText, shipped: controlText)
+        await app.memory.record(controlCapture)
+        app.channel.writeResult(controlCapture)
+        let controlObserver = Task { await model.observe() }
+        for _ in 0..<50 {
+            if case .contextProposals = model.assistant { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        controlObserver.cancel()
+        await app.session.disarm()
+        guard case .contextProposals = model.assistant else {
+            Issue.record("Non-keyboard capture should produce a proposal card")
+            return
+        }
     }
 
     @Test func oldRememberToolRepublishes() async throws {

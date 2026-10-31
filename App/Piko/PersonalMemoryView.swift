@@ -107,13 +107,28 @@ final class PersonalMemorySettingsModel: ObservableObject {
         defer { isEditing = false }
         let label = String(selected.key.split(separator: "/").last ?? "fact")
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else {
+            errorMessage = "Enter a value to save."
+            return
+        }
+        guard value != selected.value else {
+            errorMessage = "No change to save."
+            return
+        }
+        let quote = "Update \(label) to \(value)"
+        guard SensitiveContent.verdict(label: label + " " + selected.key, value: value) == .safe,
+              SensitiveContent.verdict(label: label, value: quote) == .safe else {
+            errorMessage = "Piko does not save passwords, payment, codes or ID numbers."
+            return
+        }
         do {
             guard try await memory.fact(forKey: selected.key)?.lsn == selected.lsn else {
                 errorMessage = "This saved fact changed since you selected it. Refresh and review it before editing."
                 return
             }
-            let quote = "Update \(label) to \(value)"
-            let turn = try await memory.appendTurn(session: UUID(), role: .user, text: quote, at: .now)
+            let capture = CaptureResult(raw: quote, shipped: quote)
+            await memory.record(capture)
+            let turn = try await memory.captureTurn(forCapture: capture.id)
             let entityName: String?
             if let entityID = selected.entityID { entityName = try await memory.entity(id: entityID)?.name }
             else { entityName = nil }
