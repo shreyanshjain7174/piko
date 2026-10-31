@@ -45,10 +45,6 @@ final class ContextLoopUITests: XCTestCase {
         app.swipeUp() // Move the row above the tab bar before tapping.
         edit.tap()
         let value = app.textFields["settings.editValue"]
-        if !value.waitForExistence(timeout: 3) {
-            XCTAssertTrue(edit.waitForExistence(timeout: 10))
-            edit.tap() // Retry after the navigation transition finishes.
-        }
         XCTAssertTrue(value.waitForExistence(timeout: 20))
         value.tap()
         value.press(forDuration: 1)
@@ -77,10 +73,6 @@ final class ContextLoopUITests: XCTestCase {
         if !forget.isHittable { app.swipeUp() }
         forget.tap()
         let confirmForget = app.alerts.buttons["Forget saved fact"]
-        if !confirmForget.waitForExistence(timeout: 3) {
-            XCTAssertTrue(forget.waitForExistence(timeout: 10))
-            forget.tap() // Retry after the preserved tab transition settles.
-        }
         XCTAssertTrue(confirmForget.waitForExistence(timeout: 10))
         confirmForget.tap()
         let dropped = NSPredicate(format: "label == %@", "Suggestions: 1")

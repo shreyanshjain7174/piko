@@ -246,6 +246,7 @@ struct PersonalMemoryView: View {
                                 model.selectForEdit(fact)
                                 if model.editingFact != nil { editValue = fact.value; showEdit = true }
                             }
+                            .buttonStyle(.borderless)
                             .accessibilityIdentifier("settings.edit.\(fact.key)")
                             .disabled(model.isLoading || model.isForgetting || model.isEditing)
                             Button(role: .destructive) {
@@ -254,6 +255,8 @@ struct PersonalMemoryView: View {
                             } label: {
                                 Label("Forget saved fact", systemImage: "trash")
                             }
+                            // Without borderless styles, a Form row fires every button it contains.
+                            .buttonStyle(.borderless)
                             .accessibilityIdentifier("settings.forget.\(fact.key)")
                             .disabled(model.isLoading || model.isForgetting)
                         }
