@@ -88,6 +88,7 @@ final class HomeViewModel: ObservableObject {
     #if DEBUG
     /// Isolated app tests exercise follow-up decisions without activating the microphone.
     var suppressAutomaticCaptureForTests = false
+    var celebrationDuration: Duration = .milliseconds(1600)
     #endif
     private struct Clarification {
         let original: String
@@ -752,7 +753,7 @@ final class HomeViewModel: ObservableObject {
         if let pendingCard {
             if pendingCard.session == session && voiceFollowUp {
                 if Self.isCardYes(result.shipped) {
-                    await saveProposalCard(pendingCard.id, voice: true)
+                    await saveProposalCard(pendingCard.id, voice: true, requestID: requestID)
                     return
                 }
                 if Self.isCardNo(result.shipped) || FollowUpPolicy.isClosing(result.shipped) {
@@ -802,10 +803,13 @@ final class HomeViewModel: ObservableObject {
                 await listen(followUp: true, requestID: requestID)
                 return
             }
-            let turn = try await app.memory.captureTurn(forCapture: result.id)
-            guard isCurrent(requestID, session: session), turn.role == .user,
-                  turn.session == result.id, turn.text == result.shipped else { return }
-            let candidates = RuleContextProposer().propose(from: turn)
+            // A missing history turn must not prevent unrelated recall or model requests.
+            let turn = try? await app.memory.captureTurn(forCapture: result.id)
+            guard isCurrent(requestID, session: session) else { return }
+            let candidates = turn.flatMap { turn in
+                turn.role == .user && turn.session == result.id && turn.text == result.shipped
+                    ? RuleContextProposer().propose(from: turn) : nil
+            } ?? []
             if !candidates.isEmpty {
                 var items: [ProposalCard.Item] = []
                 var unchanged = 0
@@ -1066,16 +1070,31 @@ final class HomeViewModel: ObservableObject {
         if case .contextProposals = assistant { assistant = nil; engineCaption = nil }
     }
 
-    func saveProposalCard(_ id: UUID, voice: Bool = false) async {
+    func saveProposalCard(_ id: UUID, voice: Bool = false, requestID: UUID? = nil) async {
         guard let card = proposalCard, card.id == id else { return }
         for item in card.items where item.status == .pending {
             await saveProposal(id, row: item.id)
         }
-        if voice, proposalCard?.id == id {
-            let message = card.items.contains(where: { $0.status == .pending })
-                ? "Saved. Review any changes on the card."
-                : "Review changes on the card to save them."
+        guard let updated = proposalCard, updated.id == id else { return }
+        let saved = updated.items.filter { $0.status == .saved }.count
+        let failed = updated.items.filter { if case .failed = $0.status { return true }; return false }.count
+        let changed = updated.items.filter { $0.status == .conflict || $0.changed }.count
+        let message = [saved > 0 ? "Saved \(saved)." : nil,
+                       failed > 0 ? "Could not save \(failed)." : nil,
+                       changed > 0 ? "Review \(changed) changes on the card." : nil]
+            .compactMap { $0 }.joined(separator: " ")
+        if !updated.items.contains(where: { $0.status == .pending || $0.status == .conflict }) {
+            dismissProposalCard(id)
+            assistant = .answer(message)
+        }
+        if voice {
             await speak(message)
+            guard let requestID else { return }
+            if isCurrent(requestID, session: updated.session) {
+                await listen(followUp: true, requestID: requestID)
+            } else {
+                await finishTurn(requestID: requestID)
+            }
         }
     }
 
@@ -1112,7 +1131,7 @@ final class HomeViewModel: ObservableObject {
                     isCelebrating = true
                     celebrationTask?.cancel()
                     celebrationTask = Task { [weak self] in
-                        do { try await Task.sleep(for: .milliseconds(1600)) } catch { return }
+                        do { try await Task.sleep(for: self?.celebrationDelay ?? .milliseconds(1600)) } catch { return }
                         self?.isCelebrating = false
                     }
                 }
@@ -1146,6 +1165,14 @@ final class HomeViewModel: ObservableObject {
             proposalCard?.items[index].status = .failed("This changed. Please ask again.")
             if let proposalCard { assistant = .contextProposals(proposalCard) }
         }
+    }
+
+    private var celebrationDelay: Duration {
+        #if DEBUG
+        celebrationDuration
+        #else
+        .milliseconds(1600)
+        #endif
     }
 
     private func execute(_ plan: [ToolCall], ack: String, requestID: UUID, userText: String) async {
@@ -1189,7 +1216,7 @@ final class HomeViewModel: ObservableObject {
             isCelebrating = true
             celebrationTask?.cancel()
             celebrationTask = Task { [weak self] in
-                do { try await Task.sleep(for: .milliseconds(1600)) } catch { return }
+                do { try await Task.sleep(for: self?.celebrationDelay ?? .milliseconds(1600)) } catch { return }
                 self?.isCelebrating = false
             }
         }

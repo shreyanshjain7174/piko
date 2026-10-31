@@ -213,26 +213,83 @@ private actor CountingDecider: AssistantDeciding {
         #expect(try await app.memory.fact(forKey: "person/riya/usual") == nil)
         model.beginVoiceTurn()
         await voice("Riya\u{27}s usual is tea", app: app, model: model)
+        guard case .contextProposals = model.assistant else { Issue.record("Second voice card"); return }
         model.setCompanionActive(false)
         #expect(model.assistant == nil)
         #expect(try await app.memory.fact(forKey: "person/riya/usual") == nil)
     }
 
     @Test func publishFailureDoesNotRollBackFact() async throws {
-        let (path, container, app, model, _) = try fixture(writer: { _ in throw PublishFixtureFailure.failed })
-        defer { clean(path, container) }
+        let container = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
+        let store = SuggestionSnapshotStore(containerURL: container)
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sqlite")
+        let app = try AppComposition.isolatedForTests(historyPath: path, suggestionsContainer: container,
+            writer: { snapshot in
+                if !snapshot.entries.isEmpty { throw PublishFixtureFailure.failed }
+                try store.write(snapshot)
+            })
+        let model = HomeViewModel(app: app)
+        let noticeDelivery = AsyncStream<Void>.makeStream()
+        let originalHandler = app.onPublishFailure
+        app.onPublishFailure = { message in
+            originalHandler?(message)
+            noticeDelivery.continuation.yield(())
+        }
+        defer { clean(path, container); noticeDelivery.continuation.finish() }
         #expect(await model.submitTypedRequest("Riya\u{27}s usual is tea"))
         guard case .contextProposals(let card) = model.assistant else { Issue.record("Card"); return }
         await model.saveProposalCard(card.id)
         #expect(try await app.memory.fact(forKey: "person/riya/usual")?.value == "tea")
-        try await Task.sleep(for: .milliseconds(50))
+        var notices = noticeDelivery.stream.makeAsyncIterator()
+        _ = await notices.next()
         #expect(model.notice?.contains("keyboard suggestions") == true)
+        #expect(store.read() == .empty)
         let publishError = await app.publishingMemory.publishError
         #expect(publishError != nil)
         let settings = PersonalMemorySettingsModel(memory: app.memory)
         await settings.load()
         #expect(settings.errorMessage == publishError)
         #expect(settings.facts.count == 1)
+    }
+
+    @Test func missingCaptureFallsThroughToDecider() async throws {
+        let (path, container, _, model, decider) = try fixture()
+        defer { clean(path, container) }
+        // Simulates a swallowed history insert: the response has no source turn.
+        await model.respond(to: CaptureResult(raw: "hello", shipped: "hello"), voiceFollowUp: false)
+        #expect(await decider.calls == 1)
+        #expect(model.assistant == .answer("No evidence."))
+    }
+
+    @Test func voiceYesWithFailedSaveReportsFailure() async throws {
+        let (path, container, app, model, _) = try fixture()
+        defer { clean(path, container) }
+        model.suppressAutomaticCaptureForTests = true
+        model.setSpokenReplies(false)
+        model.setQuietMode(false)
+        model.setCompanionActive(true)
+        defer { model.setCompanionActive(false) }
+        await voice("Riya\u{27}s usual is tea", app: app, model: model)
+        guard case .contextProposals = model.assistant else { Issue.record("Voice card"); return }
+        let capture = try #require(await app.memory.search("Riya", limit: 1).first)
+        await app.memory.delete(capture.id) // Source disappears after staging; confirm fails.
+        await voice("yes", app: app, model: model)
+        #expect(model.assistant == .answer("Could not save 1."))
+        #expect(try await app.memory.fact(forKey: "person/riya/usual") == nil)
+    }
+
+    @Test func keyboardDictationProducesNoCard() async throws {
+        let (path, container, app, model, decider) = try fixture()
+        defer { clean(path, container) }
+        try? await app.captureCoordinator.startCapture(fromKeyboard: true)
+        app.channel.writeResult(CaptureResult(raw: "Riya\u{27}s usual is tea", shipped: "Riya\u{27}s usual is tea"))
+        let observer = Task { await model.observe() }
+        await Task.yield()
+        observer.cancel()
+        #expect(model.assistant == nil)
+        #expect(await decider.calls == 0)
+        #expect(try await app.memory.fact(forKey: "person/riya/usual") == nil)
     }
 
     @Test func oldRememberToolRepublishes() async throws {
