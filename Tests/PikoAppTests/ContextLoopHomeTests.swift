@@ -98,6 +98,45 @@ private actor CountingDecider: AssistantDeciding {
         #expect(await decider.calls == 0)
     }
 
+    @Test func settingsEditUsesCASAndCitesEditTurn() async throws {
+        let (path, container, app, model, _) = try fixture()
+        defer { clean(path, container) }
+        #expect(await model.submitTypedRequest("Riya\u{27}s usual is a flat white"))
+        guard case .contextProposals(let card) = model.assistant else { Issue.record("Card"); return }
+        await model.saveProposalCard(card.id)
+        let settings = PersonalMemorySettingsModel(memory: app.memory)
+        await settings.load()
+        let old = try #require(settings.facts.first(where: { $0.key == "person/riya/usual" }))
+        settings.selectForEdit(old)
+        let source = try #require(old.sourceTurn)
+        _ = try await app.memory.setFact(.init(key: old.key, value: "cortado", sourceTurn: source,
+                         confidence: 1, lastUsed: .now, entityID: old.entityID), ifLSN: old.lsn)
+        await settings.confirmEdit("oat latte")
+        #expect(settings.errorMessage?.contains("changed") == true)
+        #expect(try await app.memory.fact(forKey: old.key)?.value == "cortado")
+        await settings.load()
+        let selected = try #require(settings.facts.first(where: { $0.key == old.key }))
+        settings.selectForEdit(selected)
+        await settings.confirmEdit("oat latte")
+        #expect(settings.errorMessage == nil)
+        #expect(try await app.memory.fact(forKey: old.key)?.value == "oat latte")
+        #expect(SuggestionSnapshotStore(containerURL: container).read().entries.contains {
+            $0.key == old.key && $0.value == "oat latte"
+        })
+        #expect(await model.submitTypedRequest("what does Riya drink?"))
+        guard case .personalAnswer(let answer, let citation) = model.assistant else {
+            Issue.record("Edited answer"); return
+        }
+        #expect(answer.contains("Update usual to oat latte"))
+        #expect(citation?.contains("Update usual to oat latte") == true)
+        await settings.load()
+        let updated = try #require(settings.facts.first(where: { $0.key == old.key }))
+        settings.selectForEdit(updated)
+        await settings.confirmEdit("4111 1111 1111 1111")
+        #expect(settings.errorMessage?.contains("does not save") == true)
+        #expect(try await app.memory.fact(forKey: old.key)?.value == "oat latte")
+    }
+
     @Test func deletedConflictNeedsAnotherExplicitTap() async throws {
         let (path, container, app, model, decider) = try fixture()
         defer { clean(path, container) }
@@ -160,8 +199,9 @@ private actor CountingDecider: AssistantDeciding {
         await voice("yes", app: app, model: model)
         #expect(try await app.memory.fact(forKey: "person/riya/usual")?.value == "tea")
         await voice("no thanks", app: app, model: model)
-        #expect(model.assistant == nil)
-        #expect(await decider.calls == 0)
+        // The confirmation consumed the final automatic listen; this is a fresh turn.
+        #expect(model.assistant == .answer("No evidence."))
+        #expect(await decider.calls == 1)
     }
 
     @Test func dismissAndDuplicateDoNotCreateAnotherFact() async throws {

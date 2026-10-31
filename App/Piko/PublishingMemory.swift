@@ -28,6 +28,10 @@ actor PublishingMemory: Memory {
         self.onPublishFailure = onPublishFailure
     }
 
+    #if DEBUG
+    func snapshotCount() -> Int { snapshotStore.read().entries.count }
+    #endif
+
     func setFailureHandler(_ handler: @escaping @Sendable (String) -> Void) { onPublishFailure = handler }
 
     func republish() async { await publish() }

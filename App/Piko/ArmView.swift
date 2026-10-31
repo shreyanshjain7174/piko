@@ -88,7 +88,7 @@ final class HomeViewModel: ObservableObject {
     #if DEBUG
     /// Isolated app tests exercise follow-up decisions without activating the microphone.
     var suppressAutomaticCaptureForTests = false
-    var celebrationDuration: Duration = .milliseconds(1600)
+    var celebrationDuration: Duration? = .milliseconds(1600)
     #endif
     private struct Clarification {
         let original: String
@@ -680,9 +680,11 @@ final class HomeViewModel: ObservableObject {
     /// separately for explicit history quotes, never as generic evidence after a fact was forgotten.
     private func decisionContext(for result: CaptureResult, request: String,
                                  requestID: UUID, session: UUID?) async throws -> DecisionContext {
-        let origin = try await app.memory.captureTurn(forCapture: result.id)
+        let origin = try? await app.memory.captureTurn(forCapture: result.id)
         guard isCurrent(requestID, session: session) else { throw CancellationError() }
-        guard origin.role == .user, origin.session == result.id, origin.text == result.shipped else {
+        // A missing history insert cannot ground a proposal, but does not prevent
+        // unrelated requests from using independently verified saved facts.
+        if let origin, origin.role != .user || origin.session != result.id || origin.text != result.shipped {
             throw PikoError.storageUnavailable
         }
         let keywords = Array(RecallQuery.keywords(from: request).prefix(4))
@@ -707,9 +709,11 @@ final class HomeViewModel: ObservableObject {
 
     private func quotedHistory(for result: CaptureResult, requestID: UUID,
                                session: UUID?) async throws -> [CaptureResult] {
-        let origin = try await app.memory.captureTurn(forCapture: result.id)
+        let origin = try? await app.memory.captureTurn(forCapture: result.id)
         guard isCurrent(requestID, session: session) else { throw CancellationError() }
-        guard origin.role == .user, origin.session == result.id, origin.text == result.shipped else {
+        // A missing history insert cannot ground a proposal, but does not prevent
+        // unrelated requests from using independently verified saved facts.
+        if let origin, origin.role != .user || origin.session != result.id || origin.text != result.shipped {
             throw PikoError.storageUnavailable
         }
         var history: [CaptureResult] = []
@@ -1131,7 +1135,8 @@ final class HomeViewModel: ObservableObject {
                     isCelebrating = true
                     celebrationTask?.cancel()
                     celebrationTask = Task { [weak self] in
-                        do { try await Task.sleep(for: self?.celebrationDelay ?? .milliseconds(1600)) } catch { return }
+                        guard let delay = self?.celebrationDelay else { return }
+                        do { try await Task.sleep(for: delay) } catch { return }
                         self?.isCelebrating = false
                     }
                 }
@@ -1167,7 +1172,7 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
-    private var celebrationDelay: Duration {
+    private var celebrationDelay: Duration? {
         #if DEBUG
         celebrationDuration
         #else
@@ -1216,7 +1221,8 @@ final class HomeViewModel: ObservableObject {
             isCelebrating = true
             celebrationTask?.cancel()
             celebrationTask = Task { [weak self] in
-                do { try await Task.sleep(for: self?.celebrationDelay ?? .milliseconds(1600)) } catch { return }
+                guard let delay = self?.celebrationDelay else { return }
+                do { try await Task.sleep(for: delay) } catch { return }
                 self?.isCelebrating = false
             }
         }

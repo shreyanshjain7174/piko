@@ -12,7 +12,27 @@ import UIKit
 /// `DarwinChannel` and `SessionCoordinator`.
 @MainActor
 final class AppComposition {
-    static let shared: Result<AppComposition, any Error> = Result { try AppComposition() }
+    static let shared: Result<AppComposition, any Error> = Result {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-PikoUITestStub") {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            return try isolatedForTests(historyPath: directory.appendingPathComponent("history.sqlite"),
+                                        decider: UITestDecider(),
+                                        suggestionsContainer: directory.appendingPathComponent("suggestions"))
+        }
+        #endif
+        return try AppComposition()
+    }
+
+    #if DEBUG
+    private actor UITestDecider: AssistantDeciding {
+        func decide(_ request: String, context: DecisionContext, tools: [ToolDescriptor],
+                    now: Date) async throws -> DecisionResult {
+            .init(decision: .unknown("I do not know that yet."), source: .rules(reason: "UI fixture"))
+        }
+    }
+    #endif
 
     let channel: any SessionChannel
     let session: SessionCoordinator

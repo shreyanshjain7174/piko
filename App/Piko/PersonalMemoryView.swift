@@ -1,5 +1,6 @@
 import SwiftUI
 import PikoKit
+import PikoBrain
 
 /// Presents only facts that the real memory store has returned. No history or companion
 /// preferences are inferred to be saved personal knowledge.
@@ -16,6 +17,11 @@ final class PersonalMemorySettingsModel: ObservableObject {
     @Published private(set) var errorMessage: String?
     @Published private(set) var publishError: String?
     @Published private(set) var pendingFact: MemoryFact?
+    @Published private(set) var editingFact: MemoryFact?
+    @Published private(set) var isEditing = false
+    #if DEBUG
+    @Published private(set) var suggestionsCount = 0
+    #endif
 
     private let memory: any Memory
     private var loadID = UUID()
@@ -37,7 +43,7 @@ final class PersonalMemorySettingsModel: ObservableObject {
     }
 
     func load() async {
-        guard !isForgetting else { return }
+        guard !isForgetting, !isEditing else { return }
         let id = UUID()
         loadID = id
         let requestedQuery = query
@@ -67,6 +73,9 @@ final class PersonalMemorySettingsModel: ObservableObject {
             if let publisher = memory as? PublishingMemory {
                 publishError = await publisher.publishError
                 errorMessage = publishError
+                #if DEBUG
+                suggestionsCount = await publisher.snapshotCount()
+                #endif
             }
         } catch {
             guard !Task.isCancelled, loadID == id, query == requestedQuery else { return }
@@ -77,6 +86,57 @@ final class PersonalMemorySettingsModel: ObservableObject {
                 errorMessage = "Piko could not read saved facts from local storage. Try again; do not delete the app."
             }
             hasLoaded = true
+        }
+    }
+
+    func selectForEdit(_ fact: MemoryFact) {
+        guard !isLoading, !isForgetting, !isEditing, (errorMessage == nil || errorMessage == publishError),
+              facts.contains(where: { $0.key == fact.key && $0.lsn == fact.lsn }) else { return }
+        editingFact = fact
+    }
+
+    func cancelEdit() { editingFact = nil }
+
+    func confirmEdit(_ value: String) async {
+        guard !isEditing, let selected = editingFact else { return }
+        editingFact = nil
+        isEditing = true
+        loadID = UUID()
+        isLoading = false
+        errorMessage = nil
+        defer { isEditing = false }
+        let label = String(selected.key.split(separator: "/").last ?? "fact")
+        let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            guard try await memory.fact(forKey: selected.key)?.lsn == selected.lsn else {
+                errorMessage = "This saved fact changed since you selected it. Refresh and review it before editing."
+                return
+            }
+            let quote = "Update \(label) to \(value)"
+            let turn = try await memory.appendTurn(session: UUID(), role: .user, text: quote, at: .now)
+            let entityName: String?
+            if let entityID = selected.entityID { entityName = try await memory.entity(id: entityID)?.name }
+            else { entityName = nil }
+            let proposal = ContextProposal(kind: .fact, entityName: entityName, key: selected.key,
+                                           label: label, value: value, quote: quote, sourceTurn: turn)
+            let organizer = ContextOrganizer(memory: memory)
+            let staged = try await organizer.stage(proposal)
+            guard case .conflict(_, let existing) = staged, existing.lsn == selected.lsn else {
+                errorMessage = "This saved fact changed. Refresh and review it before editing."
+                return
+            }
+            guard case .saved = try await organizer.resolve(.replace, on: staged, observedLSN: selected.lsn) else {
+                errorMessage = "This saved fact changed. Refresh and review it before editing."
+                return
+            }
+            isEditing = false
+            await load()
+        } catch ProposalGateError.sensitiveContent {
+            errorMessage = "Piko does not save passwords, payment, codes or ID numbers."
+        } catch PersonalMemoryError.factConflict {
+            errorMessage = "This saved fact changed. Refresh and review it before editing."
+        } catch {
+            errorMessage = "Piko could not edit this saved fact. Refresh to check its current value."
         }
     }
 
@@ -123,6 +183,8 @@ final class PersonalMemorySettingsModel: ObservableObject {
 struct PersonalMemoryView: View {
     @StateObject private var model: PersonalMemorySettingsModel
     @State private var showForget = false
+    @State private var showEdit = false
+    @State private var editValue = ""
     @Environment(\.pikoTheme) private var theme
 
     init(memory: any Memory) {
@@ -139,9 +201,14 @@ struct PersonalMemoryView: View {
                     .foregroundStyle(theme.ink2)
             }
 
-            if model.isLoading || model.isForgetting {
+            #if DEBUG
+            Text("Suggestions: \(model.suggestionsCount)")
+                .accessibilityIdentifier("suggestions-count")
+            #endif
+
+            if model.isLoading || model.isForgetting || model.isEditing {
                 Section {
-                    ProgressView(model.isForgetting ? "Forgetting saved fact…" : "Loading saved facts…")
+                    ProgressView(model.isForgetting ? "Forgetting saved fact…" : model.isEditing ? "Editing saved fact…" : "Loading saved facts…")
                 }
             }
 
@@ -175,6 +242,11 @@ struct PersonalMemoryView: View {
                             Text(model.sourceDescription(for: fact))
                                 .font(.footnote)
                                 .foregroundStyle(theme.ink2)
+                            Button("Edit saved fact") {
+                                model.selectForEdit(fact)
+                                if model.editingFact != nil { editValue = fact.value; showEdit = true }
+                            }
+                            .disabled(model.isLoading || model.isForgetting || model.isEditing)
                             Button(role: .destructive) {
                                 model.selectForForget(fact)
                                 showForget = model.pendingFact != nil
@@ -184,6 +256,8 @@ struct PersonalMemoryView: View {
                             .disabled(model.isLoading || model.isForgetting)
                         }
                         .padding(.vertical, 6)
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("settings.fact.\(fact.key)")
                     }
                 } header: {
                     Text("Saved facts")
@@ -199,6 +273,26 @@ struct PersonalMemoryView: View {
                 do { try await Task.sleep(for: .milliseconds(180)) } catch { return }
             }
             await model.load()
+        }
+        .sheet(isPresented: $showEdit, onDismiss: { model.cancelEdit() }) {
+            NavigationStack {
+                Form {
+                    TextField("New value", text: $editValue)
+                        .accessibilityIdentifier("settings.editValue")
+                }
+                .navigationTitle("Edit saved fact")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showEdit = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Save change") {
+                            let value = editValue
+                            Task { await model.confirmEdit(value); showEdit = false }
+                        }
+                    }
+                }
+            }
         }
         .alert("Forget this saved fact?", isPresented: $showForget) {
             Button("Forget saved fact", role: .destructive) {

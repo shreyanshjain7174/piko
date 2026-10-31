@@ -95,7 +95,7 @@ struct PikoCompanionInteractionTests {
         let defaults = UserDefaults.standard
         let stored = defaults.object(forKey: PikoCompanionStore.preferencesKey)
         let model = HomeViewModel(app: app)
-        model.celebrationDuration = .seconds(60)
+        model.celebrationDuration = nil // Keep the flag until Quiet explicitly cancels it.
         defer {
             model.setCompanionActive(false)
             if let stored {
