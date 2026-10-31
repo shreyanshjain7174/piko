@@ -45,6 +45,8 @@ private struct AnswerFixtureMemory: Memory {
             let staged = try await organizer.stage(candidate, admittedBy: ProposalGate())
             _ = try await organizer.confirm(staged, observedLSN: nil)
         }
+        #expect(ContextAnswer.recognizes("what does Riya drink?"))
+        #expect(!ContextAnswer.recognizes("where does Riya live?"))
         let answerer = ContextAnswer(memory: memory)
         for question in ["what does Riya drink?", "what does Riya usually have?", "what\u{27}s Riya\u{27}s usual?"] {
             let reply = try await answerer.answer(question)

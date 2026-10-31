@@ -14,6 +14,7 @@ final class PersonalMemorySettingsModel: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var isForgetting = false
     @Published private(set) var errorMessage: String?
+    @Published private(set) var publishError: String?
     @Published private(set) var pendingFact: MemoryFact?
 
     private let memory: any Memory
@@ -63,6 +64,10 @@ final class PersonalMemorySettingsModel: ObservableObject {
             sourceDescriptions = sources
             facts = found
             hasLoaded = true
+            if let publisher = memory as? PublishingMemory {
+                publishError = await publisher.publishError
+                errorMessage = publishError
+            }
         } catch {
             guard !Task.isCancelled, loadID == id, query == requestedQuery else { return }
             print("Piko saved-facts read failed: \(error)")
@@ -76,7 +81,7 @@ final class PersonalMemorySettingsModel: ObservableObject {
     }
 
     func selectForForget(_ fact: MemoryFact) {
-        guard !isLoading, !isForgetting, errorMessage == nil,
+        guard !isLoading, !isForgetting, (errorMessage == nil || errorMessage == publishError),
               facts.contains(where: { $0.key == fact.key && $0.lsn == fact.lsn }) else { return }
         pendingFact = fact
     }
@@ -140,7 +145,13 @@ struct PersonalMemoryView: View {
                 }
             }
 
-            if let error = model.errorMessage {
+            if let warning = model.publishError {
+                Section {
+                    Label(warning, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(theme.ink)
+                }
+            }
+            if let error = model.errorMessage, error != model.publishError {
                 Section {
                     Label(error, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(theme.ink)

@@ -81,6 +81,7 @@ final class HomeViewModel: ObservableObject {
     private var captureStartupTask: Task<Void, Never>?
     private var captureStartupID = UUID()
     private var celebrationTask: Task<Void, Never>?
+    private var proposalCard: ProposalCard?
     private var conversation = Conversation()
     private var followUpPolicy = FollowUpPolicy()
     var voiceSession = VoiceSession()
@@ -135,6 +136,10 @@ final class HomeViewModel: ObservableObject {
             let owner = self.responseID
             Task { await self.finishTurn(requestID: owner) }
         }
+        app.onPublishFailure = { [weak self] message in self?.notice = message }
+        Task { [weak self] in
+            if let message = await app.publishingMemory.publishError { self?.notice = message }
+        }
         app.onTalkRequested = { [weak self] in await self?.talk() }
         app.onStopRequested = { [weak self] in
             guard let self else { return }
@@ -142,6 +147,7 @@ final class HomeViewModel: ObservableObject {
             self.usesVoiceFollowUp = false
             self.voiceSession.end()
             self.clarification = nil
+            self.proposalCard = nil
             self.actionSession = nil
             self.captureStartupTask?.cancel()
             self.responseID = UUID()
@@ -179,13 +185,18 @@ final class HomeViewModel: ObservableObject {
     }
 
     func setCompanionActive(_ active: Bool) {
-        guard active != isCompanionActive else { return }
+        guard active != isCompanionActive else {
+            if !active, let proposalCard { dismissProposalCard(proposalCard.id) }
+            return
+        }
         isCompanionActive = active
         if !active {
             followUpPolicy.endVoiceTurn()
             usesVoiceFollowUp = false
             voiceSession.end()
             clarification = nil
+            proposalCard = nil
+            if case .contextProposals = assistant { assistant = nil }
             responseID = UUID()
             responseTask?.cancel()
             responseTask = nil
@@ -344,6 +355,8 @@ final class HomeViewModel: ObservableObject {
         followUpPolicy.beginVoiceTurn()
         usesVoiceFollowUp = true
         voiceSession.begin()
+        proposalCard = nil
+        if case .contextProposals = assistant { assistant = nil }
         clarification = nil
     }
 
@@ -356,6 +369,14 @@ final class HomeViewModel: ObservableObject {
         guard canSubmitRequest else {
             notice = "Finish or stop the current request before starting another."
             return false
+        }
+        if let card = proposalCard {
+            // Typed input cannot confirm a card that belongs to a voice session.
+            if card.session == nil && Self.isCardYes(request) {
+                await saveProposalCard(card.id)
+                return true
+            }
+            dismissProposalCard(card.id)
         }
         error = nil
         notice = nil
@@ -445,7 +466,7 @@ final class HomeViewModel: ObservableObject {
             await app.captureCoordinator.stopCapture()
             return
         }
-        await listen(followUp: conversation.isWaiting)
+        await listen(followUp: conversation.isWaiting || proposalCard != nil)
     }
 
     /// Talk to Piko from Control Center, the Action Button or Siri.
@@ -453,7 +474,7 @@ final class HomeViewModel: ObservableObject {
         guard !isBusy, !isExecutingTools, assistant != .thinking,
               app.session.currentPhase != .capturing, !app.captureCoordinator.isTidying else { return }
         if UIApplication.shared.applicationState == .active { setCompanionActive(true) }
-        await listen(followUp: conversation.isWaiting)
+        await listen(followUp: conversation.isWaiting || proposalCard != nil)
     }
 
     /// Starts listening and ends the turn on its own when the speaker pauses — no "I'm done" tap.
@@ -580,6 +601,8 @@ final class HomeViewModel: ObservableObject {
         usesVoiceFollowUp = false
         voiceSession.end()
         clarification = nil
+        proposalCard = nil
+        if case .contextProposals = assistant { assistant = nil }
         if !isExecutingTools {
             responseID = UUID()
             responseTask?.cancel()
@@ -606,6 +629,7 @@ final class HomeViewModel: ObservableObject {
             followUpPolicy.endVoiceTurn()
             usesVoiceFollowUp = false
             voiceSession.end()
+            proposalCard = nil
             if clarification?.session != nil { clarification = nil }
             actionSession = nil
         } else if voiceSession.owner == nil {
@@ -713,6 +737,7 @@ final class HomeViewModel: ObservableObject {
         isCelebrating = false
         let app = self.app
         let wasWaiting = conversation.isWaiting
+        let pendingCard = proposalCard
         // A closing voice turn leaves the prior answer visible; keep its source label.
         if !wasWaiting, !(voiceFollowUp && isFollowUp && FollowUpPolicy.isClosing(result.shipped)) {
             engineCaption = nil
@@ -724,6 +749,20 @@ final class HomeViewModel: ObservableObject {
             return
         }
         guard isCurrent(requestID, session: session) else { return }
+        if let pendingCard {
+            if pendingCard.session == session && voiceFollowUp {
+                if Self.isCardYes(result.shipped) {
+                    await saveProposalCard(pendingCard.id, voice: true)
+                    return
+                }
+                if Self.isCardNo(result.shipped) || FollowUpPolicy.isClosing(result.shipped) {
+                    dismissProposalCard(pendingCard.id)
+                    await finishTurn(requestID: requestID)
+                    return
+                }
+            }
+            dismissProposalCard(pendingCard.id)
+        }
         if wasWaiting {
             conversation = Conversation()
             actionRequest = nil
@@ -743,6 +782,66 @@ final class HomeViewModel: ObservableObject {
             return
         }
         do {
+            if ContextAnswer.recognizes(result.shipped) {
+                let reply = try await ContextAnswer(memory: app.memory).answer(result.shipped)
+                guard isCurrent(requestID, session: session) else { return }
+                let answer: String
+                let source: String?
+                switch reply {
+                case .unknown:
+                    answer = "I don't know that yet. Tell me and I can save it."
+                    source = nil
+                case .grounded(_, let quote, _, let date):
+                    answer = quote + (quote.hasSuffix(".") ? "" : ".")
+                    source = "You said on \(date.formatted(date: .abbreviated, time: .omitted)): \"\(quote)\""
+                }
+                engineCaption = "Rules · Saved context"
+                assistant = .personalAnswer(answer, source: source)
+                await speak(answer)
+                guard isCurrent(requestID, session: session) else { return }
+                await listen(followUp: true, requestID: requestID)
+                return
+            }
+            let turn = try await app.memory.captureTurn(forCapture: result.id)
+            guard isCurrent(requestID, session: session), turn.role == .user,
+                  turn.session == result.id, turn.text == result.shipped else { return }
+            let candidates = RuleContextProposer().propose(from: turn)
+            if !candidates.isEmpty {
+                var items: [ProposalCard.Item] = []
+                var unchanged = 0
+                var blocked = 0
+                let organizer = ContextOrganizer(memory: app.memory)
+                for candidate in candidates {
+                    do {
+                        let staged = try await organizer.stage(candidate)
+                        guard isCurrent(requestID, session: session) else { return }
+                        if case .unchanged = staged { unchanged += 1 }
+                        else { items.append(ProposalCard.Item(staged: staged)) }
+                    } catch ProposalGateError.sensitiveContent {
+                        blocked += 1
+                    }
+                }
+                if !items.isEmpty {
+                    let card = ProposalCard(session: session, items: items)
+                    proposalCard = card
+                    engineCaption = "Rules · Suggested context"
+                    assistant = .contextProposals(card)
+                    let prompt = "I can save \(items.count) things about \(items.first?.proposal.entityName ?? "you"). Save them?"
+                    await speak(prompt)
+                    guard isCurrent(requestID, session: session), proposalCard?.id == card.id else { return }
+                    await listen(followUp: true, requestID: requestID)
+                    return
+                }
+                if unchanged > 0 || blocked == candidates.count {
+                    let answer = unchanged > 0 ? "I already have that."
+                        : "Piko doesn't save passwords, payment, codes or ID numbers."
+                    assistant = .answer(answer)
+                    await speak(answer)
+                    guard isCurrent(requestID, session: session) else { return }
+                    await listen(followUp: true, requestID: requestID)
+                    return
+                }
+            }
             if result.route == .recall {
                 clarification = nil
                 let history = try await quotedHistory(for: result, requestID: requestID, session: session)
@@ -949,6 +1048,106 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
+    private static func cardAnswer(_ text: String) -> String {
+        text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(.init(charactersIn: ".!?"))).lowercased()
+    }
+
+    private static func isCardYes(_ text: String) -> Bool {
+        ["yes", "save", "save them", "yes please"].contains(cardAnswer(text))
+    }
+
+    private static func isCardNo(_ text: String) -> Bool {
+        ["no", "no thanks", "cancel", "not now", "dismiss"].contains(cardAnswer(text))
+    }
+
+    func dismissProposalCard(_ id: UUID) {
+        guard proposalCard?.id == id else { return }
+        proposalCard = nil
+        if case .contextProposals = assistant { assistant = nil; engineCaption = nil }
+    }
+
+    func saveProposalCard(_ id: UUID, voice: Bool = false) async {
+        guard let card = proposalCard, card.id == id else { return }
+        for item in card.items where item.status == .pending {
+            await saveProposal(id, row: item.id)
+        }
+        if voice, proposalCard?.id == id {
+            let message = card.items.contains(where: { $0.status == .pending })
+                ? "Saved. Review any changes on the card."
+                : "Review changes on the card to save them."
+            await speak(message)
+        }
+    }
+
+    func saveProposal(_ id: UUID, row: UUID) async {
+        await applyProposal(id, row: row, resolution: nil)
+    }
+
+    func resolveProposal(_ id: UUID, row: UUID, decision: ContextOrganizer.Resolution) async {
+        await applyProposal(id, row: row, resolution: decision)
+    }
+
+    private func applyProposal(_ id: UUID, row: UUID,
+                               resolution: ContextOrganizer.Resolution?) async {
+        guard let card = proposalCard, card.id == id,
+              card.session == nil || card.session == voiceSession.owner || voiceSession.owner == nil,
+              let item = card.items.first(where: { $0.id == row }),
+              resolution != nil ? item.status == .conflict : item.status == .pending else { return }
+        voiceSession.clearEvidence()
+        let organizer = ContextOrganizer(memory: app.memory)
+        do {
+            let outcome: ContextOrganizer.Outcome
+            if let resolution {
+                outcome = try await organizer.resolve(resolution, on: item.staged, observedLSN: item.observedLSN)
+            } else {
+                outcome = try await organizer.confirm(item.staged, observedLSN: item.observedLSN)
+            }
+            guard proposalCard?.id == id,
+                  let index = proposalCard?.items.firstIndex(where: { $0.id == row }) else { return }
+            switch outcome {
+            case .saved, .unchanged:
+                proposalCard?.items[index].status = .saved
+                if case .saved = outcome,
+                   companionPreferences.shouldPresentRoutine(.completion), isCompanionActive {
+                    isCelebrating = true
+                    celebrationTask?.cancel()
+                    celebrationTask = Task { [weak self] in
+                        do { try await Task.sleep(for: .milliseconds(1600)) } catch { return }
+                        self?.isCelebrating = false
+                    }
+                }
+            case .conflict:
+                await restageProposal(id, row: row, item: item)
+                return
+            }
+        } catch PersonalMemoryError.factConflict {
+            await restageProposal(id, row: row, item: item)
+            return
+        } catch {
+            guard proposalCard?.id == id,
+                  let index = proposalCard?.items.firstIndex(where: { $0.id == row }) else { return }
+            proposalCard?.items[index].status = .failed("Could not save this fact. Try again later.")
+        }
+        if let proposalCard { assistant = .contextProposals(proposalCard) }
+    }
+
+    private func restageProposal(_ id: UUID, row: UUID, item: ProposalCard.Item) async {
+        do {
+            let staged = try await ContextOrganizer(memory: app.memory).stage(item.proposal)
+            guard proposalCard?.id == id,
+                  let index = proposalCard?.items.firstIndex(where: { $0.id == row }) else { return }
+            var updated = ProposalCard.Item(staged: staged, id: row)
+            updated.changed = true
+            proposalCard?.items[index] = updated
+            if let proposalCard { assistant = .contextProposals(proposalCard) }
+        } catch {
+            guard proposalCard?.id == id,
+                  let index = proposalCard?.items.firstIndex(where: { $0.id == row }) else { return }
+            proposalCard?.items[index].status = .failed("This changed. Please ask again.")
+            if let proposalCard { assistant = .contextProposals(proposalCard) }
+        }
+    }
+
     private func execute(_ plan: [ToolCall], ack: String, requestID: UUID, userText: String) async {
         guard responseID == requestID, plan == conversation.plan,
               plan.allSatisfy({ !conversation.requiresConfirmation($0) || conversation.isConfirmed($0) }) else {
@@ -1070,6 +1269,7 @@ final class HomeViewModel: ObservableObject {
         isCelebrating = false
         speaker.stop()
         conversation = Conversation()
+        proposalCard = nil
         assistant = nil
         engineCaption = nil
         let cleanupID = responseID
@@ -1142,6 +1342,7 @@ final class HomeViewModel: ObservableObject {
 
 enum AssistantState: Equatable {
     case thinking
+    case contextProposals(ProposalCard)
     case proposed([ToolCall], prompt: String, canConfirm: Bool)
     case answer(String)
     case clarifying(String)
@@ -1150,7 +1351,7 @@ enum AssistantState: Equatable {
 
     var showsEngineCaption: Bool {
         switch self {
-        case .proposed, .answer, .clarifying, .personalAnswer, .done: true
+        case .contextProposals, .proposed, .answer, .clarifying, .personalAnswer, .done: true
         case .thinking: false
         }
     }
@@ -1413,6 +1614,12 @@ struct ArmView: View {
                         Text("Sorting that out…").font(.headline).foregroundStyle(theme.ink)
                         ProgressView().tint(theme.accent)
                     }
+                case .contextProposals(let card):
+                    ContextProposalCard(card: card,
+                        onSaveAll: { await model.saveProposalCard($0) },
+                        onSave: { await model.saveProposal($0, row: $1) },
+                        onResolve: { await model.resolveProposal($0, row: $1, decision: $2) },
+                        onDismiss: { model.dismissProposalCard($0) })
                 case .proposed(let plan, let prompt, let canConfirm):
                     Text(prompt)
                         .font(.headline)

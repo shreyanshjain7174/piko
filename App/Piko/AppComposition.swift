@@ -19,6 +19,8 @@ final class AppComposition {
     public let captureCoordinator: CaptureCoordinator
     public let liveActivityController: LiveActivityController
     public let memory: any Memory
+    let publishingMemory: PublishingMemory
+    var onPublishFailure: (@MainActor (String) -> Void)?
     let items: any ItemStore
     let organizer: any Organizer = ModelOrganizer()
     let reminders = ReminderWriter()
@@ -41,12 +43,18 @@ final class AppComposition {
 
     #if DEBUG
     /// App-native tests use a unique SQLite file; never read or write the owner's real history.
-    static func isolatedForTests(historyPath: URL, decider: any AssistantDeciding = ModelDecider()) throws -> AppComposition {
-        try AppComposition(historyPath: historyPath, decider: decider)
+    static func isolatedForTests(historyPath: URL, decider: any AssistantDeciding = ModelDecider(),
+                                 suggestionsContainer: URL? = nil,
+                                 writer: PublishingMemory.Writer? = nil) throws -> AppComposition {
+        let container = suggestionsContainer ?? historyPath.appendingPathExtension("suggestions")
+        try FileManager.default.createDirectory(at: container, withIntermediateDirectories: true)
+        return try AppComposition(historyPath: historyPath, decider: decider,
+                                  suggestionsContainer: container, writer: writer)
     }
     #endif
 
-    private init(historyPath: URL? = nil, decider: any AssistantDeciding = ModelDecider()) throws {
+    private init(historyPath: URL? = nil, decider: any AssistantDeciding = ModelDecider(),
+                 suggestionsContainer: URL? = nil, writer: PublishingMemory.Writer? = nil) throws {
         self.decider = decider
         guard let channel = DarwinChannel() else { throw PikoError.sharedContainerUnavailable }
         self.channel = channel
@@ -77,7 +85,9 @@ final class AppComposition {
         self.brain = brain
 
         let sqlite = try SQLiteMemory(path: historyPath ?? Self.historyURL())
-        let memory: any Memory = sqlite
+        let publisher = try PublishingMemory(sqlite, suggestionsContainer: suggestionsContainer, writer: writer)
+        publishingMemory = publisher
+        let memory: any Memory = publisher
         self.memory = memory
         self.items = sqlite
         self.captureLaunchRequestStore = CaptureLaunchRequestStore()
@@ -101,6 +111,12 @@ final class AppComposition {
                 documents.appendingPathComponent("Benchmarks").appendingPathComponent(fixture))
         }
         #endif
+        Task { [weak self] in
+            await publisher.setFailureHandler { [weak self] message in
+                Task { @MainActor in self?.onPublishFailure?(message) }
+            }
+            await publisher.republish()
+        }
         Task { [weak self] in
             guard let channel = self?.channel else { return }
             for await signal in channel.signals {

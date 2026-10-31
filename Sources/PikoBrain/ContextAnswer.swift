@@ -29,6 +29,8 @@ public struct ContextAnswer: Sendable {
                          sourceTurnLSN: source.lsn, sourceDate: source.at)
     }
 
+    public static func recognizes(_ question: String) -> Bool { key(for: question) != nil }
+
     private static func key(for question: String) -> String? {
         guard question.utf8.count <= 256, !question.contains("\0") else { return nil }
         let edge = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ".!?"))

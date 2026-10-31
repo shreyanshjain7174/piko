@@ -50,6 +50,8 @@ let package = Package(
                 "PikoApp.swift",
                 "RootView.swift",
                 "PersonalMemoryView.swift",
+                "PublishingMemory.swift",
+                "ContextProposalCard.swift",
                 "ArmView.swift",
                 "OnboardingView.swift",
                 "HistoryView.swift",
