@@ -46,6 +46,21 @@ import Testing
         #expect(store.read() == .empty)
     }
 
+    @Test func duplicateKeysFailWholeSnapshot() throws {
+        let directory = try container()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SuggestionSnapshotStore(containerURL: directory)
+        let file = directory.appendingPathComponent(AppGroup.suggestionsFile)
+        try store.write(SuggestionSnapshot.build(from: [fact("home", "Pune", lsn: 1)]))
+        var object = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        var entries = try #require(object["entries"] as? [[String: Any]])
+        entries.append(["key": "home", "label": "home", "value": "Mumbai", "factLSN": 2])
+        object["entries"] = entries
+        object["revision"] = 2
+        try JSONSerialization.data(withJSONObject: object).write(to: file)
+        #expect(store.read() == .empty)
+    }
+
     @Test func lowercasePANInFileFailsWholeSnapshot() throws {
         let directory = try container()
         defer { try? FileManager.default.removeItem(at: directory) }

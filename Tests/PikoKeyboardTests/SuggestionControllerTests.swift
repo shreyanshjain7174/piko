@@ -64,6 +64,23 @@ struct SuggestionControllerTests {
         #expect(f.proxy.inserted.isEmpty)
     }
 
+    @Test func forgettingNonNewestFactWithSameRevisionBlocksInsert() {
+        let f = SuggestionFixture()
+        let oldest = MemoryFact(key: "other", value: "Pune", lsn: 1,
+                                sourceTurn: 1, confidence: 1, lastUsed: .now, entityID: nil)
+        let newest = MemoryFact(key: "favorite drink", value: "tea", lsn: 2,
+                                sourceTurn: 2, confidence: 1, lastUsed: .now, entityID: nil)
+        f.cached = SuggestionSnapshot.build(from: [oldest, newest])
+        f.latest = f.cached
+        f.controller.offer(hasFullAccess: true)
+        let token = f.controller.beginConfirmation(hasFullAccess: true)
+        f.latest = SuggestionSnapshot.build(from: [newest])
+        #expect(f.latest.revision == f.cached.revision)
+        #expect(f.controller.offeredEntry == nil)
+        if let token { #expect(!f.controller.confirm(token, hasFullAccess: true)) }
+        #expect(f.proxy.inserted.isEmpty)
+    }
+
     @Test func revisionChangeBlocksInsert() {
         let f = SuggestionFixture()
         f.controller.offer(hasFullAccess: true)

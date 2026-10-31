@@ -46,6 +46,7 @@ final class SuggestionController {
     private var dismissedDocuments = Set<UUID>()
     private var pendingToken: SuggestionConfirmToken?
     private var offeredRevision: Int64?
+    private var offeredEntries: [SuggestionSnapshot.Entry]?
     private(set) var state: State = .idle
 
     var offeredEntry: SuggestionSnapshot.Entry? {
@@ -73,6 +74,7 @@ final class SuggestionController {
         guard allowed(hasFullAccess: hasFullAccess), let document else {
             pendingToken = nil
             offeredRevision = nil
+            offeredEntries = nil
             state = .idle
             return
         }
@@ -85,9 +87,11 @@ final class SuggestionController {
         let snapshot = snapshotReader()
         if let entry = snapshot.entries.first {
             offeredRevision = snapshot.revision
+            offeredEntries = snapshot.entries
             state = .offered(entry)
         } else {
             offeredRevision = nil
+            offeredEntries = nil
             state = .idle
         }
     }
@@ -125,6 +129,7 @@ final class SuggestionController {
         // Never trust the value held by the UI. A forget, rewrite or republish invalidates it.
         let snapshot = freshSnapshotReader()
         guard snapshot.revision == token.revision,
+              snapshot.entries == offeredEntries,
               let current = snapshot.entries.first(where: { $0.key == token.key }),
               current.factLSN == token.factLSN, current.value == offered.value else {
             state = .idle
@@ -140,6 +145,7 @@ final class SuggestionController {
         if let document { dismissedDocuments.insert(document) }
         pendingToken = nil
         offeredRevision = nil
+        offeredEntries = nil
         state = .dismissed
     }
 
@@ -154,6 +160,7 @@ final class SuggestionController {
             document = current
             pendingToken = nil
             offeredRevision = nil
+            offeredEntries = nil
             state = .idle
         }
     }

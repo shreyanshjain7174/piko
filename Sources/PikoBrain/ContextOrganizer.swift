@@ -44,6 +44,11 @@ public struct ContextOrganizer: Sendable {
 
     /// `observedLSN` is the fact revision shown to the user, not the source utterance LSN.
     public func confirm(_ staged: Staged, observedLSN: Int64?) async throws -> Outcome {
+        try await confirm(staged, observedLSN: observedLSN, allowReplace: false)
+    }
+
+    private func confirm(_ staged: Staged, observedLSN: Int64?,
+                         allowReplace: Bool) async throws -> Outcome {
         let proposal = staged.proposal
         // Recheck even for a manually constructed Staged or a source turn removed since staging.
         try await validate(proposal, admittedBy: ProposalGate())
@@ -51,6 +56,13 @@ public struct ContextOrganizer: Sendable {
         guard observedLSN == expected else {
             throw PersonalMemoryError.factConflict(key: proposal.key, expectedLSN: observedLSN,
                                                    actualLSN: expected)
+        }
+        if case .conflict = staged, !allowReplace {
+            guard let current = try await memory.fact(forKey: proposal.key) else {
+                throw PersonalMemoryError.factConflict(key: proposal.key,
+                                                       expectedLSN: expected, actualLSN: nil)
+            }
+            return .conflict(existing: current)
         }
         if case .unchanged = staged {
             let current = try await memory.fact(forKey: proposal.key)
@@ -75,7 +87,7 @@ public struct ContextOrganizer: Sendable {
     public func resolve(_ decision: Resolution, on staged: Staged,
                         observedLSN: Int64?) async throws -> Outcome {
         switch decision {
-        case .replace: return try await confirm(staged, observedLSN: observedLSN)
+        case .replace: return try await confirm(staged, observedLSN: observedLSN, allowReplace: true)
         case .keep:
             try await validate(staged.proposal, admittedBy: ProposalGate())
             guard let current = try await memory.fact(forKey: staged.proposal.key) else {

@@ -51,6 +51,23 @@ private func proposal(_ source: MemoryTurn, value: String) -> ContextProposal {
         #expect(try await memory.fact(forKey: old.key) == updated)
     }
 
+    @Test func confirmConflictCannotReplaceWithoutResolution() async throws {
+        let memory = EphemeralMemory()
+        let source = try await memory.appendTurn(session: UUID(), role: .user,
+                                                  text: "Riya\u{27}s usual is tea and coffee", at: .now)
+        let organizer = ContextOrganizer(memory: memory)
+        let first = try await organizer.stage(proposal(source, value: "tea"))
+        _ = try await organizer.confirm(first, observedLSN: nil)
+        let old = try #require(await memory.fact(forKey: "person/riya/usual"))
+        let conflict = try await organizer.stage(proposal(source, value: "coffee"))
+        let result = try await organizer.confirm(conflict, observedLSN: old.lsn)
+        #expect(result == .conflict(existing: old))
+        #expect(try await memory.fact(forKey: old.key) == old)
+        let replaced = try await organizer.resolve(.replace, on: conflict, observedLSN: old.lsn)
+        guard case .saved(let newFact) = replaced else { Issue.record("Expected replacement"); return }
+        #expect(newFact.value == "coffee")
+    }
+
     @Test func concurrentInsertAndGateRejection() async throws {
         let memory = EphemeralMemory()
         let source = try await memory.appendTurn(session: UUID(), role: .user,

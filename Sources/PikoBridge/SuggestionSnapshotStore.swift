@@ -30,6 +30,7 @@ public struct SuggestionSnapshotStore: Sendable {
               let data = try? Data(contentsOf: fileURL),
               let snapshot = try? JSONDecoder().decode(SuggestionSnapshot.self, from: data),
               snapshot.version == 1, snapshot.entries.count <= 50,
+              Set(snapshot.entries.map(\.key)).count == snapshot.entries.count,
               snapshot.revision == (snapshot.entries.map(\.factLSN).max() ?? 0),
               snapshot.entries.allSatisfy({ entry in
                   let key = entry.key

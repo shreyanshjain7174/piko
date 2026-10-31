@@ -215,7 +215,10 @@ final class KeyboardViewController: UIInputViewController {
                                                      size: values?.fileSize)
             if signature != suggestionFileSignature {
                 suggestionFileSignature = signature
-                cachedSuggestions = suggestionStore?.read() ?? .empty
+                let updated = suggestionStore?.read() ?? .empty
+                if updated.entries != cachedSuggestions.entries || updated.version != cachedSuggestions.version {
+                    cachedSuggestions = updated
+                }
             }
         } else {
             cachedSuggestions = .empty
