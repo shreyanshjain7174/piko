@@ -11,11 +11,18 @@ public enum AppGroup {
     public static let stateFile = "state.json"
     public static let captureRequestFile = "capture-request.json"
     public static let audioLevelFile = "audio-level.json"
+    public static let suggestionsFile = "suggestions.json"
 }
 
 /// Settings shared through the App Group's `UserDefaults`.
 public enum KeyboardPreferences {
     public static let autoListenKey = "PikoAutoListenOnKeyboard"
+    public static let suggestionsEnabledKey = "PikoSuggestionsEnabled"
+
+    /// A single global switch; the keyboard cannot identify the host app.
+    public static func suggestionsEnabled(in defaults: UserDefaults?) -> Bool {
+        defaults?.object(forKey: suggestionsEnabledKey) as? Bool ?? true
+    }
 
     /// While a session is armed, start listening as soon as the Piko keyboard appears.
     /// On unless the user turns it off.

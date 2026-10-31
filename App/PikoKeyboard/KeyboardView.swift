@@ -7,6 +7,13 @@ struct KeyboardView: View {
     let onMicTap: () -> Void
     let onGlobeTap: () -> Void
     let onRevertTap: () -> Void
+    let onSuggestionTap: () -> Void
+    let onSuggestionConfirm: () -> Void
+    let onSuggestionDismiss: () -> Void
+    let onToggleSuggestions: () -> Void
+    let suggestionEntry: SuggestionSnapshot.Entry?
+    let isConfirmingSuggestion: Bool
+    let suggestionsEnabled: Bool
     @Binding var sessionPhase: SessionPhase?
     let setupPrompt: KeyboardSetupPrompt?
     @Binding var selectedProfile: Profile
@@ -55,6 +62,17 @@ struct KeyboardView: View {
                 .accessibilityLabel("Tone")
                 .accessibilityValue(selectedProfile.keyboardTitle)
 
+                Menu {
+                    Button(suggestionsEnabled ? "Turn suggestions off" : "Turn suggestions on",
+                           action: onToggleSuggestions)
+                } label: {
+                    Image(systemName: suggestionsEnabled ? "lightbulb" : "lightbulb.slash")
+                        .font(.system(size: 17))
+                        .frame(width: 36, height: 44)
+                }
+                .accessibilityLabel("Suggestions")
+                .accessibilityValue(suggestionsEnabled ? "On" : "Off")
+
                 if setupPrompt != nil {
                     Button { showingHelp = true } label: {
                         Image(systemName: "info.circle")
@@ -65,6 +83,30 @@ struct KeyboardView: View {
                 }
             }
             .foregroundStyle(skin.theme(for: scheme).ink2)
+
+            if let suggestionEntry {
+                HStack(spacing: 8) {
+                    Button(action: isConfirmingSuggestion ? onSuggestionConfirm : onSuggestionTap) {
+                        HStack(spacing: 6) {
+                            Text(isConfirmingSuggestion ? "Insert \(suggestionEntry.value)?"
+                                                      : "\(suggestionEntry.label): \(suggestionEntry.value)")
+                                .lineLimit(1)
+                            if isConfirmingSuggestion { Image(systemName: "checkmark.circle") }
+                        }
+                        .font(.footnote.weight(.medium))
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                        .padding(.horizontal, 10)
+                        .background(skin.theme(for: scheme).cardRaised, in: Capsule())
+                    }
+                    .accessibilityLabel(isConfirmingSuggestion ? "Confirm insert \(suggestionEntry.value)"
+                                                               : "Suggest \(suggestionEntry.label)")
+                    Button(action: onSuggestionDismiss) {
+                        Image(systemName: "xmark.circle").frame(width: 36, height: 36)
+                    }
+                    .accessibilityLabel("Dismiss suggestion for this document")
+                }
+                .foregroundStyle(skin.theme(for: scheme).ink2)
+            }
 
             MicButton(phase: sessionPhase, skin: skin, setupPrompt: setupPrompt,
                       voiceActivity: voiceActivity, action: onMicTap)

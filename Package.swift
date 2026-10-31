@@ -35,7 +35,7 @@ let package = Package(
         .testTarget(name: "PikoKitTests", dependencies: ["PikoKit", "PikoBrain", "PikoMemory"]),
         .testTarget(name: "PikoMemoryTests", dependencies: ["PikoMemory", "PikoKit"]),
         .testTarget(name: "PikoMindTests", dependencies: ["PikoMind", "PikoMemory", "PikoKit"]),
-        .testTarget(name: "PikoUITests", dependencies: ["PikoUI", "PikoKit"]),
+        .testTarget(name: "PikoUITests", dependencies: ["PikoUI", "PikoKit"], exclude: ["ContextLoopUITests.swift"]),
         .testTarget(name: "PikoBridgeTests", dependencies: ["PikoBridge", "PikoKit"]),
         .testTarget(name: "PikoAudioTests", dependencies: ["PikoAudio", "PikoKit"]),
         .testTarget(name: "PikoTranscribeTests", dependencies: ["PikoTranscribe", "PikoKit", "PikoAudio", "PikoCaptureCore", "PikoBrain", "PikoMemory"]),
@@ -50,6 +50,8 @@ let package = Package(
                 "PikoApp.swift",
                 "RootView.swift",
                 "PersonalMemoryView.swift",
+                "PublishingMemory.swift",
+                "ContextProposalCard.swift",
                 "ArmView.swift",
                 "OnboardingView.swift",
                 "HistoryView.swift",
@@ -81,6 +83,6 @@ let package = Package(
             ]
         ),
         .testTarget(name: "PikoKeyboardTests", dependencies: ["PikoKit", "PikoKeyboardCore"]),
-        .testTarget(name: "PikoBrainTests", dependencies: ["PikoBrain", "PikoKit"]),
+        .testTarget(name: "PikoBrainTests", dependencies: ["PikoBrain", "PikoKit", "PikoMemory"]),
     ]
 )

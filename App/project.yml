@@ -77,6 +77,17 @@ targets:
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Piko.app/Piko"
         BUNDLE_LOADER: "$(TEST_HOST)"
 
+  PikoUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [../Tests/PikoUITests/ContextLoopUITests.swift]
+    dependencies:
+      - target: Piko
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.shreyansh.Piko.UITests
+        GENERATE_INFOPLIST_FILE: YES
+
   PikoKeyboard:
     type: app-extension
     platform: iOS
@@ -141,8 +152,9 @@ schemes:
       targets:
         Piko: all
         PikoAppTests: [test]
+        PikoUITests: [test]
     test:
-      targets: [PikoAppTests]
+      targets: [PikoAppTests, PikoUITests]
       commandLineArguments:
         --piko-unit-test-host: true
   PikoKeyboard:

@@ -45,6 +45,89 @@ struct PersonalMemorySettingsTests {
         )
     }
 
+    private func rowCounts(_ path: URL) throws -> (turns: Int, results: Int) {
+        var database: OpaquePointer?
+        guard sqlite3_open_v2(path.path, &database, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
+              let database else {
+            sqlite3_close(database)
+            throw SettingsFixtureError.sqlite
+        }
+        defer { sqlite3_close(database) }
+        func count(_ table: String) throws -> Int {
+            var statement: OpaquePointer?
+            guard sqlite3_prepare_v2(database, "SELECT count(*) FROM \(table)", -1, &statement, nil) == SQLITE_OK else {
+                throw SettingsFixtureError.sqlite
+            }
+            defer { sqlite3_finalize(statement) }
+            guard sqlite3_step(statement) == SQLITE_ROW else { throw SettingsFixtureError.sqlite }
+            return Int(sqlite3_column_int(statement, 0))
+        }
+        return (try count("turns"), try count("results"))
+    }
+
+    @Test("Sensitive and unchanged edits never create history or turns")
+    func refusedEditsDoNotPersist() async throws {
+        let path = settingsFixturePath()
+        defer { removeSettingsFixture(path) }
+        let memory = try SQLiteMemory(path: path)
+        let saved = try await save(memory, key: "my/city", value: "Pune")
+        let model = PersonalMemorySettingsModel(memory: memory)
+        await model.load()
+        let baseline = try rowCounts(path)
+
+        model.selectForEdit(saved)
+        await model.confirmEdit("  Pune  ")
+        #expect(model.errorMessage == "No change to save.")
+        #expect(try rowCounts(path) == baseline)
+
+        await model.load()
+        model.selectForEdit(saved)
+        await model.confirmEdit("  ")
+        #expect(model.errorMessage == "Enter a value to save.")
+        #expect(try rowCounts(path) == baseline)
+
+        await model.load()
+        model.selectForEdit(saved)
+        await model.confirmEdit("4111 1111 1111 1111")
+        #expect(model.errorMessage?.contains("does not save") == true)
+        #expect(try rowCounts(path) == baseline)
+        #expect(await memory.search("4111 1111 1111 1111", limit: 10).isEmpty)
+        #expect(try await memory.fact(forKey: saved.key) == saved)
+    }
+
+    @Test("Edited fact cites a history capture that can be deleted without losing the fact")
+    func editHistoryDeletionRemovesSource() async throws {
+        let path = settingsFixturePath()
+        defer { removeSettingsFixture(path) }
+        let memory = try SQLiteMemory(path: path)
+        let original = try await save(memory, key: "my/city", value: "Pune")
+        let model = PersonalMemorySettingsModel(memory: memory)
+        await model.load()
+        model.selectForEdit(original)
+        let baseline = try rowCounts(path)
+        await model.confirmEdit("Goa")
+        #expect(model.errorMessage == nil)
+        let capture = try #require(await memory.search("Update city to Goa", limit: 10).first)
+        #expect(capture.raw == "Update city to Goa" && capture.shipped == capture.raw)
+        #expect(try rowCounts(path).results == baseline.results + 1)
+        // Saving a fact also writes a keyless tool-audit turn, independent of the capture.
+        #expect(try rowCounts(path).turns == baseline.turns + 2)
+        let edited = try #require(try await memory.fact(forKey: original.key))
+        let source = try #require(edited.sourceTurn)
+        #expect(try await memory.turn(lsn: source)?.text == capture.shipped)
+        #expect(model.sourceDescription(for: edited) == "Source: Update city to Goa")
+
+        await memory.delete(capture.id)
+        #expect(try rowCounts(path).results == baseline.results)
+        #expect(try rowCounts(path).turns == baseline.turns + 1) // Keyless tool-audit turn remains.
+        #expect(await memory.search("Update city to Goa", limit: 10).isEmpty)
+        #expect(try await memory.turn(lsn: source) == nil)
+        await model.load()
+        let retained = try #require(model.facts.first)
+        #expect(retained.value == "Goa" && retained.sourceTurn == nil)
+        #expect(model.sourceDescription(for: retained) == "Original source is no longer available.")
+    }
+
     @Test("Only actual saved facts appear; missing provenance is not described as a citation")
     func readsSavedFactsAndSourceAvailability() async throws {
         let path = settingsFixturePath()

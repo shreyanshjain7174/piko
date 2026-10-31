@@ -21,6 +21,22 @@ final class KeyboardViewController: UIInputViewController {
     private var sessionState: SessionState?
     private var heightConstraint: NSLayoutConstraint?
     private let voiceActivity = VoiceActivityModel()
+    private lazy var suggestionStore = SuggestionSnapshotStore()
+    private lazy var suggestionFileURL = FileManager.default.containerURL(
+        forSecurityApplicationGroupIdentifier: AppGroup.identifier
+    )?.appendingPathComponent(AppGroup.suggestionsFile)
+    private var suggestionFileSignature: SuggestionFileSignature?
+    private var cachedSuggestions: SuggestionSnapshot = .empty
+    private var suggestionToken: SuggestionConfirmToken?
+    private lazy var suggestionController = SuggestionController(
+        proxy: KeyboardSuggestionProxy(provider: { [weak self] in self?.textDocumentProxy }),
+        snapshotReader: { [weak self] in self?.cachedSuggestions ?? .empty },
+        freshSnapshotReader: { [weak self] in self?.suggestionStore?.read() ?? .empty },
+        suggestionsEnabled: { [weak self] in
+            KeyboardPreferences.suggestionsEnabled(in: self?.keyboardDefaults)
+        })
+    private var keyboardDefaults: UserDefaults? { UserDefaults(suiteName: AppGroup.identifier) }
+
     private var observationTask: Task<Void, Never>?
     private var freshnessTask: Task<Void, Never>?
     private var captureStartTask: Task<Void, Never>?
@@ -105,6 +121,7 @@ final class KeyboardViewController: UIInputViewController {
                 }
                 // Recover from coalesced/missed Darwin notifications while visible.
                 self.refreshAudioLevel()
+                self.refreshSuggestions()
                 if self.delivery.isActive {
                     self.applyDraft()
                     self.applyResult()
@@ -112,6 +129,7 @@ final class KeyboardViewController: UIInputViewController {
             }
         }
         refreshRevertAvailability()
+        refreshSuggestions()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -164,6 +182,13 @@ final class KeyboardViewController: UIInputViewController {
             onMicTap: { [weak self] in self?.micButtonTapped() },
             onGlobeTap: { [weak self] in self?.advanceToNextInputMode() },
             onRevertTap: { [weak self] in self?.revertTapped() },
+            onSuggestionTap: { [weak self] in self?.suggestionTapped() },
+            onSuggestionConfirm: { [weak self] in self?.confirmSuggestion() },
+            onSuggestionDismiss: { [weak self] in self?.dismissSuggestion() },
+            onToggleSuggestions: { [weak self] in self?.toggleSuggestions() },
+            suggestionEntry: suggestionController.confirmingEntry ?? suggestionController.offeredEntry,
+            isConfirmingSuggestion: suggestionController.confirmingEntry != nil,
+            suggestionsEnabled: KeyboardPreferences.suggestionsEnabled(in: keyboardDefaults),
             sessionPhase: Binding(
                 get: { [weak self] in self?.sessionPhase },
                 set: { [weak self] in self?.sessionPhase = $0 }),
@@ -179,6 +204,54 @@ final class KeyboardViewController: UIInputViewController {
                 set: { [weak self] in self?.canRevert = $0 }),
             voiceActivity: voiceActivity
         )
+    }
+
+    /// Metadata-only polling; the bounded JSON read occurs only on file change or confirm.
+    private func refreshSuggestions() {
+        let before = suggestionController.state
+        if hasFullAccess, suggestionStore != nil, let url = suggestionFileURL {
+            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+            let signature = SuggestionFileSignature(modified: values?.contentModificationDate,
+                                                     size: values?.fileSize)
+            if signature != suggestionFileSignature {
+                suggestionFileSignature = signature
+                let updated = suggestionStore?.read() ?? .empty
+                if updated.entries != cachedSuggestions.entries || updated.version != cachedSuggestions.version {
+                    cachedSuggestions = updated
+                }
+            }
+        } else {
+            cachedSuggestions = .empty
+            suggestionFileSignature = nil
+        }
+        suggestionController.offer(hasFullAccess: hasFullAccess)
+        if suggestionController.state != before { refreshRootView() }
+    }
+
+    private func suggestionTapped() {
+        suggestionToken = suggestionController.beginConfirmation(hasFullAccess: hasFullAccess)
+        refreshRootView()
+    }
+
+    private func confirmSuggestion() {
+        guard let token = suggestionToken else { return }
+        suggestionToken = nil
+        if !suggestionController.confirm(token, hasFullAccess: hasFullAccess) { haptic(.warning) }
+        refreshRootView()
+    }
+
+    private func dismissSuggestion() {
+        suggestionToken = nil
+        suggestionController.dismiss()
+        refreshRootView()
+    }
+
+    private func toggleSuggestions() {
+        guard let defaults = keyboardDefaults else { return }
+        defaults.set(!KeyboardPreferences.suggestionsEnabled(in: defaults),
+                     forKey: KeyboardPreferences.suggestionsEnabledKey)
+        refreshSuggestions()
+        refreshRootView()
     }
 
     private func selectProfile(_ profile: Profile) {
@@ -365,4 +438,36 @@ private enum KeyboardProcessState {
     static weak var host: KeyboardViewController?
     static var delivery = KeyboardCaptureDelivery()
     static let insertion = TextInsertionController(proxyProvider: { host?.textDocumentProxy })
+}
+
+private struct SuggestionFileSignature: Equatable {
+    let modified: Date?
+    let size: Int?
+}
+
+/// The UIKit-only bridge keeps the state machine host-testable on macOS.
+@MainActor
+private final class KeyboardSuggestionProxy: SuggestionProxy {
+    private let provider: @MainActor () -> (any UITextDocumentProxy)?
+    private var proxy: (any UITextDocumentProxy)? { provider() }
+
+    init(provider: @escaping @MainActor () -> (any UITextDocumentProxy)?) {
+        self.provider = provider
+    }
+
+    var documentIdentifier: UUID? {
+        guard let proxy else { return nil }
+        return UITextDocumentProxyBox.documentIdentifier(of: proxy)
+    }
+    var isSecureTextEntry: Bool { proxy?.isSecureTextEntry ?? true }
+    var fieldKind: SuggestionFieldKind {
+        switch proxy?.textContentType {
+        case .password: .password
+        case .newPassword: .newPassword
+        case .oneTimeCode: .oneTimeCode
+        case .creditCardNumber: .creditCardNumber
+        default: .other
+        }
+    }
+    func insertText(_ text: String) { proxy?.insertText(text) }
 }
