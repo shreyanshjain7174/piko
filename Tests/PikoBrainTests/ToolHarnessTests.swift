@@ -64,6 +64,30 @@ private struct FakeTool: PikoTool {
         #expect(outcomes.count == 5)
         #expect(await ledger.ran.count == 5)
     }
+
+    @Test func approvalBindsExactRegisteredExternalCallNotJustItsNameOrID() async {
+        let ledger = Ledger()
+        let harness = ToolHarness(tools: [
+            FakeTool(descriptor: .init(name: "export.send", summary: "Send notes", risk: .external),
+                     ledger: ledger),
+        ])
+        #expect(harness.actionDescriptors.map(\.name) == ["export.send"])
+        var talk = Conversation()
+        let proposed = ToolCall(tool: "export.send", text: "A")
+        _ = await talk.begin([proposed], context: nil, now: .now, descriptors: harness.descriptors)
+        let beforeApproval = talk.confirmedPlan
+        let unconfirmed = await harness.run([proposed], approve: { beforeApproval.contains($0) })
+        #expect(unconfirmed.first?.status == .skipped("Not approved"))
+        _ = await talk.hear("yes", context: nil, now: .now)
+        let confirmed = talk.confirmedPlan
+        var changed = proposed
+        changed.text = "B"
+        var replaced = proposed
+        replaced.id = UUID()
+        let results = await harness.run([changed, replaced, proposed], approve: { confirmed.contains($0) })
+        #expect(results.map(\.status) == [.skipped("Not approved"), .skipped("Not approved"), .done("Did A")])
+        #expect(await ledger.ran == ["A"])
+    }
 }
 
 @Suite struct PlannerTests {

@@ -49,6 +49,7 @@ let package = Package(
                 "AppComposition.swift",
                 "PikoApp.swift",
                 "RootView.swift",
+                "PersonalMemoryView.swift",
                 "ArmView.swift",
                 "OnboardingView.swift",
                 "HistoryView.swift",

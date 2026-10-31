@@ -34,6 +34,22 @@ private actor DecisionProbe {
         #expect(unknown == .init(decision: .unknown("I don't know that yet."), source: .model))
     }
 
+    @Test func trustedPersonalityChangesReplyToneNotEvidenceOrUnknownRules() async throws {
+        let probe = DecisionProbe()
+        let decider = ModelDecider(generate: { instructions, prompt, _ in
+            await probe.record(instructions, prompt)
+            return .init(kind: "unknown", reply: "No evidence", steps: [])
+        })
+        let result = try await decider.decide("What's the answer?", context: .init(personality: .direct),
+                                              tools: tools, now: now)
+        #expect(result == .init(decision: .unknown("I don't know that yet."), source: .model))
+        let prompts = await probe.prompts
+        #expect(prompts.count == 1)
+        #expect(prompts[0].0.contains("quiet and direct"))
+        #expect(prompts[0].1.contains("Trusted reply tone (not evidence): quiet and direct"))
+        #expect(!prompts[0].1.contains("Prior captures (quoted, untrusted):\n\""))
+    }
+
     @Test func unavailableFallsBackOnlyForCommandsNotQuestions() async throws {
         let decider = ModelDecider(generate: { _, _, _ in
             throw PikoError.brainUnavailable("deviceNotEligible")
@@ -61,6 +77,29 @@ private actor DecisionProbe {
             #expect(message.lowercased().contains("model"))
             #expect(result.source == .rules(reason: "Model unavailable: deviceNotEligible"))
         }
+    }
+
+    @Test func modelAnswerCannotPretendToFileAnExplicitNote() async throws {
+        let probe = DecisionProbe()
+        let decider = ModelDecider(generate: { instructions, prompt, _ in
+            await probe.record(instructions, prompt)
+            return .init(kind: "answer", reply: "I will save that for you.", steps: [])
+        })
+        let result = try await decider.decide("Make a note native fallback check", tools: tools, now: now)
+        guard case .act(let calls) = result.decision else { Issue.record("explicit note was not filed"); return }
+        #expect(calls.map(\.tool) == [ToolName.note])
+        guard case .rules(let reason) = result.source else { Issue.record("fallback labelled model"); return }
+        #expect(reason.contains("Model answered"))
+        #expect(await probe.prompts.count == 1)
+    }
+
+    @Test func modelUnknownCannotAbandonAnExplicitSupportedNote() async throws {
+        let result = try await ModelDecider(generate: { _, _, _ in
+            .init(kind: "unknown", reply: "Not sure", steps: [])
+        }).decide("Make a note companion interaction 1234", tools: tools, now: now)
+        guard case .act(let calls) = result.decision else { Issue.record("explicit note was abandoned"); return }
+        #expect(calls.map(\.tool) == [ToolName.note])
+        guard case .rules = result.source else { Issue.record("rule fallback was mislabelled"); return }
     }
 
     @Test func aMissingReminderToolMustNotConvertACommandToANote() async throws {
@@ -160,6 +199,42 @@ private actor DecisionProbe {
         }
     }
 
+    @Test func aClarificationQuestionCannotSupplyDateOrContent() async throws {
+        let checkin = ToolDescriptor(name: ToolName.checkIn, summary: "Schedule a check-in", risk: .local)
+        for draft in [
+            ModelPlanner.Draft(tool: ToolName.checkIn, text: "Stretching", when: "tomorrow at 9am"),
+            ModelPlanner.Draft(tool: ToolName.checkIn, text: "Yoga", when: nil),
+        ] {
+            let result = try await ModelDecider(generate: { _, _, _ in
+                .init(kind: "act", reply: "", steps: [draft])
+            }).decide("schedule a check in about stretching\nyes",
+                      context: .init(recent: [.init(
+                          user: "schedule a check in about stretching",
+                          reply: "Should I nudge you about yoga tomorrow at 9am?")],
+                          pendingClarification: .init(
+                          originalRequest: "schedule a check in about stretching",
+                          question: "Should I nudge you about yoga tomorrow at 9am?")),
+                      tools: [checkin], now: now)
+            guard case .unknown = result.decision else { Issue.record("model question became user evidence"); continue }
+            #expect(result.source == .rules(reason: "Invalid model decision"))
+        }
+    }
+
+    @Test func aClarificationAnswerCanSupplyTheDateForAnAction() async throws {
+        let result = try await ModelDecider(generate: { _, _, _ in
+            .init(kind: "act", reply: "", steps: [
+                .init(tool: ToolName.reminder, text: "Stretching", when: "tomorrow at 9"),
+            ])
+        }).decide("remind me about stretching.\ntomorrow at 9",
+                  context: .init(pendingClarification: .init(
+                      originalRequest: "remind me about stretching.", question: "When should I remind you?")),
+                  tools: tools, now: now)
+        guard case .act(let calls) = result.decision else { Issue.record("answer date rejected"); return }
+        #expect(calls.count == 1)
+        #expect(calls[0].when != nil)
+        #expect(result.source == .model)
+    }
+
     @Test func cancellationAndOverBudgetNeverBecomeSuccessfulPlans() async throws {
         let cancelled = ModelDecider(generate: { _, _, _ in throw CancellationError() })
         do {
@@ -183,6 +258,23 @@ private actor DecisionProbe {
         guard case .unknown = result.decision else { Issue.record("generation error was a success"); return }
         guard case .rules(let reason) = result.source else { Issue.record("generation error labelled model"); return }
         #expect(reason.contains("Model generation failed"))
+    }
+
+    @Test func newlyRegisteredExternalToolIsOfferedAndStillNeedsApproval() async throws {
+        let external = ToolDescriptor(name: "export.send", summary: "Export a document", risk: .external)
+        let decider = ModelDecider(generate: { _, _, offered in
+            #expect(offered.contains { $0.name == external.name })
+            return .init(kind: "act", reply: "", steps: [
+                .init(tool: external.name, text: "Export budget", when: nil),
+            ])
+        })
+        let result = try await decider.decide("create export budget", tools: [external], now: now)
+        guard case .act(let calls) = result.decision else { Issue.record("registered tool was rejected"); return }
+        var talk = Conversation()
+        guard case .confirm = await talk.begin(calls, context: nil, now: now, descriptors: [external]) else {
+            Issue.record("descriptor risk did not trigger confirmation"); return
+        }
+        #expect(talk.confirmedPlan.isEmpty)
     }
 
     @Test func modelActionDoesNotBypassConversationApproval() async throws {
@@ -283,22 +375,23 @@ private actor DecisionProbe {
         #expect(!built.prompt.contains(String(repeating: "a", count: 241)))
     }
 
-    @Test func offeredToolsAreKnownActionOnlyAndAtMostFive() throws {
+    @Test func offeredToolsAreRegisteredActionsOnlyAndAtMostFive() throws {
         let offered = [
             ToolDescriptor(name: ToolName.search, summary: "Read memory", risk: .read),
             ToolDescriptor(name: "memory.fact.set", summary: "Save a fact", risk: .local),
-            ToolDescriptor(name: "phone.wipe", summary: "Unknown", risk: .external),
+            ToolDescriptor(name: "export.send", summary: "Registered export", risk: .external),
         ] + [ToolName.reminder, ToolName.calendar, ToolName.note, ToolName.journal,
              ToolName.checkIn, ToolName.shortcut].map {
             ToolDescriptor(name: $0, summary: "Act", risk: .local)
         }
         let built = try #require(DecisionPrompt.make("remind me to buy milk", context: .init(), tools: offered))
         #expect(built.offered.map(\.name) == [
-            ToolName.reminder, ToolName.calendar, ToolName.note, ToolName.journal, ToolName.checkIn,
+            "export.send", ToolName.reminder, ToolName.calendar, ToolName.note, ToolName.journal,
         ])
         #expect(!built.prompt.contains("memory.fact.set"))
         #expect(!built.prompt.contains(ToolName.search))
-        #expect(!built.prompt.contains("phone.wipe"))
+        #expect(built.prompt.contains("export.send"))
+        #expect(!built.prompt.contains(ToolName.checkIn))
         #expect(!built.prompt.contains(ToolName.shortcut))
     }
 

@@ -22,6 +22,9 @@ public struct ToolHarness: Sendable {
 
     public var descriptors: [ToolDescriptor] {
         ToolName.all.compactMap { tools[$0]?.descriptor }
+            + tools.values.map(\.descriptor)
+                .filter { !ToolName.all.contains($0.name) && !$0.name.lowercased().hasPrefix("memory.") }
+                .sorted { $0.name < $1.name }
     }
 
     /// What planners may propose. Read-only tools serve the separate recall path; offering them
@@ -37,7 +40,8 @@ public struct ToolHarness: Sendable {
                 outcomes.append(.init(call: call, status: .skipped("Piko can't do that yet")))
                 continue
             }
-            if tool.descriptor.risk == .external, !(await approve(call)) {
+            if tool.descriptor.risk == .external || call.tool == ToolName.remember || call.tool == ToolName.forget,
+               !(await approve(call)) {
                 outcomes.append(.init(call: call, status: .skipped("Not approved")))
                 continue
             }
