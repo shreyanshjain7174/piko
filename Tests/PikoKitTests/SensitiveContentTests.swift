@@ -1,0 +1,58 @@
+import Testing
+@testable import PikoKit
+
+@Suite struct SensitiveContentTests {
+    @Test func classificationTable() {
+        let cases: [(String, String, SensitiveContent.Verdict)] = [
+            ("password", "bluebird", .blocked(.password)),
+            ("passphrase", "bluebird", .blocked(.password)),
+            ("pwd", "bluebird", .blocked(.password)),
+            ("secret", "bluebird", .blocked(.password)),
+            ("hint", "my password is bluebird", .blocked(.password)),
+            ("hint", "passphrase: bluebird", .blocked(.password)),
+            ("hint", "passwd bluebird", .blocked(.password)),
+            ("hint", "secret key bluebird", .blocked(.password)),
+            ("card", "4111 1111 1111 1111", .blocked(.payment)),
+            ("preference", "4111-1111-1111-1111", .blocked(.payment)),
+            ("preference", "4111111111111111", .blocked(.payment)),
+            ("credit card", "tea", .blocked(.payment)),
+            ("debit card", "tea", .blocked(.payment)),
+            ("hint", "CVV 123", .blocked(.payment)),
+            ("payment", "expiry 12/28", .blocked(.payment)),
+            ("bank account", "tea", .blocked(.payment)),
+            ("passport", "AB123", .blocked(.governmentID)),
+            ("driver licence", "AB123", .blocked(.governmentID)),
+            ("driving license", "AB123", .blocked(.governmentID)),
+            ("aadhaar", "1234 5678 9012", .blocked(.governmentID)),
+            ("hint", "1234 5678 9012", .blocked(.governmentID)),
+            ("hint", "ABCDE1234F", .blocked(.governmentID)),
+            ("hint", "123-45-6789", .blocked(.governmentID)),
+            ("social security", "tea", .blocked(.governmentID)),
+            ("otp", "123456", .blocked(.authCode)),
+            ("verification code", "123456", .blocked(.authCode)),
+            ("pin", "1234", .blocked(.authCode)),
+            ("auth code", "1234", .blocked(.authCode)),
+            ("hint", "OTP 987654", .blocked(.authCode)),
+            ("hint", "verification 4321", .blocked(.authCode)),
+            ("hint", "code 12345678", .blocked(.authCode)),
+            ("hint", "PIN 0000", .blocked(.authCode)),
+            ("usual", "flat white", .safe),
+            ("day", "Fridays", .safe),
+            ("person", "Riya", .safe),
+            ("home", "Pune", .safe),
+            ("plan", "meet at 9", .safe),
+            ("plan", "at 1234", .safe),
+            ("preference", "4111111111111112", .safe),
+            ("date", "12/28", .safe),
+            ("note", "normal words", .safe),
+            ("time", "9:30", .safe),
+            ("note", String(repeating: "a", count: 257), .blocked(.password)),
+            ("note", "hello\nworld", .blocked(.password)),
+            ("note", "hello\u{0000}world", .blocked(.password)),
+        ]
+        #expect(cases.count >= 40)
+        for (label, value, expected) in cases {
+            #expect(SensitiveContent.verdict(label: label, value: value) == expected)
+        }
+    }
+}
