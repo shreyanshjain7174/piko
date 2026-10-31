@@ -285,4 +285,34 @@ import Testing
         }
     }
 
+    @Test func followUpContactNotesAndDrivingLicences() {
+        let safe = ["call Riya at 9845012345", "Riya's no 9845012345",
+                    "order AB 12 3456789", "call MH 12 9845012345",
+                    "MH 12 2011 9845012345", "AB 12 2011 0012345", "ZZ 12 2011 0012345"]
+        for value in safe {
+            #expect(SensitiveContent.verdict(label: "usual", value: value) == .safe, "\(value)")
+        }
+        let ids = ["MH12 20110012345", "MH-12-2011-0012345",
+                   "KA 03 2011 0012345", "DL0120110012345",
+                   "OR 12 2011 0012345", "UA 12 2011 0012345",
+                   "CT 12 2011 0012345"]
+        for value in ids {
+            #expect(SensitiveContent.verdict(label: "usual", value: value) == .blocked(.governmentID), "\(value)")
+        }
+        #expect(SensitiveContent.verdict(label: "dl", value: "AB 12 3456789") == .blocked(.governmentID))
+    }
+
+    @Test func followUpUPIHandlesAndOrdinaryEmail() {
+        let blocked = ["riya@ybl.", "pay me at riya@ybl.", "riya@axisbank",
+                       "riya@sbi", "riya@hdfcbank", "riya@icici", "riya@apl"]
+        for value in blocked {
+            #expect(SensitiveContent.verdict(label: "usual", value: value) == .blocked(.payment), "\(value)")
+        }
+        let safe = ["riya@okaxis.com", "support@paytm.com", "riya.sharma@gmail.com",
+                    "riya@ybl.co.in", "@riya_sharma"]
+        for value in safe {
+            #expect(SensitiveContent.verdict(label: "usual", value: value) == .safe, "\(value)")
+        }
+    }
+
 }

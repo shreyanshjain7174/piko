@@ -37,14 +37,16 @@ public enum SensitiveContent {
         pattern: #"\b(?:the\s+)?[4-8][ -]?digit\s+(?:number|code)\b.{0,48}\b(?:sent|texted)\b"#, options: [.caseInsensitive])
     private static let voterID = try? NSRegularExpression(
         pattern: #"(?<![A-Za-z0-9])[A-Z]{3}[0-9]{7}(?![A-Za-z0-9])"#, options: [.caseInsensitive])
+    // Current state/UT codes plus OR, UA and CT: legacy licences can remain valid.
+    // Require RTO (2), issuance year (4) and serial (7); a mobile has only 10 digits.
     private static let drivingID = try? NSRegularExpression(
-        pattern: #"(?<![A-Za-z0-9])[A-Z]{2}[- ]?[0-9]{2}[- ]?(?:19|20)?[0-9]{7,11}(?![A-Za-z0-9])"#, options: [.caseInsensitive])
+        pattern: #"(?<![A-Za-z0-9])(?:AN|AP|AR|AS|BR|CH|CG|DD|DL|GA|GJ|HR|HP|JK|JH|KA|KL|LA|LD|MP|MH|MN|ML|MZ|NL|OD|PY|PB|RJ|SK|TN|TS|TR|UP|UK|WB|OR|UA|CT)[ ./_-]?[0-9]{2}[ ./_-]?(?:19|20)[0-9]{2}[ ./_-]?[0-9]{7}(?![A-Za-z0-9])"#, options: [.caseInsensitive])
     private static let dlLabel = try? NSRegularExpression(pattern: #"\bdl\b"#, options: [.caseInsensitive])
     // Only UPI-like handles are blocked without a label; ordinary emails remain useful context.
     private static let upiHandle = try? NSRegularExpression(
-        pattern: #"(?<![\w.+-])[\w.-]+@(?:ok[a-z]+|ybl|paytm|upi|ibl|axl)(?![a-z.])"#, options: [.caseInsensitive])
+        pattern: #"(?<![\w.+-])[\w.-]+@(?:ok[a-z]+|ybl|paytm|upi|ibl|axl)(?![a-z]|\.[a-z])"#, options: [.caseInsensitive])
     private static let upiID = try? NSRegularExpression(
-        pattern: #"(?<![\w.+-])[\w.-]+@[a-z]+(?![a-z.])"#, options: [.caseInsensitive])
+        pattern: #"(?<![\w.+-])[\w.-]+@[a-z]+(?![a-z]|\.[a-z])"#, options: [.caseInsensitive])
     private static let upiWords = try? NSRegularExpression(
         pattern: #"\bupi(?:\s+id)?\b"#, options: [.caseInsensitive])
     private static let timeRange = try? NSRegularExpression(
@@ -91,6 +93,7 @@ public enum SensitiveContent {
                 && matches(Self.upiID, in: value)
                 && !matches(Self.authWords, in: normalizedLabel))
             || matches(Self.upiHandle, in: value)
+            || matches(Self.upiID, in: value)
             || (matches(Self.expiryLabel, in: normalizedLabel)
                 && matches(Self.expiryValue, in: value)) {
             return .blocked(.payment)
