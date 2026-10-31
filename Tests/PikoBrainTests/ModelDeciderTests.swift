@@ -199,6 +199,42 @@ private actor DecisionProbe {
         }
     }
 
+    @Test func aClarificationQuestionCannotSupplyDateOrContent() async throws {
+        let checkin = ToolDescriptor(name: ToolName.checkIn, summary: "Schedule a check-in", risk: .local)
+        for draft in [
+            ModelPlanner.Draft(tool: ToolName.checkIn, text: "Stretching", when: "tomorrow at 9am"),
+            ModelPlanner.Draft(tool: ToolName.checkIn, text: "Yoga", when: nil),
+        ] {
+            let result = try await ModelDecider(generate: { _, _, _ in
+                .init(kind: "act", reply: "", steps: [draft])
+            }).decide("schedule a check in about stretching\nyes",
+                      context: .init(recent: [.init(
+                          user: "schedule a check in about stretching",
+                          reply: "Should I nudge you about yoga tomorrow at 9am?")],
+                          pendingClarification: .init(
+                          originalRequest: "schedule a check in about stretching",
+                          question: "Should I nudge you about yoga tomorrow at 9am?")),
+                      tools: [checkin], now: now)
+            guard case .unknown = result.decision else { Issue.record("model question became user evidence"); continue }
+            #expect(result.source == .rules(reason: "Invalid model decision"))
+        }
+    }
+
+    @Test func aClarificationAnswerCanSupplyTheDateForAnAction() async throws {
+        let result = try await ModelDecider(generate: { _, _, _ in
+            .init(kind: "act", reply: "", steps: [
+                .init(tool: ToolName.reminder, text: "Stretching", when: "tomorrow at 9"),
+            ])
+        }).decide("remind me about stretching.\ntomorrow at 9",
+                  context: .init(pendingClarification: .init(
+                      originalRequest: "remind me about stretching.", question: "When should I remind you?")),
+                  tools: tools, now: now)
+        guard case .act(let calls) = result.decision else { Issue.record("answer date rejected"); return }
+        #expect(calls.count == 1)
+        #expect(calls[0].when != nil)
+        #expect(result.source == .model)
+    }
+
     @Test func cancellationAndOverBudgetNeverBecomeSuccessfulPlans() async throws {
         let cancelled = ModelDecider(generate: { _, _, _ in throw CancellationError() })
         do {

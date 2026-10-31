@@ -35,6 +35,7 @@ public struct Conversation: Sendable {
     /// Only the exact plan read back and explicitly accepted by the user may authorize writes.
     public private(set) var confirmedPlan: [ToolCall] = []
     private var descriptorRisks: [String: ToolRisk]?
+    private var requiresExplicitConfirmation = false
     private var acceptedClashes: Set<UUID> = []
     private var retried = false
 
@@ -43,8 +44,10 @@ public struct Conversation: Sendable {
     public init() {}
 
     public mutating func begin(_ plan: [ToolCall], context: (any CalendarContext)?, now: Date,
-                               descriptors: [ToolDescriptor]? = nil) async -> Reply {
+                               descriptors: [ToolDescriptor]? = nil,
+                               requiresExplicitConfirmation: Bool = false) async -> Reply {
         self.plan = plan
+        self.requiresExplicitConfirmation = requiresExplicitConfirmation
         confirmedPlan = []
         descriptorRisks = descriptors.map { descriptors in
             Dictionary(descriptors.map { ($0.name, $0.risk) }, uniquingKeysWith: { first, _ in first })
@@ -60,7 +63,7 @@ public struct Conversation: Sendable {
     }
 
     public func requiresConfirmation(_ call: ToolCall) -> Bool {
-        if call.tool == ToolName.remember || call.tool == ToolName.forget { return true }
+        if requiresExplicitConfirmation || call.tool == ToolName.remember || call.tool == ToolName.forget { return true }
         guard let descriptorRisks else { return Self.confirmable.contains(call.tool) }
         // Unknown tools are never an automatic local fast path.
         return descriptorRisks[call.tool] != .local && descriptorRisks[call.tool] != .read

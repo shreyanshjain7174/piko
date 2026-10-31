@@ -167,6 +167,22 @@ private struct FakeCalendar: CalendarContext {
         #expect(talk.waiting == .none)
     }
 
+    @Test func aLocalActionAfterModelClarificationNeedsANewConfirmation() async {
+        let local = ToolCall(tool: ToolName.note, text: "Stretching")
+        let descriptors = [ToolDescriptor(name: ToolName.note, summary: "Save note", risk: .local)]
+        var talk = Conversation()
+        guard case .confirm = await talk.begin([local], context: nil, now: now,
+                                                descriptors: descriptors, requiresExplicitConfirmation: true) else {
+            Issue.record("local follow-up acted without a read-back"); return
+        }
+        #expect(talk.confirmedPlan.isEmpty)
+        #expect(!talk.isConfirmed(local))
+        #expect(await talk.hear("yes", context: nil, now: now) == .run("On it."))
+        #expect(talk.isConfirmed(local))
+        _ = await talk.begin([local], context: nil, now: now, descriptors: descriptors)
+        #expect(!talk.requiresConfirmation(local))
+    }
+
     @Test func personalWritesConfirmEvenWhenRegisteredAsLocal() async {
         var talk = Conversation()
         let call = ToolCall(tool: ToolName.forget, text: "Forget my city", sourceCaptureID: UUID())

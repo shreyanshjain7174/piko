@@ -102,6 +102,26 @@ struct AssistantDecisionHomeTests {
         #expect(await fixture.requests.count == 4)
     }
 
+    @Test func modelQuestionAndPlainYesCannotRunALocalActionWithoutFreshConfirmation() async throws {
+        let fixture = DecisionFixture([
+            .init(decision: .ask("Should I save a note about stretching?"), source: .model),
+            .init(decision: .act([ToolCall(tool: ToolName.note, text: "Stretching")]), source: .model),
+        ])
+        let (path, _, model) = try makeFixture(FixtureDecider(fixture: fixture))
+        defer { clean(path) }
+        #expect(await model.submitTypedRequest("save a note about stretching"))
+        #expect(model.assistant == .clarifying("Should I save a note about stretching?"))
+        #expect(await model.submitTypedRequest("yes"))
+        guard case .proposed(_, _, let canConfirm) = model.assistant else {
+            Issue.record("local action ran without fresh confirmation"); return
+        }
+        #expect(canConfirm)
+        let requests = await fixture.requests
+        #expect(requests.count == 2)
+        #expect(requests[1].0 == "save a note about stretching\nyes")
+        #expect(requests[1].1.pendingClarification?.question == "Should I save a note about stretching?")
+    }
+
     @Test func voiceKeepsTwoRealExchangesAcrossResponseIDsButTypedDoesNot() async throws {
         let fixture = DecisionFixture((0..<4).map {
             .init(decision: .answer("Actual answer \($0)"), source: .model)

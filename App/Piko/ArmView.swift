@@ -751,16 +751,20 @@ final class HomeViewModel: ObservableObject {
                 guard isCurrent(requestID, session: session) else { return }
                 await listen(followUp: true, requestID: requestID)
             } else {
-                let request: String
-                if let pending = clarification, pending.session == session {
-                    request = "\(pending.original)\nPiko asked: \(pending.question)\nYou answered: \(result.shipped)"
-                } else {
-                    request = result.shipped
-                }
+                let pending = clarification?.session == session ? clarification : nil
+                // Only actual user words can ground an action. The prior model question stays
+                // separately quoted in context, never in the current request.
+                let request = pending.map { "\($0.original)\n\(result.shipped)" } ?? result.shipped
                 clarification = nil
-                let context = try await decisionContext(for: result, request: request,
+                let baseContext = try await decisionContext(for: result, request: request,
                                                         requestID: requestID, session: session)
                 guard isCurrent(requestID, session: session) else { return }
+                let context = DecisionContext(facts: baseContext.facts, history: baseContext.history,
+                                              recent: baseContext.recent, personality: baseContext.personality,
+                                              pendingClarification: pending.map {
+                                                  PendingClarification(originalRequest: $0.original,
+                                                                       question: $0.question)
+                                              })
                 let tools = app.harness.actionDescriptors
                 let decision = try await app.decider.decide(request, context: context, tools: tools, now: .now)
                 guard isCurrent(requestID, session: session) else { return }
@@ -792,7 +796,8 @@ final class HomeViewModel: ObservableObject {
                     }
                     var talk = Conversation()
                     let reply = await talk.begin(plan, context: calendar, now: .now,
-                                                 descriptors: app.harness.descriptors)
+                                                 descriptors: app.harness.descriptors,
+                                                 requiresExplicitConfirmation: pending != nil)
                     guard isCurrent(requestID, session: session) else { return }
                     conversation = talk
                     actionRequest = request
