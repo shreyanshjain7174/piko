@@ -1,4 +1,4 @@
-.PHONY: project open test build clean setup lint
+.PHONY: project open test build clean setup lint backtest
 
 project:   ## regenerate the Xcode project from App/project.yml
 	cd App && xcodegen generate
@@ -28,3 +28,6 @@ setup:
 
 lint:
 	swift format lint --recursive Sources Tests || true
+
+backtest: ## offline single-engine fixture replay scoring (prints JSON, no file writes)
+	python3 -B scripts/backtest.py --engine "$(ENGINE)" --manifest "$(MANIFEST)"

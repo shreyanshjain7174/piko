@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "engine": "apple",
+  "engineVersion": "synthetic",
+  "locale": "en-IN",
+  "device": "synthetic-only",
+  "iosBuild": "synthetic-only",
+  "runKind": "warm",
+  "corpus": {
+    "id": "synthetic-only",
+    "sha256": "b4e5e2928f9ae614f71740e1229d30a1ca6c457ca7792b8a8db09ed0870a6a77",
+    "split": "baseline"
+  },
+  "references": "references.json",
+  "results": "results.json"
+}

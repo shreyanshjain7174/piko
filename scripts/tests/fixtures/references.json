@@ -1,0 +1,12 @@
+{
+  "corpus_id": "synthetic-only",
+  "locale": "en-IN",
+  "utterances": [
+    {
+      "id": "one",
+      "filename": "synthetic.wav",
+      "sha256": "d60dadb5a0443b5c4094eddae2fd9db99cf763493c88e880ad3882ecd92218c8",
+      "reference": "hello world"
+    }
+  ]
+}

@@ -112,6 +112,33 @@ unverified. Set `PIKO_DEVICE_UDID` and `PIKO_VERIFICATION_OUT` to select the pho
 directory. The app identifier is `dev.shreyansh.Piko`; `dev.piko.Piko` was unavailable for
 the confirmed team. Shared App Group remains `group.dev.piko.shared`.
 
+Run an offline single-engine backtest on frozen fixture reports (the included sample is
+synthetic plumbing data, not a real audio recording or accuracy evidence):
+
+```bash
+make backtest ENGINE=apple MANIFEST=scripts/tests/fixtures/manifest.json
+```
+
+The manifest is JSON with `schema: 1`, `engine`, `engineVersion`, `locale`, `device`,
+`iosBuild`, `runKind` (`cold` or `warm`), `corpus` (`id`, `sha256`, `split` of
+`baseline` or `heldout`), `references`, and `results`. Non-Apple/non-Whisper engines
+are treated as cloud and also require `networkType`. Paths to references and results
+are relative to the manifest; audio filenames in references are relative to that
+reference file. References use `corpus_id`, `locale`, and `utterances` with `id`,
+`filename`, audio `sha256`, and `reference` text. Results are a list of fixture
+reports with `fixture`, `engine`, `locale`, `audioSHA256`, `transcript`, and optional
+millisecond timings. Missing hypotheses, error entries, empty audio, and mismatched
+hashes fail rather than counting as empty transcripts.
+
+Compute `corpus.sha256` as SHA-256 of UTF-8 compact JSON (`ensure_ascii=False`,
+`separators=(",",":")`) for the sorted list of `[filename, audio sha256,
+reference text]` triples; audio hashes are computed from the actual files. The
+report on stdout embeds the full manifest, WER, and nearest-rank p50/p90/p95
+latencies where present (sorted index `ceil(n * p / 100) - 1`); missing counts
+stay visible. Optional `baselineID` is a path relative to the manifest to an
+existing report JSON with the same corpus, locale and run kind. It adds WER and
+latency deltas only. The script never writes results or modifies a baseline.
+
 Score consented paired recognition results with:
 
 ```bash
