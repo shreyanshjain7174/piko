@@ -70,6 +70,31 @@ private func proposal(_ source: MemoryTurn, value: String) -> ContextProposal {
         #expect(try await memory.fact(forKey: candidate.key) == other)
     }
 
+    @Test func sensitiveUtterancesNeverWrite() async throws {
+        let utterances = [
+            "remember my id is 2345-6789-0123",
+            "remember my pan is abcde1234f",
+            "remember my phone passcode is 482193",
+            "remember my upi mpin is 4821",
+            "remember my wifi pass is hunter2",
+            "Riya\u{27}s usual is 2345-6789-0123",
+        ]
+        let memory = EphemeralMemory()
+        let organizer = ContextOrganizer(memory: memory)
+        for text in utterances {
+            let source = try await memory.appendTurn(session: UUID(), role: .user, text: text, at: .now)
+            let candidate = try #require(RuleContextProposer().propose(from: source).first)
+            #expect(throws: ProposalGateError.sensitiveContent) {
+                try ProposalGate().admit(candidate, source: source)
+            }
+            await #expect(throws: ProposalGateError.sensitiveContent) {
+                _ = try await organizer.stage(candidate, admittedBy: ProposalGate())
+            }
+            #expect(try await memory.fact(forKey: candidate.key) == nil)
+        }
+        #expect(try await memory.entity(id: "person/riya") == nil)
+    }
+
     @Test func sqliteFixture() async throws {
         let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".sqlite")
         defer { try? FileManager.default.removeItem(at: path) }

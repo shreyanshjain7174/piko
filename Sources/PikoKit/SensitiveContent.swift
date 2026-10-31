@@ -16,14 +16,18 @@ public enum SensitiveContent {
               !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
         else { return .blocked(.password) }
 
-        let text = label + " " + value
-        if matches(#"\b(?:password|passphrase|passwd|pwd|secret(?: key)?)\b"#, in: text) {
+        let normalizedLabel = label.replacingOccurrences(
+            of: #"([a-z0-9])([A-Z])"#, with: "$1 $2", options: .regularExpression
+        ).replacingOccurrences(of: #"[_/.\-]"#, with: " ", options: .regularExpression)
+        let text = normalizedLabel + " " + value
+        if matches(#"\bpass\b"#, in: normalizedLabel)
+            || matches(#"\b(?:passwords?|passphrases?|passwd|pwd|passcodes?|secret(?: key)?)\b"#, in: text) {
             return .blocked(.password)
         }
-        if matches(#"\b(?:aadhaar|aadhar|pan (?:card|number)|ssn|social security|passport|(?:driver.?s? |driving )?licen[cs]e)\b"#, in: text)
-            || matches(#"\bPAN\b"#, in: text, options: [])
-            || matches(#"(?<![A-Za-z0-9])(?<!\d[ -])\d{4}\s?\d{4}\s?\d{4}(?![ -]?\d|[A-Za-z])"#, in: text)
-            || matches(#"(?<![A-Za-z0-9])[A-Z]{5}\d{4}[A-Z](?![A-Za-z0-9])"#, in: text, options: [])
+        if matches(#"\bpan\b"#, in: normalizedLabel)
+            || matches(#"\b(?:aadhaar|aadhar|pan (?:card|number)|ssn|social security|passport|(?:driver.?s? |driving )?licen[cs]e)\b"#, in: text)
+            || matches(#"(?<![A-Za-z0-9])(?<!\d[\s-])\d{4}[\s-]?\d{4}[\s-]?\d{4}(?![\s-]?\d|[A-Za-z])"#, in: text)
+            || matches(#"(?<![A-Za-z0-9])[A-Z]{5}\d{4}[A-Z](?![A-Za-z0-9])"#, in: text)
             || matches(#"(?<![\d])\d{3}-\d{2}-\d{4}(?![\d])"#, in: text) {
             return .blocked(.governmentID)
         }
@@ -31,7 +35,7 @@ public enum SensitiveContent {
             || hasCardNumber(in: text) {
             return .blocked(.payment)
         }
-        if matches(#"\b(?:otp|one.time pass(?:word|code)|verification(?: code)?|auth(?:entication)? code|pin|code)\b"#, in: text) {
+        if matches(#"\b(?:otps?|totps?|mpins?|tpins?|pins?|2fa|one.time pass(?:word|code)|verification(?: code)?|auth(?:entication)? code|codes?)\b"#, in: text) {
             return .blocked(.authCode)
         }
         return .safe
@@ -47,7 +51,7 @@ public enum SensitiveContent {
 
     private static func hasCardNumber(in text: String) -> Bool {
         guard let regex = try? NSRegularExpression(
-            pattern: #"(?<![A-Za-z0-9])(?:\d[ -]?){12,18}\d(?![A-Za-z0-9])"#
+            pattern: #"(?<![A-Za-z0-9])(?:\d[\s.\-]{0,2}){12,18}\d(?![A-Za-z0-9])"#
         ) else { return true }
         for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
             guard let range = Range(match.range, in: text) else { return true }
