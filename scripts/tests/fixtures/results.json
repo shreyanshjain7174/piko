@@ -1,0 +1,13 @@
+[
+  {
+    "fixture": "synthetic.wav",
+    "engine": "SpeechTranscriberEngine",
+    "locale": "en-IN",
+    "audioSHA256": "d60dadb5a0443b5c4094eddae2fd9db99cf763493c88e880ad3882ecd92218c8",
+    "transcript": "hello world",
+    "inputDurationMS": 100,
+    "preparationMS": 10,
+    "firstHypothesisFromFileStartMS": 20,
+    "finalizationMS": 30
+  }
+]
