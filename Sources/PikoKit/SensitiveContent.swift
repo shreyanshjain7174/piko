@@ -73,16 +73,26 @@ public enum SensitiveContent {
         return regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
     }
 
-    /// Split at non-separators and separator runs longer than three. Each group
-    /// preserves an alphanumeric boundary for structured ID formats.
-    private static func canonicalGroups(in value: String) -> [[String]] {
-        var sequences: [[String]] = []
+    /// Split at hard punctuation and separator runs longer than three. Retain
+    /// group boundaries and a leading plus for phone-versus-ID disambiguation.
+    private struct CanonicalSequence {
+        let groups: [String]
+        let precededByPlus: Bool
+    }
+
+    private static func canonicalGroups(in value: String) -> [CanonicalSequence] {
+        var sequences: [CanonicalSequence] = []
         var groups: [String] = []
         var current = ""
         var separatorCount = 0
+        var precededByPlus = false
         func flush() {
             if !current.isEmpty { groups.append(current); current = "" }
-            if !groups.isEmpty { sequences.append(groups); groups = [] }
+            if !groups.isEmpty {
+                sequences.append(CanonicalSequence(groups: groups, precededByPlus: precededByPlus))
+                groups = []
+            }
+            precededByPlus = false
         }
         for scalar in value.unicodeScalars {
             let isDigit = CharacterSet.decimalDigits.contains(scalar)
@@ -99,20 +109,30 @@ public enum SensitiveContent {
                 } else {
                     current.unicodeScalars.append(scalar)
                 }
-            } else if CharacterSet.whitespacesAndNewlines.contains(scalar)
-                        || ".-/_".unicodeScalars.contains(scalar) {
-                separatorCount += 1
-            } else {
-                flush()
+            } else if ":;@".unicodeScalars.contains(scalar) {
+                flush() // These punctuation marks delimit times, labels and addresses.
                 separatorCount = 0
+            } else {
+                let category = scalar.properties.generalCategory
+                if CharacterSet.whitespacesAndNewlines.contains(scalar)
+                    || category == .dashPunctuation || category == .otherPunctuation
+                    || category == .connectorPunctuation || category == .spaceSeparator
+                    || ",•·−".unicodeScalars.contains(scalar) {
+                    separatorCount += 1
+                } else {
+                    flush()
+                    precededByPlus = scalar == "+"
+                    separatorCount = 0
+                }
             }
         }
         flush()
         return sequences
     }
 
-    private static func hasCardNumber(in sequences: [[String]]) -> Bool {
-        for groups in sequences {
+    private static func hasCardNumber(in sequences: [CanonicalSequence]) -> Bool {
+        for sequence in sequences {
+            let groups = sequence.groups
             var digits: [Int] = []
             var boundaries = [0]
             func check() -> Bool {
@@ -147,8 +167,9 @@ public enum SensitiveContent {
         return false
     }
 
-    private static func hasGovernmentNumber(in sequences: [[String]]) -> Bool {
-        for groups in sequences {
+    private static func hasGovernmentNumber(in sequences: [CanonicalSequence]) -> Bool {
+        for sequence in sequences {
+            let groups = sequence.groups
             // Start only on group boundaries, never inside a larger word.
             for start in groups.indices {
                 var token = ""
@@ -164,6 +185,7 @@ public enum SensitiveContent {
                 }
             }
             var digitGroups: [String] = []
+            var isFirstDigitRun = true
             func check() -> Bool {
                 let digits = digitGroups.joined().compactMap(\.wholeNumberValue)
                 if digitGroups.map(\.count) == [3, 2, 4] || (digitGroups.count == 1 && digits.count == 9) {
@@ -173,6 +195,10 @@ public enum SensitiveContent {
                 // Verifier literals are not Verhoeff-valid, but are still IDs.
                 if digitGroups.map(\.count) == [4, 4, 4] { return true }
                 guard digits.count >= 12 else { return false }
+                // A country-code phone may happen to have a valid Verhoeff digit.
+                if (sequence.precededByPlus && isFirstDigitRun)
+                    || (digits.count == 12 && digitGroups.first == "91"
+                        && digitGroups.count > 1) { return false }
                 for start in 0...(digits.count - 12) where (2...9).contains(digits[start]) {
                     if isVerhoeffValid(digits[start..<(start + 12)]) { return true }
                 }
@@ -184,6 +210,7 @@ public enum SensitiveContent {
                 } else {
                     if check() { return true }
                     digitGroups.removeAll(keepingCapacity: true)
+                    isFirstDigitRun = false
                 }
             }
             if check() { return true }

@@ -98,6 +98,9 @@ private func proposal(_ source: MemoryTurn, value: String) -> ContextProposal {
             "remember my id is 2345.6789.0123",
             "Riya\u{27}s usual is 4111 1111 1111 1111 123",
             "Riya\u{27}s usual is abcde-1234-f",
+            "remember my visa is 4,111,111,111,111,111",
+            "remember my visa is 4111–1111–1111–1111",
+            "remember my id is 2345,6789,0124",
         ]
         let memory = EphemeralMemory()
         let organizer = ContextOrganizer(memory: memory)

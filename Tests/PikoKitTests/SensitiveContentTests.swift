@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import PikoKit
 
@@ -101,7 +102,8 @@ import Testing
     @Test func separatorAndSuffixVariants() {
         let prefix = "23456789012"
         let aadhaar = prefix + String(verhoeffDigit(prefix))
-        let separators = [" ", "  ", "-", " - ", ".", "/", "_", "\u{00a0}"]
+        let separators = [" ", "  ", "-", " - ", ".", "/", "_", "\u{00a0}",
+                          ",", "–", "—", "‐", "−", "•", "·"]
         let fixtures: [(String, [String], SensitiveContent.Category)] = [
             ("4111111111111111", ["4111", "1111", "1111", "1111"], .payment),
             (aadhaar, [String(aadhaar.prefix(4)), String(aadhaar.dropFirst(4).prefix(4)),
@@ -144,12 +146,43 @@ import Testing
         for (label, value, category) in leaks {
             #expect(SensitiveContent.verdict(label: label, value: value) == .blocked(category))
         }
+        let newLeaks: [(String, SensitiveContent.Category)] = [
+            ("4111,1111,1111,1111", .payment),
+            ("4111–1111–1111–1111", .payment),
+            ("2345,6789,0124", .governmentID),
+            ("234,567,890,124", .governmentID),
+            ("2345–6789–0124", .governmentID),
+            ("2345•6789•0124", .governmentID),
+            ("ABCDE–1234–F", .governmentID),
+            ("123–45–6789", .governmentID),
+            ("123,45,6789", .governmentID),
+        ]
+        for (value, category) in newLeaks {
+            #expect(SensitiveContent.verdict(label: "usual", value: value) == .blocked(category))
+        }
+        let benignTimes = ["9:00–10:00", "31/10/2026 at 10:30", "12.11.2026"]
+        for value in benignTimes {
+            #expect(SensitiveContent.verdict(label: "usual", value: value) == .safe)
+        }
         let benign = ["meet at 9", "flat white", "Riya", "Fridays", "gym every Monday at 7 am",
                       "+91 98450 12345", "98450 12345", "080-4123-4567",
                       "standup 9.30 to 10.15 daily", "12 March 1990", "AI 2021 on 12 Nov",
                       "LIB 2024 0091", "Pan-fried noodles", "Dr Mehta", "oat milk latte"]
         for value in benign {
             #expect(SensitiveContent.verdict(label: "usual", value: value) == .safe)
+        }
+    }
+
+
+    @Test func countryCodePhonesRemainSafe() {
+        #expect(SensitiveContent.verdict(label: "usual", value: "+91 80 4123 4567") == .safe)
+        #expect(SensitiveContent.verdict(label: "usual", value: "91 80 4123 4567") == .safe)
+        for index in 0..<50 {
+            let number = "9845" + String(index % 10) + "1" + String(format: "%04d", index)
+            let local = String(number.prefix(5)) + " " + String(number.suffix(5))
+            for value in ["+91 " + local, "91 " + local] {
+                #expect(SensitiveContent.verdict(label: "usual", value: value) == .safe)
+            }
         }
     }
 
