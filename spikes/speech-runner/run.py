@@ -112,7 +112,7 @@ def main():
                         "MinimumOSVersion": "26.0",
                         "NSSpeechRecognitionUsageDescription": "Report-only speech availability probe; never requests authorization.",
                     }))
-                    sdk_code, sdk, _ = command(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"], 20)
+                    sdk_code, sdk, _ = command(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"], 120)
                     if sdk_code:
                         report("simulator", f"SDK lookup exit={sdk_code}; speech API results=not determined")
                         details("simulator", sdk)
@@ -122,7 +122,7 @@ def main():
                             "xcrun", "swiftc", "-parse-as-library", "-sdk", sdk,
                             "-target", f"{arch}-apple-ios27.0-simulator",
                             "-o", str(app / "SpeechRunnerProbe"), str(SOURCE),
-                        ], 120)
+                        ], 180)
                         report("simulator", f"compile exit={code} elapsed={elapsed}s")
                         if code:
                             details("simulator", output)
@@ -154,7 +154,7 @@ def main():
             details("whisper", output, 2500)
         else:
             details("whisper", "\n".join(line for line in output.splitlines()
-                                       if "Resolved source packages:" in line or "argmax" in line
+                                       if "Resolved source packages:" in line or "argmax-oss-swift:" in line
                                        or "BUILD SUCCEEDED" in line)[-1200:])
         if code and name == "resolve":
             report("whisper", "iOS Simulator build=not attempted (resolution failed)")
