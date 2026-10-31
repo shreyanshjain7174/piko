@@ -11,6 +11,7 @@ public enum AppGroup {
     public static let stateFile = "state.json"
     public static let captureRequestFile = "capture-request.json"
     public static let audioLevelFile = "audio-level.json"
+    public static let suggestionsFile = "suggestions.json"
 }
 
 /// Settings shared through the App Group's `UserDefaults`.
