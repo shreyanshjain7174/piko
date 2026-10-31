@@ -50,15 +50,18 @@ public enum SensitiveContent {
         // Most snapshot entries have no digits; avoid allocating token groups on the poll path.
         let groups = value.unicodeScalars.contains(where: { CharacterSet.decimalDigits.contains($0) })
             ? canonicalGroups(in: value) : []
+        let governmentNumber = governmentNumber(in: groups)
         if matches(Self.identityLabel, in: normalizedLabel)
             || matches(Self.identityWords, in: text)
-            || hasGovernmentNumber(in: groups) {
+            || governmentNumber == .verified {
             return .blocked(.governmentID)
         }
+        // An unlabeled 4-4-4-4 card also contains 4-4-4 ID-like groups.
+        if hasCardNumber(in: groups) { return .blocked(.payment) }
+        if governmentNumber == .grouped { return .blocked(.governmentID) }
         if matches(Self.paymentWords, in: text)
             || (matches(Self.expiryLabel, in: normalizedLabel)
-                && matches(Self.expiryValue, in: value))
-            || hasCardNumber(in: groups) {
+                && matches(Self.expiryValue, in: value)) {
             return .blocked(.payment)
         }
         if matches(Self.authWords, in: text)
@@ -167,7 +170,12 @@ public enum SensitiveContent {
         return false
     }
 
-    private static func hasGovernmentNumber(in sequences: [CanonicalSequence]) -> Bool {
+    private enum GovernmentNumber {
+        case none, verified, grouped
+    }
+
+    private static func governmentNumber(in sequences: [CanonicalSequence]) -> GovernmentNumber {
+        var foundGroupedID = false
         for sequence in sequences {
             let groups = sequence.groups
             // Start only on group boundaries, never inside a larger word.
@@ -181,25 +189,34 @@ public enum SensitiveContent {
                     let chars = Array(token)
                     if chars[0..<5].allSatisfy({ $0.isASCII && $0.isLetter })
                         && chars[5..<9].allSatisfy({ $0.isASCII && $0.isNumber })
-                        && chars[9].isASCII && chars[9].isLetter { return true }
+                        && chars[9].isASCII && chars[9].isLetter { return .verified }
                 }
             }
             var digitGroups: [String] = []
             var isFirstDigitRun = true
             func check() -> Bool {
                 let digits = digitGroups.joined().compactMap(\.wholeNumberValue)
-                if digitGroups.map(\.count) == [3, 2, 4] || (digitGroups.count == 1 && digits.count == 9) {
+                let lengths = digitGroups.map(\.count)
+                if lengths == [3, 2, 4] || (lengths.count == 1 && digits.count == 9) {
                     return true // SSN format; the nine-digit unseparated form is sensitive too.
                 }
-                // Legacy fail-closed behavior for explicitly grouped 4-4-4 IDs:
-                // Verifier literals are not Verhoeff-valid, but are still IDs.
-                if digitGroups.map(\.count) == [4, 4, 4] { return true }
+                // Preserve fail-closed behavior for 4-4-4 IDs even when a phone
+                // precedes them in the same punctuation-joined run.
+                if lengths.count >= 3 {
+                    for index in 0..<(lengths.count - 2)
+                    where lengths[index] == 4 && lengths[index + 1] == 4 && lengths[index + 2] == 4 {
+                        foundGroupedID = true
+                    }
+                }
                 guard digits.count >= 12 else { return false }
-                // A country-code phone may happen to have a valid Verhoeff digit.
-                if (sequence.precededByPlus && isFirstDigitRun)
-                    || (digits.count == 12 && digitGroups.first == "91"
-                        && digitGroups.count > 1) { return false }
-                for start in 0...(digits.count - 12) where (2...9).contains(digits[start]) {
+                // A leading phone can have a valid Verhoeff checksum. Exempt
+                // only windows starting within its first 12 digits; a later ID
+                // in the same run still needs checking.
+                let hasPhonePrefix = (sequence.precededByPlus && isFirstDigitRun)
+                    || (digitGroups.first == "91" && digitGroups.count > 1)
+                let exemptStartCount = hasPhonePrefix ? 12 : 0
+                for start in 0...(digits.count - 12) where start >= exemptStartCount
+                    && (2...9).contains(digits[start]) {
                     if isVerhoeffValid(digits[start..<(start + 12)]) { return true }
                 }
                 return false
@@ -208,14 +225,14 @@ public enum SensitiveContent {
                 if group.allSatisfy({ $0.isASCII && $0.isNumber }) {
                     digitGroups.append(group)
                 } else {
-                    if check() { return true }
+                    if check() { return .verified }
                     digitGroups.removeAll(keepingCapacity: true)
                     isFirstDigitRun = false
                 }
             }
-            if check() { return true }
+            if check() { return .verified }
         }
-        return false
+        return foundGroupedID ? .grouped : .none
     }
 
     private static let verhoeffD = [

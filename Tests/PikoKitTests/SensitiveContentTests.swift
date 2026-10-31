@@ -160,6 +160,15 @@ import Testing
         for (value, category) in newLeaks {
             #expect(SensitiveContent.verdict(label: "usual", value: value) == .blocked(category))
         }
+        let phoneThenID = [
+            "+91 98450 12345, 2345 6789 0124",
+            "+91 98450 12345, 234567890124",
+            "+91 98450 12345, 2345-6789-0124",
+            "+91 98450 12345, 2345 6789 0123", // invalid checksum; grouped ID
+        ]
+        for value in phoneThenID {
+            #expect(SensitiveContent.verdict(label: "usual", value: value) == .blocked(.governmentID))
+        }
         let benignTimes = ["9:00–10:00", "31/10/2026 at 10:30", "12.11.2026"]
         for value in benignTimes {
             #expect(SensitiveContent.verdict(label: "usual", value: value) == .safe)
@@ -177,6 +186,13 @@ import Testing
     @Test func countryCodePhonesRemainSafe() {
         #expect(SensitiveContent.verdict(label: "usual", value: "+91 80 4123 4567") == .safe)
         #expect(SensitiveContent.verdict(label: "usual", value: "91 80 4123 4567") == .safe)
+        let otherPhones = ["0091 98450 12345",
+                           "+91 98450 12345, +91 98450 12346",
+                           "2,500 rupees", "₹1,25,000.50", "12,50,000",
+                           "9:00–10:00", "31/10/2026 at 10:30", "12.11.2026"]
+        for value in otherPhones {
+            #expect(SensitiveContent.verdict(label: "usual", value: value) == .safe)
+        }
         for index in 0..<50 {
             let number = "9845" + String(index % 10) + "1" + String(format: "%04d", index)
             let local = String(number.prefix(5)) + " " + String(number.suffix(5))
