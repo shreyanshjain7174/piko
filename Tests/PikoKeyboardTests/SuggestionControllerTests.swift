@@ -46,25 +46,27 @@ struct SuggestionControllerTests {
         #expect(f.proxy.inserted.isEmpty)
     }
 
-    @Test func documentSwitchBlocksInsert() {
+    @Test func documentSwitchBlocksInsert() throws {
         let f = SuggestionFixture()
         f.controller.offer(hasFullAccess: true)
         let token = f.controller.beginConfirmation(hasFullAccess: true)
         f.proxy.documentIdentifier = UUID()
-        if let token { #expect(!f.controller.confirm(token, hasFullAccess: true)) }
+        let confirmedToken = try #require(token)
+        #expect(!f.controller.confirm(confirmedToken, hasFullAccess: true))
         #expect(f.proxy.inserted.isEmpty)
     }
 
-    @Test func forgottenFactBlocksInsert() {
+    @Test func forgottenFactBlocksInsert() throws {
         let f = SuggestionFixture()
         f.controller.offer(hasFullAccess: true)
         let token = f.controller.beginConfirmation(hasFullAccess: true)
         f.latest = .empty
-        if let token { #expect(!f.controller.confirm(token, hasFullAccess: true)) }
+        let confirmedToken = try #require(token)
+        #expect(!f.controller.confirm(confirmedToken, hasFullAccess: true))
         #expect(f.proxy.inserted.isEmpty)
     }
 
-    @Test func forgettingNonNewestFactWithSameRevisionBlocksInsert() {
+    @Test func forgettingNonNewestFactWithSameRevisionBlocksInsert() throws {
         let f = SuggestionFixture()
         let oldest = MemoryFact(key: "other", value: "Pune", lsn: 1,
                                 sourceTurn: 1, confidence: 1, lastUsed: .now, entityID: nil)
@@ -77,7 +79,8 @@ struct SuggestionControllerTests {
         f.latest = SuggestionSnapshot.build(from: [newest])
         #expect(f.latest.revision == f.cached.revision)
         #expect(f.controller.offeredEntry == nil)
-        if let token { #expect(!f.controller.confirm(token, hasFullAccess: true)) }
+        let confirmedToken = try #require(token)
+        #expect(!f.controller.confirm(confirmedToken, hasFullAccess: true))
         #expect(f.proxy.inserted.isEmpty)
     }
 

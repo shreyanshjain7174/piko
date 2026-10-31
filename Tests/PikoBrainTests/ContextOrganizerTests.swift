@@ -95,6 +95,9 @@ private func proposal(_ source: MemoryTurn, value: String) -> ContextProposal {
             "remember my upi mpin is 4821",
             "remember my wifi pass is hunter2",
             "Riya\u{27}s usual is 2345-6789-0123",
+            "remember my id is 2345.6789.0123",
+            "Riya\u{27}s usual is 4111 1111 1111 1111 123",
+            "Riya\u{27}s usual is abcde-1234-f",
         ]
         let memory = EphemeralMemory()
         let organizer = ContextOrganizer(memory: memory)
